@@ -1,6 +1,6 @@
 import logging
 from abc import ABCMeta
-from typing import Tuple, NamedTuple
+from typing import Tuple, NamedTuple, List
 
 import numpy as np
 import torch
@@ -134,44 +134,65 @@ class Predictor(AbstractExecutor):
 class Evaluator(AbstractExecutor):
 
     class Results(NamedTuple):
-        accuracy: float
-        roc_auc_score: float
-        average_precision: float
+        accuracy: np.float
+        roc_auc_score: np.float
+        average_precision: np.float
 
-    def run(self, data_stream: AbstractLoader) -> Results:
-
+    def _get_predictions(self, data_loader: AbstractLoader) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         predictor = Predictor(
             config=self._config,
-            in_features=data_stream.get_feature_count(),
-            out_features=data_stream.get_class_count()
+            in_features=data_loader.get_feature_count(),
+            out_features=data_loader.get_class_count()
         )
 
-        ground_truths = []
-        logits = []
+        ground_truth_cache = []
+        logits_cache = []
+        predictions_cache = []
 
-        for batch in iter(data_stream):
-            ground_truths.extend(batch.y.cpu().detach().tolist())
+        for batch in iter(data_loader):
+            ground_truth_cache.extend(batch.y.cpu().detach().tolist())
 
-            results = predictor.run(batch)
-            results = results.cpu().detach().tolist()
-            logits.extend(results)
+            logits = predictor.run(batch)
+            predictions = torch.sigmoid(logits)
 
-        ground_truths = np.array(ground_truths).transpose()
-        logits = np.array(logits).transpose()
+            logits = logits.cpu().detach().tolist()
+            logits_cache.extend(logits)
+
+            predictions = predictions.cpu().detach().tolist()
+            predictions_cache.extend(predictions)
+
+        return (
+            np.array(ground_truth_cache).transpose(),
+            np.array(logits_cache).transpose(),
+            np.array(predictions_cache).transpose()
+        )
+
+    def _get_metrics(
+            self, ground_truth_cache: np.ndarray, logits_cache: np.ndarray, predictions_cache: np.ndarray
+    ) -> Tuple[List[float], List[float], List[float]]:
 
         accuracies = []
         roc_auc_scores = []
         average_precisions = []
-        for target in range(ground_truths.shape[0]):
-            mask = ground_truths[target] != ground_truths[target]  # Missing Values (NaN)
+        for target in range(ground_truth_cache.shape[0]):
+            mask = ground_truth_cache[target] != ground_truth_cache[target]  # Missing Values (NaN)
 
-            labels = np.delete(ground_truths[target], mask)
-            scores = np.delete(logits[target], mask)
-            predictions = np.where(scores < self._config.threshold, 0, 1)
+            ground_truth = np.delete(ground_truth_cache[target], mask)
+            logits = np.delete(logits_cache[target], mask)
 
-            accuracies.append(accuracy_score(labels, predictions))
-            roc_auc_scores.append(roc_auc_score(labels, scores))
-            average_precisions.append(average_precision_score(labels, scores))
+            predictions = np.delete(predictions_cache[target], mask)
+            predictions = np.where(predictions < self._config.threshold, 0, 1)
+
+            accuracies.append(accuracy_score(ground_truth, predictions))
+            roc_auc_scores.append(roc_auc_score(ground_truth, logits))
+            average_precisions.append(average_precision_score(ground_truth, logits))
+
+        return accuracies, roc_auc_scores, average_precisions
+
+    def run(self, data_loader: AbstractLoader) -> Results:
+
+        ground_truth, logits, predictions = self._get_predictions(data_loader)
+        accuracies, roc_auc_scores, average_precisions = self._get_metrics(ground_truth, logits, predictions)
 
         return Evaluator.Results(
             accuracy=np.mean(accuracies),

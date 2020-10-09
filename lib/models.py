@@ -2,15 +2,11 @@ import torch
 from torch_geometric.data import Batch
 from torch_geometric.nn import GCNConv as GraphConvolution, GINConv as GINConvolution, global_add_pool, global_max_pool
 
-from lib.modules import AtomEncoder
-
 
 class GraphConvolutionalNetwork(torch.nn.Module):
 
     def __init__(self, in_features: int, hidden_features: int, out_features: int, dropout: float):
         super().__init__()
-
-        self.embedder = AtomEncoder(hidden_channels=in_features)
 
         self.convolution_1 = GraphConvolution(in_features, hidden_features)
         self.convolution_2 = GraphConvolution(hidden_features, out_features)
@@ -21,7 +17,7 @@ class GraphConvolutionalNetwork(torch.nn.Module):
 
     def forward(self, data: Batch) -> torch.Tensor:
 
-        x = self.embedder(data.x)
+        x = data.x.float()
 
         x = self.convolution_1(x, data.edge_index)
         x = self.activation(x)
@@ -29,7 +25,6 @@ class GraphConvolutionalNetwork(torch.nn.Module):
 
         x = self.convolution_2(x, data.edge_index)
         x = global_max_pool(x, batch=data.batch)
-        x = self.sigmoid(x)
 
         return x
 

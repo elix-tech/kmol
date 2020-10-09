@@ -57,8 +57,8 @@ class MoleculeNetLoader(AbstractLoader):
         return self._dataset.num_classes
 
     def get_size(self) -> int:
-        return self._dataset.len()
+        return len(self._dataset)
 
     def __iter__(self) -> Iterator:
-        data_loader = DataLoader(self._dataset, batch_size=self._config.batch_size, shuffle=True)
+        data_loader = DataLoader(self._dataset, batch_size=self._config.batch_size, shuffle=self._mode == "train")
         return iter(data_loader)

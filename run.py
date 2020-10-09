@@ -24,22 +24,32 @@ class Executor:
         trainer = Trainer(self.__config)
         trainer.run(data_loader)
 
-    def eval(self):
+    def eval(self) -> Evaluator.Results:
         data_loader = MoleculeNetLoader(config=self.__config, mode="test")
 
         evaluator = Evaluator(self.__config)
         results = evaluator.run(data_loader)
 
-        logging.info(results)
+        print(results)
+        return results
 
     def analyze(self):
         checkpoints = glob(self.__config.output_path + "*")
         checkpoints = sorted(checkpoints)
         checkpoints = sorted(checkpoints, key=len)
 
+        best = Evaluator.Results(accuracy=0, roc_auc_score=0, average_precision=0)
         for checkpoint in checkpoints:
             self.__config = self.__config._replace(checkpoint_path=checkpoint)
-            self.eval()
+            results = self.eval()
+
+            best = Evaluator.Results(
+                accuracy=max(best.accuracy, results.accuracy),
+                roc_auc_score=max(best.roc_auc_score, results.roc_auc_score),
+                average_precision=max(best.average_precision, results.average_precision)
+            )
+
+        print(best)
 
     def predict(self):
         data_loader = MoleculeNetLoader(config=self.__config, mode="test")
