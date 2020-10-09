@@ -1,7 +1,8 @@
 import torch
-from torch_geometric.nn import GCNConv as GraphConvolution, GINConv as GINConvolution, global_add_pool
 from torch_geometric.data import Batch
-from ogb.graphproppred.mol_encoder import AtomEncoder
+from torch_geometric.nn import GCNConv as GraphConvolution, GINConv as GINConvolution, global_add_pool, global_max_pool
+
+from lib.modules import AtomEncoder
 
 
 class GraphConvolutionalNetwork(torch.nn.Module):
@@ -9,13 +10,14 @@ class GraphConvolutionalNetwork(torch.nn.Module):
     def __init__(self, in_features: int, hidden_features: int, out_features: int, dropout: float):
         super().__init__()
 
-        self.embedder = AtomEncoder(emb_dim=in_features)
+        self.embedder = AtomEncoder(hidden_channels=in_features)
 
         self.convolution_1 = GraphConvolution(in_features, hidden_features)
         self.convolution_2 = GraphConvolution(hidden_features, out_features)
 
         self.activation = torch.nn.ReLU()
         self.dropout = torch.nn.Dropout(p=dropout)
+        self.sigmoid = torch.nn.Sigmoid()
 
     def forward(self, data: Batch) -> torch.Tensor:
 
@@ -26,6 +28,9 @@ class GraphConvolutionalNetwork(torch.nn.Module):
         x = self.dropout(x)
 
         x = self.convolution_2(x, data.edge_index)
+        x = global_max_pool(x, batch=data.batch)
+        x = self.sigmoid(x)
+
         return x
 
 
@@ -85,5 +90,3 @@ class GraphIsomorphismNetwork(torch.nn.Module):
         x = self.fully_connected_2(x)
 
         return x
-
-

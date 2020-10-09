@@ -12,10 +12,6 @@ class Config(NamedTuple):
     model: Literal["GraphConvolutionalNetwork", "GraphIsomorphismNetwork"]
     dataset: Literal["tox21", "pcba", "muv", "hiv", "bbbp", "toxcast", "sider", "clintox"]
 
-    data_loader: Literal["CsvLoader"]
-    input_field: str
-    target_fields: List[str]
-
     input_path: str
     output_path: str
     checkpoint_path: Optional[str] = None
@@ -26,6 +22,11 @@ class Config(NamedTuple):
     weight_decay: float = 0
     dropout: float = 0
     hidden_layer_size: int = 16
+
+    threshold: float = 0.5
+    train_ratio: float = 0.8
+    split_method: Literal["index", "random"] = "index"
+    seed: int = 42
 
     use_cuda: bool = True
     enabled_gpus: List[int] = [0, 1, 2, 3]

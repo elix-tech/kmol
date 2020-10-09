@@ -19,13 +19,13 @@ class Executor:
         getattr(self, job)()
 
     def train(self):
-        data_loader = MoleculeNetLoader(config=self.__config)
+        data_loader = MoleculeNetLoader(config=self.__config, mode="train")
 
         trainer = Trainer(self.__config)
         trainer.run(data_loader)
 
     def eval(self):
-        data_loader = MoleculeNetLoader(config=self.__config)
+        data_loader = MoleculeNetLoader(config=self.__config, mode="test")
 
         evaluator = Evaluator(self.__config)
         results = evaluator.run(data_loader)
@@ -42,7 +42,7 @@ class Executor:
             self.eval()
 
     def predict(self):
-        data_loader = MoleculeNetLoader(config=self.__config)
+        data_loader = MoleculeNetLoader(config=self.__config, mode="test")
         predictor = Predictor(
             config=self.__config,
             in_features=data_loader.get_feature_count(),

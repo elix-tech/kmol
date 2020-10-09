@@ -1,24 +1,18 @@
 from abc import ABCMeta, abstractmethod
-from typing import Iterable, Iterator, NamedTuple, List
+from typing import Iterator, Iterable, Literal
 
-import numpy as np
-import pandas as pd
-from rdkit import Chem
+from torch_geometric.data import DataLoader
+from torch_geometric.datasets import MoleculeNet
+from sklearn.model_selection import train_test_split
 
 from lib.config import Config
-from lib.featurizers import AtomFeaturizer
-
-
-class DataPoint(NamedTuple):
-    node_features: np.ndarray
-    adjacency_matrix: np.ndarray
-    labels: np.ndarray
 
 
 class AbstractLoader(Iterable, metaclass=ABCMeta):
 
-    def __init__(self, config: Config):
+    def __init__(self, config: Config, mode: Literal["train", "test"]):
         self._config = config
+        self._mode = mode
 
     @abstractmethod
     def get_feature_count(self) -> int:
@@ -32,59 +26,39 @@ class AbstractLoader(Iterable, metaclass=ABCMeta):
     def get_size(self) -> int:
         raise NotImplementedError
 
-    def _load_batch(self, buffer: Iterator[DataPoint]) -> List[DataPoint]:
-        batch = []
 
-        while len(batch) < self._config.batch_size:
-            try:
-                batch.append(next(buffer))
-            except StopIteration:
-                break
+class MoleculeNetLoader(AbstractLoader):
 
-        return batch
+    def __init__(self, config: Config, mode: Literal["train", "test"]):
+        super().__init__(config, mode)
 
+        dataset = MoleculeNet(root=self._config.input_path, name=self._config.dataset)
+        self._dataset = self._get_split(dataset)
 
-class CsvLoader(AbstractLoader):
+    def _get_split(self, dataset: MoleculeNet) -> MoleculeNet:
+        entry_count = dataset.len()
+        train_set_size = round(self._config.train_ratio * entry_count)
 
-    def __init__(self, config: Config):
-        super().__init__(config)
-        self._dataset = self._featurize(config.input_path)
+        if self._config.split_method == "index":
+            dataset = dataset[:train_set_size] if self._mode == "train" else dataset[train_set_size:]
+        elif self._config.split_method == "random":
+            train_indices, test_indices = train_test_split(
+                range(entry_count), train_size=train_set_size, random_state=self._config.seed
+            )
 
-    def _featurize(self, file_path: str) -> List[DataPoint]:
-        dataset = pd.read_csv(file_path)
+            dataset = dataset[train_indices] if self._mode == "train" else dataset[test_indices]
 
-        featurizer = AtomFeaturizer()
-        data_points = []
-
-        for entry in dataset.itertuples():
-            smiles = getattr(entry, self._config.input_field)
-            mol = Chem.MolFromSmiles(smiles)
-
-            labels = [getattr(entry, field) for field in self._config.target_fields]
-            labels = [float(label) if label else float("Nan") for label in labels]
-
-            data_points.append(DataPoint(
-                node_features=featurizer.apply(mol),
-                adjacency_matrix=Chem.GetAdjacencyMatrix(mol),
-                labels=np.array(labels)
-            ))
-
-        return data_points
-
-    def _get_labels(self, entry: NamedTuple) -> List[float]:
-        labels = [getattr(entry, field) for field in self._config.target_fields]
-        labels = [float(label) if label else float("Nan") for label in labels]
-
-        return labels
+        return dataset
 
     def get_feature_count(self) -> int:
-        return self._dataset[0].node_features.shape[0]
+        return self._dataset.num_node_features
 
     def get_class_count(self) -> int:
-        return len(self._config.target_fields)
+        return self._dataset.num_classes
 
     def get_size(self) -> int:
-        return len(self._dataset)
+        return self._dataset.len()
 
     def __iter__(self) -> Iterator:
-
+        data_loader = DataLoader(self._dataset, batch_size=self._config.batch_size, shuffle=True)
+        return iter(data_loader)

@@ -10,6 +10,7 @@ from torch_geometric.data import Batch
 from lib.config import Config
 from lib.data_loaders import AbstractLoader
 from lib.helpers import Timer
+from lib.modules import WeightedBinaryCrossEntropyLoss
 
 
 class AbstractExecutor(metaclass=ABCMeta):
@@ -52,7 +53,7 @@ class Trainer(AbstractExecutor):
 
     def run(self, data_loader: AbstractLoader):
 
-        criterion = torch.nn.CrossEntropyLoss().to(self._config.get_device())
+        criterion = WeightedBinaryCrossEntropyLoss().to(self._config.get_device())
         network, optimizer = self.load_network(
             in_features=data_loader.get_feature_count(),
             out_features=data_loader.get_class_count()
@@ -69,8 +70,12 @@ class Trainer(AbstractExecutor):
                 optimizer.zero_grad()
                 outputs = network(data)
 
-                print(outputs.shape)
-                loss = criterion(outputs, data.y)
+                is_non_empty = data.y == data.y
+                weights = is_non_empty.float()
+                labels = data.y
+                labels[~is_non_empty] = 0
+
+                loss = criterion(outputs, labels, weights)
                 loss.backward()
 
                 optimizer.step()
@@ -99,7 +104,7 @@ class Trainer(AbstractExecutor):
                 processed_samples,
                 loss / self._config.log_frequency,
                 str(self._timer),
-                processed_samples / dataset_size
+                round(processed_samples / dataset_size, 4)
             )
         )
 
@@ -120,13 +125,9 @@ class Predictor(AbstractExecutor):
         return model
 
     @torch.no_grad()
-    def run(self, batch: Batch, softmax: bool = False) -> torch.Tensor:
+    def run(self, batch: Batch) -> torch.Tensor:
 
         outputs = self._loaded_model(batch)
-
-        if softmax:
-            outputs = torch.nn.functional.softmax(outputs, dim=-2)
-
         return outputs
 
 
@@ -147,23 +148,33 @@ class Evaluator(AbstractExecutor):
 
         ground_truths = []
         logits = []
-        predictions = []
 
         for batch in iter(data_stream):
-            ground_truths.append(batch.y)
+            ground_truths.extend(batch.y.cpu().detach().tolist())
 
             results = predictor.run(batch)
-            results = results.cpu().detach().numpy()
+            results = results.cpu().detach().tolist()
+            logits.extend(results)
 
-            logits.append(results)
-            predictions.append(results.max(axis=-2))
+        ground_truths = np.array(ground_truths).transpose()
+        logits = np.array(logits).transpose()
 
-        ground_truths = np.array(ground_truths).flatten()
-        logits = np.array(logits).flatten()
-        predictions = np.array(predictions).flatten()
+        accuracies = []
+        roc_auc_scores = []
+        average_precisions = []
+        for target in range(ground_truths.shape[0]):
+            mask = ground_truths[target] != ground_truths[target]  # Missing Values (NaN)
+
+            labels = np.delete(ground_truths[target], mask)
+            scores = np.delete(logits[target], mask)
+            predictions = np.where(scores < self._config.threshold, 0, 1)
+
+            accuracies.append(accuracy_score(labels, predictions))
+            roc_auc_scores.append(roc_auc_score(labels, scores))
+            average_precisions.append(average_precision_score(labels, scores))
 
         return Evaluator.Results(
-            accuracy=accuracy_score(ground_truths, predictions),
-            roc_auc_score=roc_auc_score(ground_truths, logits),
-            average_precision=average_precision_score(ground_truths, logits)
+            accuracy=np.mean(accuracies),
+            roc_auc_score=np.mean(roc_auc_scores),
+            average_precision=np.mean(average_precisions)
         )
