@@ -2,5 +2,6 @@ __pycache__
 *.pyc
 *.test
 
-/data/
+/data/*
+!/data/configs
 sandbox/
