@@ -1,10 +1,8 @@
-import logging
 from argparse import ArgumentParser
 from glob import glob
 
 from lib.config import Config
 from lib.executors import Trainer, Evaluator, Predictor
-from lib.data_loaders import MoleculeNetLoader
 
 
 class Executor:
@@ -19,13 +17,13 @@ class Executor:
         getattr(self, job)()
 
     def train(self):
-        data_loader = MoleculeNetLoader(config=self.__config, mode="train")
+        data_loader = self.__config.get_data_loader(mode="train")
 
         trainer = Trainer(self.__config)
         trainer.run(data_loader)
 
     def eval(self) -> Evaluator.Results:
-        data_loader = MoleculeNetLoader(config=self.__config, mode="test")
+        data_loader = self.__config.get_data_loader(mode="test")
 
         evaluator = Evaluator(self.__config)
         results = evaluator.run(data_loader)
@@ -52,12 +50,8 @@ class Executor:
         print(best)
 
     def predict(self):
-        data_loader = MoleculeNetLoader(config=self.__config, mode="test")
-        predictor = Predictor(
-            config=self.__config,
-            in_features=data_loader.get_feature_count(),
-            out_features=data_loader.get_class_count()
-        )
+        data_loader = self.__config.get_data_loader(mode="test")
+        predictor = Predictor(config=self.__config)
 
         for batch in data_loader:
             predictions = predictor.run(batch)

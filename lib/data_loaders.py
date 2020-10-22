@@ -1,9 +1,9 @@
 from abc import ABCMeta, abstractmethod
-from typing import Iterator, Iterable, Literal
+from typing import Iterator, Iterable, Literal, Any
 
+from sklearn.model_selection import train_test_split
 from torch_geometric.data import DataLoader
 from torch_geometric.datasets import MoleculeNet
-from sklearn.model_selection import train_test_split
 
 from lib.config import Config
 
@@ -13,6 +13,10 @@ class AbstractLoader(Iterable, metaclass=ABCMeta):
     def __init__(self, config: Config, mode: Literal["train", "test"]):
         self._config = config
         self._mode = mode
+
+    @abstractmethod
+    def _get_split(self, *args, **kwargs) -> Any:
+        raise NotImplementedError
 
     @abstractmethod
     def get_feature_count(self) -> int:
@@ -47,6 +51,8 @@ class MoleculeNetLoader(AbstractLoader):
             )
 
             dataset = dataset[train_indices] if self._mode == "train" else dataset[test_indices]
+        else:
+            raise ValueError("Split method not implemented for this loader: {}".format(self._config.split_method))
 
         return dataset
 

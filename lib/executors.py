@@ -21,12 +21,8 @@ class AbstractExecutor(metaclass=ABCMeta):
         self._timer = Timer()
         self._start_epoch = 0
 
-    def load_network(self, in_features: int, out_features: int) -> Tuple[torch.nn.Module, torch.optim.Optimizer]:
-        model = self._config.get_model()
-        network = model(
-            in_features=in_features, hidden_features=self._config.hidden_layer_size,
-            out_features=out_features, dropout=self._config.dropout
-        )
+    def load_network(self) -> Tuple[torch.nn.Module, torch.optim.Optimizer]:
+        network = self._config.get_model()
 
         devices = self._config.enabled_gpus if self._config.use_cuda else []
         network = torch.nn.DataParallel(network, device_ids=devices)
@@ -54,10 +50,7 @@ class Trainer(AbstractExecutor):
     def run(self, data_loader: AbstractLoader):
 
         criterion = WeightedBinaryCrossEntropyLoss().to(self._config.get_device())
-        network, optimizer = self.load_network(
-            in_features=data_loader.get_feature_count(),
-            out_features=data_loader.get_class_count()
-        )
+        network, optimizer = self.load_network()
 
         network = network.train()
         logging.debug(network)
@@ -111,15 +104,15 @@ class Trainer(AbstractExecutor):
 
 class Predictor(AbstractExecutor):
 
-    def __init__(self, config: Config, in_features: int, out_features: int):
+    def __init__(self, config: Config):
         super().__init__(config)
-        self._loaded_model = self.load(in_features, out_features)
+        self._loaded_model = self.load()
 
-    def load(self, in_features: int, out_features: int):
+    def load(self):
         if self._config.checkpoint_path is None:
             raise FileNotFoundError("No 'checkpoint_path' specified.")
 
-        model, _ = self.load_network(in_features, out_features)
+        model, _ = self.load_network()
         model = model.eval()
 
         return model
@@ -138,13 +131,11 @@ class Evaluator(AbstractExecutor):
         roc_auc_score: np.float
         average_precision: np.float
 
-    def _get_predictions(self, data_loader: AbstractLoader) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        predictor = Predictor(
-            config=self._config,
-            in_features=data_loader.get_feature_count(),
-            out_features=data_loader.get_class_count()
-        )
+    def __init__(self, config: Config):
+        super().__init__(config)
+        self._predictor = Predictor(config=self._config)
 
+    def _get_predictions(self, data_loader: AbstractLoader) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         ground_truth_cache = []
         logits_cache = []
         predictions_cache = []
@@ -152,7 +143,7 @@ class Evaluator(AbstractExecutor):
         for batch in iter(data_loader):
             ground_truth_cache.extend(batch.y.cpu().detach().tolist())
 
-            logits = predictor.run(batch)
+            logits = self._predictor.run(batch)
             predictions = torch.sigmoid(logits)
 
             logits = logits.cpu().detach().tolist()

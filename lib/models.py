@@ -62,7 +62,9 @@ class GraphIsomorphismNetwork(torch.nn.Module):
 
     def forward(self, data: Batch) -> torch.Tensor:
 
-        x = self.activation(self.convolution_1(data.x, data.edge_index))
+        x = data.x.float()
+
+        x = self.activation(self.convolution_1(x, data.edge_index))
         x = self.batch_norm_1(x)
 
         x = self.activation(self.convolution_2(x, data.edge_index))

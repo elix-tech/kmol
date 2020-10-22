@@ -1,15 +1,17 @@
 import json
 import logging
 import os
-from typing import NamedTuple, Literal, Optional, List
+from typing import NamedTuple, Literal, Optional, List, Dict, Any, Iterable
 
-from lib import models
 import torch
 
 
 class Config(NamedTuple):
 
-    model: Literal["GraphConvolutionalNetwork", "GraphIsomorphismNetwork"]
+    model_name: Literal["GraphConvolutionalNetwork", "GraphIsomorphismNetwork"]
+    model_options: Dict[str, Any]
+
+    data_loader: Literal["MoleculeNetLoader"]
     dataset: Literal["tox21", "pcba", "muv", "hiv", "bbbp", "toxcast", "sider", "clintox"]
 
     input_path: str
@@ -35,8 +37,17 @@ class Config(NamedTuple):
     log_format: str = ""
     log_frequency: int = 20
 
+    def get_data_loader(self, mode=Literal["train", "test"]) -> Iterable:
+        from lib import data_loaders
+
+        data_loader = getattr(data_loaders, self.data_loader)
+        return data_loader(config=self, mode=mode)
+
     def get_model(self) -> torch.nn.Module:
-        return getattr(models, self.model)
+        from lib import models
+
+        model = getattr(models, self.model_name)
+        return model(**self.model_options)
 
     def get_device(self) -> torch.device:
         device_id = self.enabled_gpus[0] if len(self.enabled_gpus) == 1 else 0
