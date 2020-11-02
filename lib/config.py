@@ -1,21 +1,21 @@
-import json
 import logging
 import os
-from typing import NamedTuple, Literal, Optional, List, Dict, Any, Iterable
+from dataclasses import dataclass, field
+from typing import Literal, Optional, List, Dict, Any, Iterable
 
 import torch
 
+from mila.factories import AbstractConfiguration
 
-class Config(NamedTuple):
+
+@dataclass
+class Config(AbstractConfiguration):
 
     model_name: Literal["GraphConvolutionalNetwork", "GraphIsomorphismNetwork"]
     model_options: Dict[str, Any]
 
     data_loader: Literal["MoleculeNetLoader"]
     dataset: Literal["tox21", "pcba", "muv", "hiv", "bbbp", "toxcast", "sider", "clintox"]
-
-    input_path: str
-    output_path: str
     checkpoint_path: Optional[str] = None
 
     epochs: int = 100
@@ -31,7 +31,7 @@ class Config(NamedTuple):
     seed: int = 42
 
     use_cuda: bool = True
-    enabled_gpus: List[int] = [0, 1, 2, 3]
+    enabled_gpus: List[int] = field(default_factory=lambda: [0, 1, 2, 3])
 
     log_level: Literal["debug", "info", "warn", "error", "critical"] = "info"
     log_format: str = ""
@@ -55,13 +55,8 @@ class Config(NamedTuple):
 
         return torch.device(device_name)
 
-    @classmethod
-    def load(cls, file_path: str) -> "Config":
-        with open(file_path) as read_handle:
-            config = cls(**json.load(read_handle))
+    def _after_load(self):
+        if not os.path.exists(self.output_path):
+            os.makedirs(self.output_path)
 
-        if not os.path.exists(config.output_path):
-            os.makedirs(config.output_path)
-
-        logging.basicConfig(format=config.log_format, level=config.log_level.upper())
-        return config
+        logging.basicConfig(format=self.log_format, level=self.log_level.upper())

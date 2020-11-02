@@ -1,0 +1,46 @@
+import json
+from abc import ABCMeta, abstractmethod
+from dataclasses import dataclass
+from typing import Any
+
+
+@dataclass
+class AbstractConfiguration(metaclass=ABCMeta):
+
+    input_path: str
+    output_path: str
+
+    def _after_load(self):
+        pass
+
+    @classmethod
+    def from_json(cls, file_path: str) -> "AbstractConfiguration":
+        with open(file_path) as read_handle:
+            config = cls(**json.load(read_handle))
+            config._after_load()
+
+            return config
+
+
+class AbstractExecutor(metaclass=ABCMeta):
+
+    def __init__(self, config: AbstractConfiguration):
+        self._config = config
+
+    def run(self, job: str):
+        if not hasattr(self, job):
+            raise ValueError("Unknown job requested: {}".format(job))
+
+        getattr(self, job)()
+
+    @abstractmethod
+    def train(self) -> Any:
+        raise NotImplementedError
+
+    @abstractmethod
+    def eval(self) -> Any:
+        raise NotImplementedError
+
+    @abstractmethod
+    def predict(self) -> Any:
+        raise NotImplementedError

@@ -27,6 +27,9 @@ class ServerConfiguration(NamedTuple):
     whitelist: List[str] = []
     use_whitelist: bool = False
 
+    config_type: str = "lib.config.Config"
+    executor_type: str = "run.Executor"
+
 
 class ClientConfiguration(NamedTuple):
     name: str
@@ -43,3 +46,6 @@ class ClientConfiguration(NamedTuple):
     ssl_private_key: str = "data/certificates/server.key",
     ssl_cert: str = "data/certificates/server.crt",
     ssl_root_cert: str = "data/certificates/rootCA.pem",
+
+    config_type: str = "lib.config.Config"
+    executor_type: str = "run.Executor"

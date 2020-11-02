@@ -1,3 +1,4 @@
+import importlib
 import json
 import logging
 import os
@@ -8,15 +9,14 @@ from dataclasses import dataclass, field
 from glob import glob
 from threading import Thread
 from time import time, sleep
-from typing import Dict, Callable, Any
+from typing import Dict, Callable, Any, Type
 
 import grpc
 
-from lib.config import Config
 from mila.configs import ServerConfiguration, ClientConfiguration
 from mila.exceptions import InvalidNameError
+from mila.factories import AbstractConfiguration, AbstractExecutor
 from mila.protocol_buffers import mila_pb2, mila_pb2_grpc
-from run import Executor
 
 
 class ByteReader:
@@ -249,13 +249,16 @@ class Client(ByteReader):
         files = glob("{}/*".format(folder_path))
         return max(files, key=os.path.getctime)
 
-    # TODO: Mila should not depend on other modules
-    #       - move the config and a base Executor to Mila (lib should extend from them);
-    #       - find a way to add abstraction to NamedTuples (maybe use a dataclass instead?)
-    def _train(self, configuration_path: str) -> str:
-        config = Config.load(configuration_path)
+    def _reflect(self, object_path: str) -> Callable:
+        module, class_name = object_path.rsplit(".", 1)
+        return importlib.import_module(module, class_name)
 
-        runner = Executor(config=config)
+    def _train(self, configuration_path: str) -> str:
+        config: Type[AbstractConfiguration] = self._reflect(self._config.config_type)
+        config = config.from_json(configuration_path)
+
+        runner: Type[AbstractExecutor] = self._reflect(self._config.executor_type)
+        runner = runner(config=config)
         runner.train()
 
         return self._retrieve_latest_file(config.output_path)
