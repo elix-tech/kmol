@@ -1,3 +1,4 @@
+import json
 from typing import NamedTuple, List, Tuple, Any, Dict
 
 
@@ -31,6 +32,11 @@ class ServerConfiguration(NamedTuple):
     config_type: str = "lib.config.Config"
     executor_type: str = "run.Executor"
 
+    @classmethod
+    def from_json(cls, file_path: str) -> "ServerConfiguration":
+        with open(file_path) as read_handle:
+            return cls(**json.load(read_handle))
+
 
 class ClientConfiguration(NamedTuple):
     name: str
@@ -50,3 +56,8 @@ class ClientConfiguration(NamedTuple):
 
     config_type: str = "lib.config.Config"
     executor_type: str = "run.Executor"
+
+    @classmethod
+    def from_json(cls, file_path: str) -> "ClientConfiguration":
+        with open(file_path) as read_handle:
+            return cls(**json.load(read_handle))
