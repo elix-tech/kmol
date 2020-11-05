@@ -39,8 +39,12 @@ class AbstractExecutor(metaclass=ABCMeta):
             info = torch.load(self._config.checkpoint_path, map_location=self._config.get_device())
 
             network.load_state_dict(info["model"])
-            optimizer.load_state_dict(info["optimizer"])
-            self._start_epoch = info["epoch"]
+
+            if "optimizer" in info:
+                optimizer.load_state_dict(info["optimizer"])
+
+            if "epoch" in info:
+                self._start_epoch = info["epoch"]
 
         return network, optimizer
 

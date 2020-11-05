@@ -7,30 +7,38 @@ import uuid
 from concurrent import futures
 from dataclasses import dataclass, field
 from glob import glob
-from threading import Thread
+from threading import Thread, Lock
 from time import time, sleep
 from typing import Dict, Callable, Any, Type
 
 import grpc
 
 from mila.configs import ServerConfiguration, ClientConfiguration
-from mila.exceptions import InvalidNameError
-from mila.factories import AbstractConfiguration, AbstractExecutor
+from mila.exceptions import InvalidNameError, ClientAuthenticationError
+from mila.factories import AbstractConfiguration, AbstractExecutor, AbstractAggregator
 from mila.protocol_buffers import mila_pb2, mila_pb2_grpc
 
 
-class ByteReader:
+class IOManager:
 
     def _read_file(self, file_path: str) -> bytes:
         with open(file_path, "rb") as read_buffer:
             return read_buffer.read()
+
+    def _reflect(self, object_path: str) -> Callable:
+        module, class_name = object_path.rsplit(".", 1)
+        return importlib.import_module(module, class_name)
 
 
 @dataclass
 class Participant:
     name: str
     ip_address: str
+
     token: str = field(default_factory=uuid.uuid4)
+    round: int = 0
+    awaiting_response: bool = False
+
     __last_heartbeat: float = field(default_factory=time)
 
     def register_heartbeat(self) -> None:
@@ -46,14 +54,15 @@ class Participant:
         return "{}|{}".format(self.name, self.ip_address)
 
 
-class ServerManager(ByteReader):
+class ServerManager(IOManager):
 
     def __init__(self, config: ServerConfiguration) -> None:
         self._config = config
         self._registry: Dict[str, Participant] = {}
 
-        self._current_round = 0
+        self._current_round = 1
         self._latest_checkpoint = None
+        self._last_registration_time = 0
 
     def verify_ip(self, ip_address: str) -> bool:
         if ip_address in self._config.blacklist:
@@ -66,14 +75,17 @@ class ServerManager(ByteReader):
 
     def register_client(self, name: str, ip_address: str) -> mila_pb2.Token:
         client = Participant(name=name, ip_address=ip_address)
-
         for entry in self._registry.values():
             if client == entry:
                 return entry.token
 
-        self._registry[client.token] = client
-        logging.info("[{}] Successfully authenticated (clients={})".format(client, len(self._registry)))
+        if self.is_registration_closed():
+            raise ClientAuthenticationError("Authentication failed... Registration is closed.")
 
+        self._registry[client.token] = client
+        self._last_registration_time = time()
+
+        logging.info("[{}] Successfully authenticated (clients={})".format(client, len(self._registry)))
         return client.token
 
     def verify_token(self, token: str, ip_address: str) -> bool:
@@ -112,31 +124,74 @@ class ServerManager(ByteReader):
 
         return self._read_file(self._latest_checkpoint)
 
+    def is_registration_closed(self) -> bool:
+        clients_count = len(self._registry)
+
+        return (
+            clients_count < self._config.minimum_clients
+            or clients_count > self._config.maximum_clients
+            or time() - self._last_registration_time > self._config.client_wait_time
+        )
+
+    def are_more_rounds_required(self) -> bool:
+        return self._current_round < self._config.rounds_count
+
+    def set_client_status_to_awaiting_response(self, token: str) -> bool:
+        client = self._registry[token]
+        if client.round >= self._current_round:
+            return False
+
+        client.round = self._current_round
+        client.awaiting_response = True
+        return True
+
+    def set_client_status_to_available(self, token: str) -> None:
+        self._registry[token].awaiting_response = False
+
+    def are_all_updates_received(self) -> bool:
+        for client in self._registry.values():
+            if client.awaiting_response or client.round != self._current_round:
+                return False
+
+        return True
+
+    def aggregate(self) -> None:
+        checkpoint_paths = glob("{}/*.*.{}.remote".format(self._config.save_path, self._current_round))
+        save_path = "{}/{}.aggregate".format(self._config.save_path, self._current_round)
+
+        aggregator: Type[AbstractAggregator] = self._reflect(self._config.aggregator)
+        aggregator().run(checkpoint_paths=checkpoint_paths, save_path=save_path)
+
+        self._latest_checkpoint = save_path
+
+    def enable_next_round(self) -> None:
+        self._current_round += 1
+
 
 class DefaultServicer(ServerManager, mila_pb2_grpc.MilaServicer):
 
+    def __init__(self, config: ServerConfiguration) -> None:
+        super().__init__(config=config)
+        self.__lock = Lock()
+
     def _validate_token(self, token: str, context) -> bool:
-        success = self.verify_token(token=token, ip_address=self._get_ip(context))
+        if not self.verify_token(token=token, ip_address=self._get_ip(context)):
+            context.abort(grpc.StatusCode.PERMISSION_DENIED, "Access Denied... Token is invalid...")
 
-        if not success:
-            context.set_details("Access Denied... Token is invalid...")
-            context.set_code(grpc.StatusCode.PERMISSION_DENIED)
+        return True
 
-        return success
-    
     def _get_ip(self, context) -> str:
         return context.peer().split(':')[1]
 
     def Authenticate(self, request: grpc, context) -> str:
         client_ip = self._get_ip(context)
-
         if not self.verify_ip(client_ip):
-            context.set_details("Access Denied... IP Address is not whitelisted.")
-            context.set_code(grpc.StatusCode.PERMISSION_DENIED)
+            context.abort(grpc.StatusCode.PERMISSION_DENIED, "Access Denied... IP Address is not whitelisted.")
 
-            return mila_pb2.Token()
-
-        return self.register_client(request.client_name, client_ip)
+        try:
+            return self.register_client(request.client_name, client_ip)
+        except ClientAuthenticationError as e:
+            context.abort(grpc.StatusCode.PERMISSION_DENIED, str(e))
 
     def Heartbeat(self, request, context) -> None:
         if self._validate_token(request.token, context):
@@ -148,6 +203,16 @@ class DefaultServicer(ServerManager, mila_pb2_grpc.MilaServicer):
 
     def RequestModel(self, request, context) -> mila_pb2.Model:
         if self._validate_token(request.token, context):
+
+            if not self.is_registration_closed():
+                context.abort(grpc.StatusCode.RESOURCE_EXHAUSTED, "Waiting for more clients to join.")
+
+            if not self.are_more_rounds_required():
+                context.abort(grpc.StatusCode.PERMISSION_DENIED, "All rounds have been completed. Closing session.")
+
+            if not self.set_client_status_to_awaiting_response(request.token):
+                context.abort(grpc.StatusCode.RESOURCE_EXHAUSTED, "Next round is not available yet.")
+
             return mila_pb2.Model(
                 configuration=self.get_configuration(),
                 latest_checkpoint=self.get_latest_checkpoint()
@@ -155,10 +220,16 @@ class DefaultServicer(ServerManager, mila_pb2_grpc.MilaServicer):
 
     def SendCheckpoint(self, request, context) -> None:
         if self._validate_token(request.token, context):
-            self.save_checkpoint(token=request.token, content=request.content)
+            with self.__lock:
+                self.save_checkpoint(token=request.token, content=request.content)
+                self.set_client_status_to_available(request.token)
+
+                if self.are_all_updates_received():
+                    self.aggregate()
+                    self.enable_next_round()
 
 
-class Server(ByteReader):
+class Server(IOManager):
 
     def __init__(self, config: ServerConfiguration) -> None:
         self._config = config
@@ -193,7 +264,7 @@ class Server(ByteReader):
         server.wait_for_termination()
 
 
-class Client(ByteReader):
+class Client(IOManager):
 
     def __init__(self, config: ClientConfiguration) -> None:
         self._config = config
@@ -248,10 +319,6 @@ class Client(ByteReader):
     def _retrieve_latest_file(self, folder_path: str) -> str:
         files = glob("{}/*".format(folder_path))
         return max(files, key=os.path.getctime)
-
-    def _reflect(self, object_path: str) -> Callable:
-        module, class_name = object_path.rsplit(".", 1)
-        return importlib.import_module(module, class_name)
 
     def _train(self, configuration_path: str) -> str:
         config: Type[AbstractConfiguration] = self._reflect(self._config.config_type)
@@ -332,6 +399,3 @@ class Client(ByteReader):
                 self._invoke(self.send_checkpoint, checkpoint_path=checkpoint_path)
             except KeyboardInterrupt:
                 self._invoke(self.close)
-
-
-# TODO: implement server handlers (wait for minimum number of clients, etc.)

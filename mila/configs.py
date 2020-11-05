@@ -27,6 +27,7 @@ class ServerConfiguration(NamedTuple):
     whitelist: List[str] = []
     use_whitelist: bool = False
 
+    aggregator: str = "mila.aggregators.TorchAggregator"
     config_type: str = "lib.config.Config"
     executor_type: str = "run.Executor"
 

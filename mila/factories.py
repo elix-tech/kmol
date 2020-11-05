@@ -1,7 +1,7 @@
 import json
 from abc import ABCMeta, abstractmethod
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, List
 
 
 @dataclass
@@ -43,4 +43,11 @@ class AbstractExecutor(metaclass=ABCMeta):
 
     @abstractmethod
     def predict(self) -> Any:
+        raise NotImplementedError
+
+
+class AbstractAggregator(metaclass=ABCMeta):
+
+    @abstractmethod
+    def run(self, checkpoint_paths: List[str], save_path: str) -> None:
         raise NotImplementedError
