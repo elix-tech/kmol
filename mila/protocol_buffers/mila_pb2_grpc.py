@@ -2,11 +2,10 @@
 import grpc
 
 from google.protobuf import empty_pb2 as google_dot_protobuf_dot_empty__pb2
-import mila_pb2 as mila__pb2
+import mila.protocol_buffers.mila_pb2 as mila__pb2
 
 
 class MilaStub(object):
-  # missing associated documentation comment in .proto file
   pass
 
   def __init__(self, channel):
@@ -43,39 +42,33 @@ class MilaStub(object):
 
 
 class MilaServicer(object):
-  # missing associated documentation comment in .proto file
   pass
 
   def Authenticate(self, request, context):
-    # missing associated documentation comment in .proto file
     pass
     context.set_code(grpc.StatusCode.UNIMPLEMENTED)
     context.set_details('Method not implemented!')
     raise NotImplementedError('Method not implemented!')
 
   def Heartbeat(self, request, context):
-    # missing associated documentation comment in .proto file
     pass
     context.set_code(grpc.StatusCode.UNIMPLEMENTED)
     context.set_details('Method not implemented!')
     raise NotImplementedError('Method not implemented!')
 
   def Close(self, request, context):
-    # missing associated documentation comment in .proto file
     pass
     context.set_code(grpc.StatusCode.UNIMPLEMENTED)
     context.set_details('Method not implemented!')
     raise NotImplementedError('Method not implemented!')
 
   def RequestModel(self, request, context):
-    # missing associated documentation comment in .proto file
     pass
     context.set_code(grpc.StatusCode.UNIMPLEMENTED)
     context.set_details('Method not implemented!')
     raise NotImplementedError('Method not implemented!')
 
   def SendCheckpoint(self, request, context):
-    # missing associated documentation comment in .proto file
     pass
     context.set_code(grpc.StatusCode.UNIMPLEMENTED)
     context.set_details('Method not implemented!')

@@ -1,0 +1,6 @@
+{
+    "task_configuration_file": "data/configs/model/gcn.json",
+    "aggregator_type": "mila.aggregators.TorchAggregator",
+    "config_type": "lib.config.Config",
+    "executor_type": "run.Executor"
+}

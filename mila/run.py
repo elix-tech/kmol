@@ -1,6 +1,10 @@
+import logging
 from argparse import ArgumentParser
+
 from mila.configs import ServerConfiguration, ClientConfiguration
 from mila.services import Server, Client, DefaultServicer
+
+logging.basicConfig(format="", level=logging.INFO)
 
 
 class Executor:

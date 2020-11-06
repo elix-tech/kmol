@@ -20,7 +20,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   package='mila',
   syntax='proto3',
   serialized_options=None,
-  serialized_pb=_b('\n\nmila.proto\x12\x04mila\x1a\x1bgoogle/protobuf/empty.proto\"\x16\n\x06\x43lient\x12\x0c\n\x04name\x18\x01 \x01(\t\"\x16\n\x05Token\x12\r\n\x05token\x18\x01 \x01(\t\"9\n\nCheckpoint\x12\x1a\n\x05token\x18\x01 \x01(\x0b\x32\x0b.mila.Token\x12\x0f\n\x07\x63ontent\x18\x02 \x01(\x0c\">\n\x05Model\x12\x1a\n\x12json_configuration\x18\x01 \x01(\x0c\x12\x19\n\x11latest_checkpoint\x18\x02 \x01(\x0c\x32\x81\x02\n\x04Mila\x12+\n\x0c\x41uthenticate\x12\x0c.mila.Client\x1a\x0b.mila.Token\"\x00\x12\x32\n\tHeartbeat\x12\x0b.mila.Token\x1a\x16.google.protobuf.Empty\"\x00\x12.\n\x05\x43lose\x12\x0b.mila.Token\x1a\x16.google.protobuf.Empty\"\x00\x12*\n\x0cRequestModel\x12\x0b.mila.Token\x1a\x0b.mila.Model\"\x00\x12<\n\x0eSendCheckpoint\x12\x10.mila.Checkpoint\x1a\x16.google.protobuf.Empty\"\x00\x62\x06proto3')
+  serialized_pb=_b('\n\nmila.proto\x12\x04mila\x1a\x1bgoogle/protobuf/empty.proto\"\x16\n\x06\x43lient\x12\x0c\n\x04name\x18\x01 \x01(\t\"\x16\n\x05Token\x12\r\n\x05token\x18\x01 \x01(\t\",\n\nCheckpoint\x12\r\n\x05token\x18\x01 \x01(\t\x12\x0f\n\x07\x63ontent\x18\x02 \x01(\x0c\">\n\x05Model\x12\x1a\n\x12json_configuration\x18\x01 \x01(\x0c\x12\x19\n\x11latest_checkpoint\x18\x02 \x01(\x0c\x32\x81\x02\n\x04Mila\x12+\n\x0c\x41uthenticate\x12\x0c.mila.Client\x1a\x0b.mila.Token\"\x00\x12\x32\n\tHeartbeat\x12\x0b.mila.Token\x1a\x16.google.protobuf.Empty\"\x00\x12.\n\x05\x43lose\x12\x0b.mila.Token\x1a\x16.google.protobuf.Empty\"\x00\x12*\n\x0cRequestModel\x12\x0b.mila.Token\x1a\x0b.mila.Model\"\x00\x12<\n\x0eSendCheckpoint\x12\x10.mila.Checkpoint\x1a\x16.google.protobuf.Empty\"\x00\x62\x06proto3')
   ,
   dependencies=[google_dot_protobuf_dot_empty__pb2.DESCRIPTOR,])
 
@@ -98,8 +98,8 @@ _CHECKPOINT = _descriptor.Descriptor(
   fields=[
     _descriptor.FieldDescriptor(
       name='token', full_name='mila.Checkpoint.token', index=0,
-      number=1, type=11, cpp_type=10, label=1,
-      has_default_value=False, default_value=None,
+      number=1, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
@@ -123,7 +123,7 @@ _CHECKPOINT = _descriptor.Descriptor(
   oneofs=[
   ],
   serialized_start=97,
-  serialized_end=154,
+  serialized_end=141,
 )
 
 
@@ -160,11 +160,10 @@ _MODEL = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=156,
-  serialized_end=218,
+  serialized_start=143,
+  serialized_end=205,
 )
 
-_CHECKPOINT.fields_by_name['token'].message_type = _TOKEN
 DESCRIPTOR.message_types_by_name['Client'] = _CLIENT
 DESCRIPTOR.message_types_by_name['Token'] = _TOKEN
 DESCRIPTOR.message_types_by_name['Checkpoint'] = _CHECKPOINT
@@ -207,8 +206,8 @@ _MILA = _descriptor.ServiceDescriptor(
   file=DESCRIPTOR,
   index=0,
   serialized_options=None,
-  serialized_start=221,
-  serialized_end=478,
+  serialized_start=208,
+  serialized_end=465,
   methods=[
   _descriptor.MethodDescriptor(
     name='Authenticate',

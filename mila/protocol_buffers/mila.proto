@@ -14,7 +14,7 @@ message Token {
 }
 
 message Checkpoint {
-    Token token = 1;
+    string token = 1;
     bytes content = 2;
 }
 

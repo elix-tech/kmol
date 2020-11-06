@@ -9,9 +9,10 @@ from dataclasses import dataclass, field
 from glob import glob
 from threading import Thread, Lock
 from time import time, sleep
-from typing import Dict, Callable, Any, Type
+from typing import Dict, Callable, Any, Type, Optional
 
 import grpc
+from google.protobuf.empty_pb2 import Empty as EmptyResponse
 
 from mila.configs import ServerConfiguration, ClientConfiguration
 from mila.exceptions import InvalidNameError, ClientAuthenticationError
@@ -27,7 +28,7 @@ class IOManager:
 
     def _reflect(self, object_path: str) -> Callable:
         module, class_name = object_path.rsplit(".", 1)
-        return importlib.import_module(module, class_name)
+        return getattr(importlib.import_module(module), class_name)
 
 
 @dataclass
@@ -35,7 +36,7 @@ class Participant:
     name: str
     ip_address: str
 
-    token: str = field(default_factory=uuid.uuid4)
+    token: str = field(default_factory=lambda: str(uuid.uuid4()))
     round: int = 0
     awaiting_response: bool = False
 
@@ -63,6 +64,10 @@ class ServerManager(IOManager):
         self._current_round = 1
         self._latest_checkpoint = None
         self._last_registration_time = 0
+        self._is_registration_closed = False
+
+        if not os.path.exists(self._config.save_path):
+            os.makedirs(self._config.save_path)
 
     def verify_ip(self, ip_address: str) -> bool:
         if ip_address in self._config.blacklist:
@@ -73,19 +78,19 @@ class ServerManager(IOManager):
 
         return True
 
-    def register_client(self, name: str, ip_address: str) -> mila_pb2.Token:
+    def register_client(self, name: str, ip_address: str) -> str:
         client = Participant(name=name, ip_address=ip_address)
         for entry in self._registry.values():
             if client == entry:
                 return entry.token
 
-        if self.is_registration_closed():
+        if not self.should_wait_for_additional_clients():
             raise ClientAuthenticationError("Authentication failed... Registration is closed.")
 
         self._registry[client.token] = client
         self._last_registration_time = time()
 
-        logging.info("[{}] Successfully authenticated (clients={})".format(client, len(self._registry)))
+        logging.info("[{}] Successfully authenticated (clients={})".format(client, self.get_clients_count()))
         return client.token
 
     def verify_token(self, token: str, ip_address: str) -> bool:
@@ -96,13 +101,16 @@ class ServerManager(IOManager):
         )
 
     def register_heartbeat(self, token: str) -> None:
-        self._registry[token].register_heartbeat()
+        client = self._registry[token]
+
+        client.register_heartbeat()
+        logging.debug("[{}] Heartbeat registered".format(client))
 
     def close_connection(self, token: str) -> None:
         client = self._registry[token]
-        logging.info("[{}] Disconnected (clients={})".format(client, len(self._registry)))
 
         self._registry.pop(token)
+        logging.info("[{}] Disconnected (clients={})".format(client, self.get_clients_count()))
 
     def save_checkpoint(self, token: str, content: bytes) -> None:
         client = self._registry[token]
@@ -124,17 +132,25 @@ class ServerManager(IOManager):
 
         return self._read_file(self._latest_checkpoint)
 
-    def is_registration_closed(self) -> bool:
-        clients_count = len(self._registry)
+    def close_registration(self) -> None:
+        self._is_registration_closed = True
+
+    def should_wait_for_additional_clients(self) -> bool:
+        if self._is_registration_closed:
+            return False
+
+        clients_count = self.get_clients_count()
 
         return (
             clients_count < self._config.minimum_clients
-            or clients_count > self._config.maximum_clients
-            or time() - self._last_registration_time > self._config.client_wait_time
+            or (
+                clients_count < self._config.maximum_clients
+                and time() - self._last_registration_time < self._config.client_wait_time
+            )
         )
 
     def are_more_rounds_required(self) -> bool:
-        return self._current_round < self._config.rounds_count
+        return self._current_round <= self._config.rounds_count
 
     def set_client_status_to_awaiting_response(self, token: str) -> bool:
         client = self._registry[token]
@@ -156,16 +172,24 @@ class ServerManager(IOManager):
         return True
 
     def aggregate(self) -> None:
+        logging.info("Start aggregation (round={})".format(self._current_round))
+
         checkpoint_paths = glob("{}/*.*.{}.remote".format(self._config.save_path, self._current_round))
         save_path = "{}/{}.aggregate".format(self._config.save_path, self._current_round)
 
-        aggregator: Type[AbstractAggregator] = self._reflect(self._config.aggregator)
+        aggregator: Type[AbstractAggregator] = self._reflect(self._config.aggregator_type)
         aggregator().run(checkpoint_paths=checkpoint_paths, save_path=save_path)
 
+        logging.info("Aggregate model saved: [{}]".format(save_path))
         self._latest_checkpoint = save_path
 
     def enable_next_round(self) -> None:
         self._current_round += 1
+        if self._current_round <= self._config.rounds_count:
+            logging.info("Starting round [{}]".format(self._current_round))
+
+    def get_clients_count(self) -> int:
+        return sum(1 for client in self._registry.values() if client.is_alive(self._config.heartbeat_timeout))
 
 
 class DefaultServicer(ServerManager, mila_pb2_grpc.MilaServicer):
@@ -189,36 +213,47 @@ class DefaultServicer(ServerManager, mila_pb2_grpc.MilaServicer):
             context.abort(grpc.StatusCode.PERMISSION_DENIED, "Access Denied... IP Address is not whitelisted.")
 
         try:
-            return self.register_client(request.client_name, client_ip)
+            token = self.register_client(request.name, client_ip)
+            return mila_pb2.Token(token=token)
         except ClientAuthenticationError as e:
             context.abort(grpc.StatusCode.PERMISSION_DENIED, str(e))
 
-    def Heartbeat(self, request, context) -> None:
+    def Heartbeat(self, request, context) -> EmptyResponse:
         if self._validate_token(request.token, context):
             self.register_heartbeat(request.token)
 
-    def Close(self, request, context) -> None:
+            context.set_code(grpc.StatusCode.OK)
+            return EmptyResponse()
+
+    def Close(self, request, context) -> EmptyResponse:
         if self._validate_token(request.token, context):
             self.close_connection(request.token)
+
+            context.set_code(grpc.StatusCode.OK)
+            return EmptyResponse()
 
     def RequestModel(self, request, context) -> mila_pb2.Model:
         if self._validate_token(request.token, context):
 
-            if not self.is_registration_closed():
+            if self.should_wait_for_additional_clients():
                 context.abort(grpc.StatusCode.RESOURCE_EXHAUSTED, "Waiting for more clients to join.")
 
+            self.close_registration()
             if not self.are_more_rounds_required():
                 context.abort(grpc.StatusCode.PERMISSION_DENIED, "All rounds have been completed. Closing session.")
 
             if not self.set_client_status_to_awaiting_response(request.token):
                 context.abort(grpc.StatusCode.RESOURCE_EXHAUSTED, "Next round is not available yet.")
 
+            client = self._registry[request.token]
+            logging.info("[{}] Sending Model (round={})".format(client, client.round))
+
             return mila_pb2.Model(
-                configuration=self.get_configuration(),
+                json_configuration=self.get_configuration(),
                 latest_checkpoint=self.get_latest_checkpoint()
             )
 
-    def SendCheckpoint(self, request, context) -> None:
+    def SendCheckpoint(self, request, context) -> EmptyResponse:
         if self._validate_token(request.token, context):
             with self.__lock:
                 self.save_checkpoint(token=request.token, content=request.content)
@@ -227,6 +262,9 @@ class DefaultServicer(ServerManager, mila_pb2_grpc.MilaServicer):
                 if self.are_all_updates_received():
                     self.aggregate()
                     self.enable_next_round()
+
+            context.set_code(grpc.StatusCode.OK)
+            return EmptyResponse()
 
 
 class Server(IOManager):
@@ -258,7 +296,7 @@ class Server(IOManager):
             server.add_insecure_port(self._config.target)
             logging.warning("[CAUTION] Connection is insecure!")
 
-        logging.info("Starting server at: [%s]".format(self._config.target))
+        logging.info("Starting server at: [{}]".format(self._config.target))
 
         server.start()
         server.wait_for_termination()
@@ -269,6 +307,9 @@ class Client(IOManager):
     def __init__(self, config: ClientConfiguration) -> None:
         self._config = config
         self._token = None
+
+        if not os.path.exists(self._config.save_path):
+            os.makedirs(self._config.save_path)
 
         self._validate()
 
@@ -304,13 +345,13 @@ class Client(IOManager):
 
         return checkpoint_path
 
-    def _create_configuration(self, received_configuration: bytes, checkpoint_path: str) -> str:
-        configuration = received_configuration.decode("utf-8")
+    def _create_configuration(self, received_configuration: bytes, checkpoint_path: Optional[str]) -> str:
+        configuration = json.loads(received_configuration.decode("utf-8"))
 
         configuration = {**configuration, **self._config.model_overwrites}  # overwrite values based on settings
         configuration["checkpoint_path"] = checkpoint_path
 
-        configuration_path = "{}/checkpoint.latest".format(self._config.save_path)
+        configuration_path = "{}/config.latest".format(self._config.save_path)
         with open(configuration_path, "w") as write_buffer:
             json.dump(configuration, write_buffer)
 
@@ -342,9 +383,9 @@ class Client(IOManager):
                 except grpc.RpcError as e:
                     if grpc.StatusCode.RESOURCE_EXHAUSTED == e.code():
                         sleep(5)
-                    else:
-                        self._token = None
-                        raise e
+                        continue
+
+                    raise e
 
     def _heartbeat_daemon(self) -> None:
         while True:
@@ -375,7 +416,10 @@ class Client(IOManager):
         package = mila_pb2.Token(token=self._token)
         response = stub.RequestModel(package)
 
-        checkpoint_path = self._store_checkpoint(response.latest_checkpoint)
+        checkpoint_path = None
+        if response.latest_checkpoint:
+            checkpoint_path = self._store_checkpoint(response.latest_checkpoint)
+
         return self._create_configuration(response.json_configuration, checkpoint_path)
 
     def send_checkpoint(self, checkpoint_path: str, stub: mila_pb2_grpc.MilaStub) -> None:
@@ -386,16 +430,27 @@ class Client(IOManager):
         stub.SendCheckpoint(package)
 
     def run(self) -> None:
-        self._token = self._invoke(self.authenticate)
+        try:
+            self._token = self._invoke(self.authenticate)
 
-        heartbeat_worker = Thread(target=self._heartbeat_daemon)
-        heartbeat_worker.daemon = True
-        heartbeat_worker.start()
+            heartbeat_worker = Thread(target=self._heartbeat_daemon)
+            heartbeat_worker.daemon = True
+            heartbeat_worker.start()
 
-        while True:
-            try:
+            while True:
                 configuration_path = self._invoke(self.request_model)
                 checkpoint_path = self._train(configuration_path)
                 self._invoke(self.send_checkpoint, checkpoint_path=checkpoint_path)
-            except KeyboardInterrupt:
+
+        except grpc.RpcError as e:
+            logging.info("[{}] {}".format(e.code(), e.details()))
+            if e.code() not in (grpc.StatusCode.PERMISSION_DENIED, grpc.StatusCode.UNAVAILABLE):
                 self._invoke(self.close)
+
+        except KeyboardInterrupt:
+            logging.info("Stopping gracefully...")
+            self._invoke(self.close)
+
+        except Exception as e:
+            logging.error("[internal error] {}".format(e))
+            self._invoke(self.close)
