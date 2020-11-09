@@ -1,0 +1,25 @@
+{
+    "model_name": "BimodalProteinLigandNetwork",
+    "model_options": {
+        "in_features_protein": 4,
+        "in_features_ligand": 2048,
+        "out_features": 1
+    },
+
+    "data_loader": "ProteinLigandLoader",
+    "input_path": "data/input/chembl/mmp.csv",
+    "output_path": "data/checkpoints/multimodal/",
+    "checkpoint_path": null,
+
+    "epochs": 50,
+    "batch_size": 64,
+    "learning_rate": 0.0001,
+    "weight_decay": 0.0001,
+
+    "use_cuda": true,
+    "enabled_gpus": [0, 1, 2, 3],
+
+    "log_level": "info",
+    "log_format": "",
+    "log_frequency": 5
+}

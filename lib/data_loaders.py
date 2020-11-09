@@ -1,11 +1,19 @@
 from abc import ABCMeta, abstractmethod
-from typing import Iterator, Iterable, Literal, Any
+from typing import Iterator, Iterable, Literal, Any, List
 
+import pandas as pd
+import torch
+from rdkit import Chem
+from rdkit.Chem import AllChem
 from sklearn.model_selection import train_test_split
-from torch_geometric.data import DataLoader
+from torch.utils.data import DataLoader as ClassicDataLoader
+from torch.utils.data import Dataset
+from torch_geometric.data import DataLoader as GeometricDataLoader, Data as GeometricData
 from torch_geometric.datasets import MoleculeNet
 
 from lib.config import Config
+from lib.helpers import Tokenizer
+from lib.resources import ProteinLigandBatch
 
 
 class AbstractLoader(Iterable, metaclass=ABCMeta):
@@ -14,33 +22,16 @@ class AbstractLoader(Iterable, metaclass=ABCMeta):
         self._config = config
         self._mode = mode
 
-    @abstractmethod
-    def _get_split(self, *args, **kwargs) -> Any:
-        raise NotImplementedError
+        self._dataset = self._load()
 
     @abstractmethod
-    def get_feature_count(self) -> int:
+    def _load(self) -> Dataset:
         raise NotImplementedError
 
-    @abstractmethod
-    def get_class_count(self) -> int:
-        raise NotImplementedError
-
-    @abstractmethod
     def get_size(self) -> int:
-        raise NotImplementedError
+        return len(self._dataset)
 
-
-class MoleculeNetLoader(AbstractLoader):
-
-    def __init__(self, config: Config, mode: Literal["train", "test"]):
-        super().__init__(config, mode)
-
-        dataset = MoleculeNet(root=self._config.input_path, name=self._config.dataset)
-        self._dataset = self._get_split(dataset)
-
-    def _get_split(self, dataset: MoleculeNet) -> MoleculeNet:
-        entry_count = dataset.len()
+    def _get_indices(self, entry_count: int) -> List[int]:
         train_set_size = round(self._config.train_ratio * entry_count)
 
         if self._config.split_method == "index":
@@ -66,17 +57,71 @@ class MoleculeNetLoader(AbstractLoader):
 
             indices = indices[start_index:end_index]
 
+        return indices
+
+
+class MoleculeNetLoader(AbstractLoader):
+
+    def _load(self) -> MoleculeNet:
+        dataset = MoleculeNet(root=self._config.input_path, name=self._config.dataset)
+        indices = self._get_indices(dataset.len())
+
         return dataset[indices]
 
-    def get_feature_count(self) -> int:
-        return self._dataset.num_node_features
+    def __iter__(self) -> Iterator[GeometricData]:
+        data_loader = GeometricDataLoader(
+            self._dataset,
+            batch_size=self._config.batch_size,
+            shuffle=self._mode == "train"
+        )
 
-    def get_class_count(self) -> int:
-        return self._dataset.num_classes
+        return iter(data_loader)
 
-    def get_size(self) -> int:
+
+class ProteinLigandDataset(Dataset):
+
+    def __init__(self, data: pd.DataFrame, config: Config):
+        self._dataset = data
+        self._config = config
+
+        unique_proteins = self._dataset["protein_id"].unique()
+        self._protein_tokenizer = Tokenizer(vocabulary=unique_proteins)
+
+    def __len__(self) -> int:
         return len(self._dataset)
 
-    def __iter__(self) -> Iterator:
-        data_loader = DataLoader(self._dataset, batch_size=self._config.batch_size, shuffle=self._mode == "train")
+    def __getitem__(self, index: int) -> tuple:
+        sample = self._dataset.iloc[index]
+        label = [sample["label"]]
+
+        ligand_features = AllChem.GetMorganFingerprintAsBitVect(Chem.MolFromSmiles(sample["smiles"]), 2)
+        protein_features = self._protein_tokenizer.tokenize([sample["protein_id"]])
+
+        return label, ligand_features, protein_features
+
+
+class ProteinLigandLoader(AbstractLoader):
+
+    def _load(self) -> ProteinLigandDataset:
+        dataset = pd.read_csv(self._config.input_path)
+        indices = self._get_indices(len(dataset))
+
+        dataset = dataset.iloc[indices]
+        return ProteinLigandDataset(data=dataset, config=self._config)
+
+    def _collate_function(self, data: List[List[Any]]) -> ProteinLigandBatch:
+        return ProteinLigandBatch(
+            labels=torch.Tensor([sample[0] for sample in data]),
+            ligand_features=torch.Tensor([sample[1] for sample in data]),
+            protein_features=torch.Tensor([sample[2] for sample in data])
+        )
+
+    def __iter__(self) -> Iterator[ProteinLigandBatch]:
+        data_loader = ClassicDataLoader(
+            self._dataset,
+            batch_size=self._config.batch_size,
+            shuffle=self._mode == "train",
+            collate_fn=self._collate_function
+        )
+
         return iter(data_loader)
