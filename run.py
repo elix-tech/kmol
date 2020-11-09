@@ -30,7 +30,7 @@ class Executor(AbstractExecutor):
 
         best = Evaluator.Results(accuracy=0, roc_auc_score=0, average_precision=0)
         for checkpoint in checkpoints:
-            self._config = self._config._replace(checkpoint_path=checkpoint)
+            self._config.checkpoint_path = checkpoint
             results = self.eval()
 
             best = Evaluator.Results(

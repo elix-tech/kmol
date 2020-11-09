@@ -44,17 +44,29 @@ class MoleculeNetLoader(AbstractLoader):
         train_set_size = round(self._config.train_ratio * entry_count)
 
         if self._config.split_method == "index":
-            dataset = dataset[:train_set_size] if self._mode == "train" else dataset[train_set_size:]
+            indices = range(train_set_size) if self._mode == "train" else range(train_set_size, entry_count)
+            indices = list(indices)
         elif self._config.split_method == "random":
             train_indices, test_indices = train_test_split(
                 range(entry_count), train_size=train_set_size, random_state=self._config.seed
             )
 
-            dataset = dataset[train_indices] if self._mode == "train" else dataset[test_indices]
+            indices = train_indices if self._mode == "train" else test_indices
         else:
             raise ValueError("Split method not implemented for this loader: {}".format(self._config.split_method))
 
-        return dataset
+        if self._mode == "train":
+            if sum(self._config.subset_distributions) != 1:
+                raise ValueError("Subset distributions don't sum up to 1")
+
+            remaining_entries_count = len(indices)
+            subset_distribution = self._config.subset_distributions
+            start_index = int(remaining_entries_count * sum(subset_distribution[:self._config.subset_id]))
+            end_index = int(remaining_entries_count * sum(subset_distribution[:self._config.subset_id + 1]))
+
+            indices = indices[start_index:end_index]
+
+        return dataset[indices]
 
     def get_feature_count(self) -> int:
         return self._dataset.num_node_features

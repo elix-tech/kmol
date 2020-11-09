@@ -14,12 +14,10 @@
     "output_path": "data/checkpoints/gin/",
     "checkpoint_path": null,
 
-    "epochs": 500,
+    "epochs": 300,
     "batch_size": 128,
     "learning_rate": 0.001,
     "weight_decay": 0.001,
-    "dropout": 0,
-    "hidden_layer_size": 16,
 
     "use_cuda": true,
     "enabled_gpus": [0, 1, 2, 3],

@@ -18,6 +18,9 @@ class Config(AbstractConfiguration):
     dataset: Literal["tox21", "pcba", "muv", "hiv", "bbbp", "toxcast", "sider", "clintox"]
     checkpoint_path: Optional[str] = None
 
+    subset_id: int = 0
+    subset_distributions: List[float] = field(default_factory=lambda: [1.])
+
     epochs: int = 100
     batch_size: int = 32
     learning_rate: float = 0.01
