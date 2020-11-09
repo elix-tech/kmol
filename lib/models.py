@@ -115,8 +115,9 @@ class BimodalProteinLigandNetwork(torch.nn.Module):
             torch.nn.Linear(16, out_features, bias=True),
         )
 
-        self.protein_head.apply(self._init_weights)
-        self.ligand_head.apply(self._init_weights)
+        self.protein_module.apply(self._init_weights)
+        self.ligand_module.apply(self._init_weights)
+        self.output_module.apply(self._init_weights)
 
     def _init_weights(self, layer: torch.nn) -> None:
         if type(layer) == torch.nn.Linear:
@@ -130,6 +131,5 @@ class BimodalProteinLigandNetwork(torch.nn.Module):
 
         combined_features = torch.cat((protein_features, ligand_features), dim=-1)
         output = self.output_module(combined_features)
-        output = torch.squeeze(output, dim=1)
 
         return output

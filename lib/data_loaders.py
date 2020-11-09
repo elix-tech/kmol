@@ -1,18 +1,19 @@
 from abc import ABCMeta, abstractmethod
 from typing import Iterator, Iterable, Literal, Any, List
 
+import numpy as np
 import pandas as pd
 import torch
 from rdkit import Chem
 from rdkit.Chem import AllChem
 from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import OneHotEncoder
 from torch.utils.data import DataLoader as ClassicDataLoader
 from torch.utils.data import Dataset
 from torch_geometric.data import DataLoader as GeometricDataLoader, Data as GeometricData
 from torch_geometric.datasets import MoleculeNet
 
 from lib.config import Config
-from lib.helpers import Tokenizer
 from lib.resources import ProteinLigandBatch
 
 
@@ -47,7 +48,7 @@ class AbstractLoader(Iterable, metaclass=ABCMeta):
             raise ValueError("Split method not implemented for this loader: {}".format(self._config.split_method))
 
         if self._mode == "train":
-            if sum(self._config.subset_distributions) != 1:
+            if round(sum(self._config.subset_distributions), 4) != 1:
                 raise ValueError("Subset distributions don't sum up to 1")
 
             remaining_entries_count = len(indices)
@@ -80,12 +81,14 @@ class MoleculeNetLoader(AbstractLoader):
 
 class ProteinLigandDataset(Dataset):
 
-    def __init__(self, data: pd.DataFrame, config: Config):
+    def __init__(self, data: pd.DataFrame, unique_proteins: List[str], config: Config):
         self._dataset = data
         self._config = config
+        self._one_hot_encoder = OneHotEncoder(sparse=False)
 
-        unique_proteins = self._dataset["protein_id"].unique()
-        self._protein_tokenizer = Tokenizer(vocabulary=unique_proteins)
+        unique_proteins = sorted(unique_proteins)
+        unique_proteins = np.array(unique_proteins).reshape(-1, 1)
+        self._one_hot_encoder.fit(unique_proteins)
 
     def __len__(self) -> int:
         return len(self._dataset)
@@ -95,7 +98,8 @@ class ProteinLigandDataset(Dataset):
         label = [sample["label"]]
 
         ligand_features = AllChem.GetMorganFingerprintAsBitVect(Chem.MolFromSmiles(sample["smiles"]), 2)
-        protein_features = self._protein_tokenizer.tokenize([sample["protein_id"]])
+        protein_features = self._one_hot_encoder.transform([[sample["protein_id"]]])
+        protein_features = protein_features.flatten()
 
         return label, ligand_features, protein_features
 
@@ -104,16 +108,18 @@ class ProteinLigandLoader(AbstractLoader):
 
     def _load(self) -> ProteinLigandDataset:
         dataset = pd.read_csv(self._config.input_path)
-        indices = self._get_indices(len(dataset))
+        unique_proteins = dataset["protein_id"].unique().tolist()
 
+        indices = self._get_indices(len(dataset))
         dataset = dataset.iloc[indices]
-        return ProteinLigandDataset(data=dataset, config=self._config)
+
+        return ProteinLigandDataset(data=dataset, unique_proteins=unique_proteins, config=self._config)
 
     def _collate_function(self, data: List[List[Any]]) -> ProteinLigandBatch:
         return ProteinLigandBatch(
-            labels=torch.Tensor([sample[0] for sample in data]),
             ligand_features=torch.Tensor([sample[1] for sample in data]),
-            protein_features=torch.Tensor([sample[2] for sample in data])
+            protein_features=torch.Tensor([sample[2] for sample in data]),
+            y=torch.Tensor([sample[0] for sample in data])
         )
 
     def __iter__(self) -> Iterator[ProteinLigandBatch]:

@@ -5,6 +5,6 @@ import torch
 
 @dataclass
 class ProteinLigandBatch:
-    labels: torch.Tensor
+    y: torch.Tensor
     ligand_features: torch.Tensor
     protein_features: torch.Tensor

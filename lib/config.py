@@ -15,7 +15,7 @@ class Config(AbstractConfiguration):
     model_options: Dict[str, Any]
 
     data_loader: Literal["MoleculeNetLoader"]
-    dataset: Literal["tox21", "pcba", "muv", "hiv", "bbbp", "toxcast", "sider", "clintox"]
+    dataset: Optional[Literal["tox21", "pcba", "muv", "hiv", "bbbp", "toxcast", "sider", "clintox"]] = None
     checkpoint_path: Optional[str] = None
 
     subset_id: int = 0
