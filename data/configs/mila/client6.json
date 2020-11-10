@@ -1,6 +1,7 @@
 {
     "name": "tester6",
     "config_type": "lib.config.Config",
+    "save_path": "data/logs/client/tester6/",
     "executor_type": "run.Executor",
     "model_overwrites": {
         "output_path": "data/logs/local/tester6/",

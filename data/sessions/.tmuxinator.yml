@@ -8,5 +8,5 @@ windows:
     - clients:
         layout: tiled
         panes:
-            - export PS1=client-1$\ ; sleep 2; python -m mila.run client data/configs/mila/client1.json
-            - export PS1=client-2$\ ; sleep 2; python -m mila.run client data/configs/mila/client2.json
+            - export PS1=client-1$\ ; sleep 5; python -m mila.run client data/configs/mila/client1.json
+            - export PS1=client-2$\ ; sleep 5; python -m mila.run client data/configs/mila/client2.json

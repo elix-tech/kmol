@@ -191,11 +191,6 @@ dependencies:
     - pyqtchart==5.12
     - pyqtwebengine==5.12.1
     - rdflib==5.0.0
-    - torch-cluster==1.5.7
-    - torch-geometric==1.6.1
-    - torch-scatter==2.0.5
-    - torch-sparse==0.6.7
-    - torch-spline-conv==1.2.0
     - tqdm==4.50.1
 prefix: /home/elix/anaconda3/envs/federated
 
