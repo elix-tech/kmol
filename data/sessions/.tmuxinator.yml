@@ -1,0 +1,12 @@
+name: mila
+root: /var/www/federated
+
+pre_window: conda activate federated
+
+windows:
+    - server: export PS1=server$\ ; python -m mila.run server data/configs/mila/server.json
+    - clients:
+        layout: tiled
+        panes:
+            - export PS1=client-1$\ ; sleep 2; python -m mila.run client data/configs/mila/client1.json
+            - export PS1=client-2$\ ; sleep 2; python -m mila.run client data/configs/mila/client2.json

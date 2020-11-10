@@ -4,4 +4,5 @@ __pycache__
 
 /data/*
 !/data/configs
+!/data/sessions
 sandbox/

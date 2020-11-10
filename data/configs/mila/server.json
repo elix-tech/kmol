@@ -1,11 +1,11 @@
 {
-    "task_configuration_file": "data/configs/model/gcn.json",
+    "task_configuration_file": "data/configs/model/gin.json",
     "aggregator_type": "mila.aggregators.TorchAggregator",
     "config_type": "lib.config.Config",
     "executor_type": "run.Executor",
 
-    "rounds_count": 500,
-    "workers": 2,
+    "rounds_count": 300,
+    "workers": 4,
     "minimum_clients": 2,
     "maximum_clients": 2,
 
