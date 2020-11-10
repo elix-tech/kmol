@@ -382,7 +382,7 @@ class Client(IOManager):
 
                 except grpc.RpcError as e:
                     if grpc.StatusCode.RESOURCE_EXHAUSTED == e.code():
-                        sleep(5)
+                        sleep(self._config.retry_timeout)
                         continue
 
                     raise e

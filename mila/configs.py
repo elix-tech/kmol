@@ -47,6 +47,7 @@ class ClientConfiguration(NamedTuple):
     save_path: str = "data/logs/client/"
 
     heartbeat_frequency: int = 60
+    retry_timeout: int = 1
     model_overwrites: Dict[str, Any] = {
         "output_path": "data/logs/local/",
         "epochs": 5
