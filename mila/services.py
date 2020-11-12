@@ -178,7 +178,7 @@ class ServerManager(IOManager):
         save_path = "{}/{}.aggregate".format(self._config.save_path, self._current_round)
 
         aggregator: Type[AbstractAggregator] = self._reflect(self._config.aggregator_type)
-        aggregator().run(checkpoint_paths=checkpoint_paths, save_path=save_path)
+        aggregator(**self._config.aggregator_options).run(checkpoint_paths=checkpoint_paths, save_path=save_path)
 
         logging.info("Aggregate model saved: [{}]".format(save_path))
         self._latest_checkpoint = save_path

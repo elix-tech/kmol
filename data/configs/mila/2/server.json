@@ -1,6 +1,13 @@
 {
     "task_configuration_file": "data/configs/model/gcn.json",
-    "aggregator_type": "mila.aggregators.TorchAggregator",
+    "aggregator_type": "mila.aggregators.WeightedTorchAggregator",
+    "aggregator_options": {
+        "weights": {
+            "tester1": 0.67,
+            "tester2": 0.33
+        }
+    },
+
     "config_type": "lib.config.Config",
     "executor_type": "run.Executor",
 

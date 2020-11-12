@@ -5,11 +5,13 @@ from typing import NamedTuple, List, Tuple, Any, Dict, Optional
 class ServerConfiguration(NamedTuple):
 
     task_configuration_file: str
-    aggregator_type: str
     config_type: str
     executor_type: str
 
-    target: str = "127.0.0.1:8024"
+    aggregator_type: str
+    aggregator_options: Dict[str, Any] = {}
+
+    target: str = "localhost:8024"
     rounds_count: int = 10
     save_path: str = "data/logs/server/"
     start_point: Optional[str] = None
@@ -44,7 +46,7 @@ class ClientConfiguration(NamedTuple):
     config_type: str
     executor_type: str
 
-    target: str = "127.0.0.1:8024"
+    target: str = "localhost:8024"
     save_path: str = "data/logs/client/"
 
     heartbeat_frequency: int = 60
@@ -55,8 +57,8 @@ class ClientConfiguration(NamedTuple):
     }
 
     use_secure_connection: bool = False
-    ssl_private_key: str = "data/certificates/server.key"
-    ssl_cert: str = "data/certificates/server.crt"
+    ssl_private_key: str = "data/certificates/client.key"
+    ssl_cert: str = "data/certificates/client.crt"
     ssl_root_cert: str = "data/certificates/rootCA.pem"
 
     @classmethod

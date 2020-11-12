@@ -1,6 +1,6 @@
 {
     "task_configuration_file": "data/configs/model/multimodal.json",
-    "aggregator_type": "mila.aggregators.TorchAggregator",
+    "aggregator_type": "mila.aggregators.PlainTorchAggregator",
     "config_type": "lib.config.Config",
     "executor_type": "run.Executor",
 
