@@ -1,5 +1,5 @@
 import json
-from typing import NamedTuple, List, Tuple, Any, Dict
+from typing import NamedTuple, List, Tuple, Any, Dict, Optional
 
 
 class ServerConfiguration(NamedTuple):
@@ -12,6 +12,7 @@ class ServerConfiguration(NamedTuple):
     target: str = "127.0.0.1:8024"
     rounds_count: int = 10
     save_path: str = "data/logs/server/"
+    start_point: Optional[str] = None
 
     workers: int = 2
     minimum_clients: int = 2

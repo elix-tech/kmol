@@ -62,7 +62,7 @@ class ServerManager(IOManager):
         self._registry: Dict[str, Participant] = {}
 
         self._current_round = 1
-        self._latest_checkpoint = None
+        self._latest_checkpoint = self._config.start_point
         self._last_registration_time = 0
         self._is_registration_closed = False
 

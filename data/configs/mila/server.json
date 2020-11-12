@@ -1,13 +1,14 @@
 {
-    "task_configuration_file": "data/configs/model/gin.json",
+    "task_configuration_file": "data/configs/model/multimodal.json",
     "aggregator_type": "mila.aggregators.TorchAggregator",
     "config_type": "lib.config.Config",
     "executor_type": "run.Executor",
+    "start_point": "data/memos/latest/mm_20cl_5ep_all5sp.20",
 
-    "rounds_count": 100,
+    "rounds_count": 30,
     "workers": 4,
-    "minimum_clients": 2,
-    "maximum_clients": 2,
+    "minimum_clients": 20,
+    "maximum_clients": 20,
 
     "client_wait_time": 300
 }
