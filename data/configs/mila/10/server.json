@@ -3,7 +3,6 @@
     "aggregator_type": "mila.aggregators.TorchAggregator",
     "config_type": "lib.config.Config",
     "executor_type": "run.Executor",
-    "start_point": "data/memos/latest/mm_10cl_5ep_all10sp.20",
 
     "rounds_count": 30,
     "workers": 4,

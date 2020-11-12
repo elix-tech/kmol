@@ -6,8 +6,8 @@
 
     "rounds_count": 30,
     "workers": 4,
-    "minimum_clients": 20,
-    "maximum_clients": 20,
+    "minimum_clients": 5,
+    "maximum_clients": 5,
 
     "client_wait_time": 300
 }
