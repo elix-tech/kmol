@@ -14,7 +14,6 @@ class GraphConvolutionalNetwork(torch.nn.Module):
 
         self.activation = torch.nn.ReLU()
         self.dropout = torch.nn.Dropout(p=dropout)
-        self.sigmoid = torch.nn.Sigmoid()
 
     def forward(self, data: Batch) -> torch.Tensor:
 
