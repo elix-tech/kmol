@@ -11,10 +11,10 @@ from mila.factories import AbstractConfiguration
 @dataclass
 class Config(AbstractConfiguration):
 
-    model_name: Literal["GraphConvolutionalNetwork", "GraphIsomorphismNetwork"]
+    model_name: Literal["GraphConvolutionalNetwork", "GraphIsomorphismNetwork", "BimodalProteinLigandNetwork"]
     model_options: Dict[str, Any]
 
-    data_loader: Literal["MoleculeNetLoader"]
+    data_loader: Literal["MoleculeNetLoader", "ProteinLigandLoader"]
     dataset: Optional[Literal["tox21", "pcba", "muv", "hiv", "bbbp", "toxcast", "sider", "clintox"]] = None
     checkpoint_path: Optional[str] = None
 
@@ -25,8 +25,6 @@ class Config(AbstractConfiguration):
     batch_size: int = 32
     learning_rate: float = 0.01
     weight_decay: float = 0
-    dropout: float = 0
-    hidden_layer_size: int = 16
 
     threshold: float = 0.5
     train_ratio: float = 0.8

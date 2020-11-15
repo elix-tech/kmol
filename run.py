@@ -1,6 +1,8 @@
 from argparse import ArgumentParser
 from glob import glob
 
+import numpy as np
+
 from lib.config import Config
 from lib.executors import Trainer, Evaluator, Predictor
 from mila.factories import AbstractExecutor
@@ -49,7 +51,10 @@ class Executor(AbstractExecutor):
             predictions = predictor.run(batch)
             predictions = predictions.cpu().detach().numpy()
 
-            print(predictions)
+            predictions = np.where(predictions < self._config.threshold, 0, 1)
+            predictions = predictions.astype("str")
+            for prediction in predictions.tolist():
+                print(",".join(prediction))
 
 
 if __name__ == "__main__":
