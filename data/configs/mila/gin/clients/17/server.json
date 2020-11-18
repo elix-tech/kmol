@@ -4,7 +4,7 @@
     "config_type": "lib.config.Config",
     "executor_type": "run.Executor",
 
-    "rounds_count": 30,
+    "rounds_count": 100,
     "workers": 4,
     "minimum_clients": 17,
     "maximum_clients": 17,
