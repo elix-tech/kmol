@@ -22,7 +22,10 @@ class Executor(AbstractExecutor):
         evaluator = Evaluator(self._config)
         results = evaluator.run(data_loader)
 
-        print(results)
+        print("All: {}".format(results))
+        for metric in (np.min, np.max, np.mean, np.median, np.std):
+            print("{}: {}".format(metric.__name__, results.compute(metric)))
+
         return results
 
     def analyze(self):
@@ -30,18 +33,9 @@ class Executor(AbstractExecutor):
         checkpoints = sorted(checkpoints)
         checkpoints = sorted(checkpoints, key=len)
 
-        best = Evaluator.Results(accuracy=0, roc_auc_score=0, average_precision=0)
         for checkpoint in checkpoints:
             self._config.checkpoint_path = checkpoint
-            results = self.eval()
-
-            best = Evaluator.Results(
-                accuracy=max(best.accuracy, results.accuracy),
-                roc_auc_score=max(best.roc_auc_score, results.roc_auc_score),
-                average_precision=max(best.average_precision, results.average_precision)
-            )
-
-        print(best)
+            self.eval()
 
     def predict(self):
         data_loader = self._config.get_data_loader(mode="test")

@@ -1,0 +1,13 @@
+{
+    "task_configuration_file": "data/configs/model/multimodal.json",
+    "aggregator_type": "mila.aggregators.PlainTorchAggregator",
+    "config_type": "lib.config.Config",
+    "executor_type": "run.Executor",
+
+    "rounds_count": 30,
+    "workers": 4,
+    "minimum_clients": 19,
+    "maximum_clients": 19,
+
+    "client_wait_time": 300
+}

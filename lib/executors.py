@@ -1,6 +1,6 @@
 import logging
 from abc import ABCMeta
-from typing import Tuple, NamedTuple, List
+from typing import Tuple, NamedTuple, List, Callable, Union
 
 import numpy as np
 import torch
@@ -131,9 +131,16 @@ class Predictor(AbstractExecutor):
 class Evaluator(AbstractExecutor):
 
     class Results(NamedTuple):
-        accuracy: np.float
-        roc_auc_score: np.float
-        average_precision: np.float
+        accuracy: Union[List[float], np.ndarray]
+        roc_auc_score: Union[List[float], np.ndarray]
+        average_precision: Union[List[float], np.ndarray]
+
+        def compute(self, callable_: Callable) -> "Evaluator.Results":
+            return Evaluator.Results(
+                accuracy=callable_(self.accuracy),
+                roc_auc_score=callable_(self.roc_auc_score),
+                average_precision=callable_(self.average_precision)
+            )
 
     def __init__(self, config: Config):
         super().__init__(config)
@@ -190,7 +197,7 @@ class Evaluator(AbstractExecutor):
         accuracies, roc_auc_scores, average_precisions = self._get_metrics(ground_truth, logits, predictions)
 
         return Evaluator.Results(
-            accuracy=np.mean(accuracies),
-            roc_auc_score=np.mean(roc_auc_scores),
-            average_precision=np.mean(average_precisions)
+            accuracy=accuracies,
+            roc_auc_score=roc_auc_scores,
+            average_precision=average_precisions
         )
