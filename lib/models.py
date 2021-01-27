@@ -1,16 +1,26 @@
 import torch
+import torch_geometric as geometric
 from torch_geometric.data import Batch
-from torch_geometric.nn import GCNConv as GraphConvolution, GINConv as GINConvolution, global_add_pool, global_max_pool
+
 from lib.resources import ProteinLigandBatch
 
 
 class GraphConvolutionalNetwork(torch.nn.Module):
 
-    def __init__(self, in_features: int, hidden_features: int, out_features: int, dropout: float):
+    def __init__(
+            self, in_features: int, hidden_features: int, out_features:
+            int, dropout: float, layer_type: str = "GraphConv", layers_count: int = 2
+    ):
         super().__init__()
+        convolution = getattr(geometric.nn, layer_type)
 
-        self.convolution_1 = GraphConvolution(in_features, hidden_features)
-        self.convolution_2 = GraphConvolution(hidden_features, out_features)
+        self.convolutions = torch.nn.ModuleList()
+        self.convolutions.append(convolution(in_features, hidden_features))
+
+        for _ in range(layers_count - 2):
+            self.convolutions.append(convolution(hidden_features, hidden_features))
+
+        self.convolutions.append(convolution(hidden_features, out_features))
 
         self.activation = torch.nn.ReLU()
         self.dropout = torch.nn.Dropout(p=dropout)
@@ -19,12 +29,13 @@ class GraphConvolutionalNetwork(torch.nn.Module):
 
         x = data.x.float()
 
-        x = self.convolution_1(x, data.edge_index)
-        x = self.activation(x)
-        x = self.dropout(x)
+        for convolution in self.convolutions[:-1]:
+            x = convolution(x, data.edge_index)
+            x = self.activation(x)
+            x = self.dropout(x)
 
-        x = self.convolution_2(x, data.edge_index)
-        x = global_max_pool(x, batch=data.batch)
+        x = self.convolutions[-1](x, data.edge_index)
+        x = geometric.nn.global_max_pool(x, batch=data.batch)
 
         return x
 
@@ -53,8 +64,8 @@ class GraphIsomorphismNetwork(torch.nn.Module):
         self.activation = torch.nn.ReLU()
         self.dropout = torch.nn.Dropout(p=dropout)
 
-    def __create_gin_convolution(self, in_features: int, out_features: int) -> GINConvolution:
-        return GINConvolution(torch.nn.Sequential(
+    def __create_gin_convolution(self, in_features: int, out_features: int) -> geometric.nn.GINConv:
+        return geometric.nn.GINConv(torch.nn.Sequential(
             torch.nn.Linear(in_features, out_features),
             torch.nn.ReLU(),
             torch.nn.Linear(out_features, out_features))
@@ -79,7 +90,7 @@ class GraphIsomorphismNetwork(torch.nn.Module):
         x = self.activation(self.convolution_5(x, data.edge_index))
         x = self.batch_norm_5(x)
 
-        x = global_add_pool(x, data.batch)
+        x = geometric.nn.global_add_pool(x, data.batch)
         x = self.fully_connected_1(x)
         x = self.activation(x)
 

@@ -23,7 +23,7 @@ class AbstractExecutor(metaclass=ABCMeta):
 
     def load_network(self) -> Tuple[torch.nn.Module, torch.optim.Optimizer]:
         network = self._config.get_model()
-        if self._config.use_cuda and len(self._config.enabled_gpus) > 1:
+        if self._config.should_parallelize():
             network = torch.nn.DataParallel(network, device_ids=self._config.enabled_gpus)
 
         network.to(self._config.get_device())

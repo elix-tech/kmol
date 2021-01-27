@@ -44,6 +44,9 @@ class Config(AbstractConfiguration):
         data_loader = getattr(data_loaders, self.data_loader)
         return data_loader(config=self, mode=mode)
 
+    def should_parallelize(self) -> bool:
+        return torch.cuda.is_available() and self.use_cuda and len(self.enabled_gpus) > 1
+
     def get_model(self) -> torch.nn.Module:
         from lib import models
 

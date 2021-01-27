@@ -8,10 +8,10 @@
 
     "data_loader": "ProteinLigandLoader",
     "input_path": "data/input/chembl/mmp.csv",
-    "output_path": "data/checkpoints/multimodal/",
+    "output_path": "/data/federated/2/checkpoints/multimodal/",
     "checkpoint_path": null,
 
-    "epochs": 50,
+    "epochs": 100,
     "batch_size": 64,
     "learning_rate": 0.0001,
     "weight_decay": 0.0001,
