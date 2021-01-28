@@ -2,22 +2,29 @@ from argparse import ArgumentParser
 from glob import glob
 
 import numpy as np
+import torch
 
-from lib.config import Config
-from lib.executors import Trainer, Evaluator, Predictor
+from lib.core.config import Config
+from lib.data.streamers import GeneralStreamer
+from lib.model.executors import Trainer, Evaluator, Predictor
 from mila.factories import AbstractExecutor
 
 
 class Executor(AbstractExecutor):
 
+    def __init__(self, config: Config):
+        super().__init__(config)
+
     def train(self):
-        data_loader = self._config.get_data_loader(mode="train")
+        streamer = GeneralStreamer(config=self._config, split_name=self._config.train_split)
+        data_loader = streamer.get(batch_size=self._config.batch_size, shuffle=True)
 
         trainer = Trainer(self._config)
-        trainer.run(data_loader)
+        trainer.run(data_loader=data_loader)
 
     def eval(self) -> Evaluator.Results:
-        data_loader = self._config.get_data_loader(mode="test")
+        streamer = GeneralStreamer(config=self._config, split_name=self._config.test_split)
+        data_loader = streamer.get(batch_size=self._config.batch_size, shuffle=False)
 
         evaluator = Evaluator(self._config)
         results = evaluator.run(data_loader)
@@ -38,14 +45,17 @@ class Executor(AbstractExecutor):
             self.eval()
 
     def predict(self):
-        data_loader = self._config.get_data_loader(mode="test")
+        streamer = GeneralStreamer(config=self._config, split_name=self._config.test_split)
+        data_loader = streamer.get(batch_size=self._config.batch_size, shuffle=False)
+
         predictor = Predictor(config=self._config)
-
         for batch in data_loader:
-            predictions = predictor.run(batch)
-            predictions = predictions.cpu().detach().numpy()
+            logits = predictor.run(batch)
 
+            predictions = torch.sigmoid(logits)
+            predictions = predictions.cpu().detach().numpy()
             predictions = np.where(predictions < self._config.threshold, 0, 1)
+
             predictions = predictions.astype("str")
             for prediction in predictions.tolist():
                 print(",".join(prediction))

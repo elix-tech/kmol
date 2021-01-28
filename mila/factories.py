@@ -7,7 +7,6 @@ from typing import Any, List
 @dataclass
 class AbstractConfiguration(metaclass=ABCMeta):
 
-    input_path: str
     output_path: str
 
     def _after_load(self):

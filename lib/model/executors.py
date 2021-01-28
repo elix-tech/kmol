@@ -5,12 +5,14 @@ from typing import Tuple, NamedTuple, List, Callable, Union
 import numpy as np
 import torch
 from sklearn.metrics import roc_auc_score, average_precision_score, accuracy_score
-from torch_geometric.data import Batch
+from torch.utils.data import DataLoader as TorchDataLoader
 
-from lib.config import Config
-from lib.data_loaders import AbstractLoader
-from lib.helpers import Timer
-from lib.modules import WeightedBinaryCrossEntropyLoss
+from lib.core.config import Config
+from lib.core.exceptions import CheckpointNotFound
+from lib.core.helpers import Timer, SuperFactory
+from lib.data.resources import Batch
+from lib.model.architectures import AbstractNetwork
+from lib.model.modules import WeightedBinaryCrossEntropyLoss
 
 
 class AbstractExecutor(metaclass=ABCMeta):
@@ -22,7 +24,7 @@ class AbstractExecutor(metaclass=ABCMeta):
         self._start_epoch = 0
 
     def load_network(self) -> Tuple[torch.nn.Module, torch.optim.Optimizer]:
-        network = self._config.get_model()
+        network = SuperFactory.create(AbstractNetwork, self._config.model)
         if self._config.should_parallelize():
             network = torch.nn.DataParallel(network, device_ids=self._config.enabled_gpus)
 
@@ -51,7 +53,7 @@ class AbstractExecutor(metaclass=ABCMeta):
 
 class Trainer(AbstractExecutor):
 
-    def run(self, data_loader: AbstractLoader):
+    def run(self, data_loader: TorchDataLoader):
 
         criterion = WeightedBinaryCrossEntropyLoss().to(self._config.get_device())
         network, optimizer = self.load_network()
@@ -59,17 +61,18 @@ class Trainer(AbstractExecutor):
         network = network.train()
         logging.debug(network)
 
-        dataset_size = data_loader.get_size()
+        dataset_size = len(data_loader)
         for epoch in range(self._start_epoch + 1, self._config.epochs + 1):
 
             accumulated_loss = 0.0
+            data: Batch
             for iteration, data in enumerate(iter(data_loader), start=1):
                 optimizer.zero_grad()
-                outputs = network(data)
+                outputs = network(data.inputs)
 
-                is_non_empty = data.y == data.y
+                is_non_empty = data.outputs == data.outputs
                 weights = is_non_empty.float()
-                labels = data.y
+                labels = data.outputs
                 labels[~is_non_empty] = 0
 
                 loss = criterion(outputs, labels, weights)
@@ -114,7 +117,7 @@ class Predictor(AbstractExecutor):
 
     def load(self):
         if self._config.checkpoint_path is None:
-            raise FileNotFoundError("No 'checkpoint_path' specified.")
+            raise CheckpointNotFound("No 'checkpoint_path' specified.")
 
         model, _ = self.load_network()
         model = model.eval()
@@ -123,8 +126,7 @@ class Predictor(AbstractExecutor):
 
     @torch.no_grad()
     def run(self, batch: Batch) -> torch.Tensor:
-
-        outputs = self._loaded_model(batch)
+        outputs = self._loaded_model(batch.inputs)
         return outputs
 
 
@@ -146,13 +148,13 @@ class Evaluator(AbstractExecutor):
         super().__init__(config)
         self._predictor = Predictor(config=self._config)
 
-    def _get_predictions(self, data_loader: AbstractLoader) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def _get_predictions(self, data_loader: TorchDataLoader) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         ground_truth_cache = []
         logits_cache = []
         predictions_cache = []
 
         for batch in iter(data_loader):
-            ground_truth_cache.extend(batch.y.cpu().detach().tolist())
+            ground_truth_cache.extend(batch.outputs.cpu().detach().tolist())
 
             logits = self._predictor.run(batch)
             predictions = torch.sigmoid(logits)
@@ -191,7 +193,7 @@ class Evaluator(AbstractExecutor):
 
         return accuracies, roc_auc_scores, average_precisions
 
-    def run(self, data_loader: AbstractLoader) -> Results:
+    def run(self, data_loader: TorchDataLoader) -> Results:
 
         ground_truth, logits, predictions = self._get_predictions(data_loader)
         accuracies, roc_auc_scores, average_precisions = self._get_metrics(ground_truth, logits, predictions)

@@ -1,7 +1,7 @@
 import logging
 import os
 from dataclasses import dataclass, field
-from typing import Literal, Optional, List, Dict, Any, Iterable
+from typing import Literal, Optional, List, Dict, Any
 
 import torch
 
@@ -11,47 +11,34 @@ from mila.factories import AbstractConfiguration
 @dataclass
 class Config(AbstractConfiguration):
 
-    model_name: Literal["GraphConvolutionalNetwork", "GraphIsomorphismNetwork", "BimodalProteinLigandNetwork"]
-    model_options: Dict[str, Any]
+    model: Dict[str, Any]
+    loader: Dict[str, Any]
+    splitter: Dict[str, Any]
+    featurizers: List[Dict[str, Any]]
 
-    data_loader: Literal["MoleculeNetLoader", "ProteinLigandLoader"]
-    dataset: Optional[Literal["tox21", "pcba", "muv", "hiv", "bbbp", "toxcast", "sider", "clintox"]] = None
     checkpoint_path: Optional[str] = None
+    threshold: float = 0.5
 
-    subset_id: int = 0
-    subset_distributions: List[float] = field(default_factory=lambda: [1.])
+    train_split: str = "train"
+    test_split: str = "test"
 
     epochs: int = 100
     batch_size: int = 32
     learning_rate: float = 0.01
     weight_decay: float = 0
 
-    threshold: float = 0.5
-    train_ratio: float = 0.8
-    split_method: Literal["index", "random"] = "index"
-    seed: int = 42
-
     use_cuda: bool = True
     enabled_gpus: List[int] = field(default_factory=lambda: [0, 1, 2, 3])
+
+    cache_location: str = "/tmp/federated/"
+    clear_cache: bool = True
 
     log_level: Literal["debug", "info", "warn", "error", "critical"] = "info"
     log_format: str = ""
     log_frequency: int = 20
 
-    def get_data_loader(self, mode=Literal["train", "test"]) -> Iterable:
-        from lib import data_loaders
-
-        data_loader = getattr(data_loaders, self.data_loader)
-        return data_loader(config=self, mode=mode)
-
     def should_parallelize(self) -> bool:
         return torch.cuda.is_available() and self.use_cuda and len(self.enabled_gpus) > 1
-
-    def get_model(self) -> torch.nn.Module:
-        from lib import models
-
-        model = getattr(models, self.model_name)
-        return model(**self.model_options)
 
     def get_device(self) -> torch.device:
         device_id = self.enabled_gpus[0] if len(self.enabled_gpus) == 1 else 0
