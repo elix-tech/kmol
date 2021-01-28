@@ -15,6 +15,9 @@ class Config(AbstractConfiguration):
     loader: Dict[str, Any]
     splitter: Dict[str, Any]
     featurizers: List[Dict[str, Any]]
+    criterion: Dict[str, Any]
+    optimizer: Dict[str, Any]
+    scheduler: Dict[str, Any]
 
     checkpoint_path: Optional[str] = None
     threshold: float = 0.5
@@ -24,8 +27,6 @@ class Config(AbstractConfiguration):
 
     epochs: int = 100
     batch_size: int = 32
-    learning_rate: float = 0.01
-    weight_decay: float = 0
 
     use_cuda: bool = True
     enabled_gpus: List[int] = field(default_factory=lambda: [0, 1, 2, 3])

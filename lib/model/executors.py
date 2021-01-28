@@ -1,10 +1,13 @@
 import logging
 from abc import ABCMeta
-from typing import Tuple, NamedTuple, List, Callable, Union
+from typing import Tuple, NamedTuple, List, Callable, Union, Dict, Any
 
 import numpy as np
 import torch
 from sklearn.metrics import roc_auc_score, average_precision_score, accuracy_score
+from torch.nn.modules.loss import _Loss as AbstractCriterion
+from torch.optim import Optimizer as AbstractOptimizer
+from torch.optim.lr_scheduler import _LRScheduler as AbstractLearningRateScheduler
 from torch.utils.data import DataLoader as TorchDataLoader
 
 from lib.core.config import Config
@@ -12,53 +15,62 @@ from lib.core.exceptions import CheckpointNotFound
 from lib.core.helpers import Timer, SuperFactory
 from lib.data.resources import Batch
 from lib.model.architectures import AbstractNetwork
-from lib.model.modules import WeightedBinaryCrossEntropyLoss
 
 
 class AbstractExecutor(metaclass=ABCMeta):
 
     def __init__(self, config: Config):
         self._config = config
-
         self._timer = Timer()
         self._start_epoch = 0
 
-    def load_network(self) -> Tuple[torch.nn.Module, torch.optim.Optimizer]:
-        network = SuperFactory.create(AbstractNetwork, self._config.model)
+        self._network = SuperFactory.create(AbstractNetwork, self._config.model)
+
+        self._optimizer = None
+        self._criterion = None
+        self._scheduler = None
+
+    def _load_checkpoint(self, info: Dict[str, Any]) -> None:
+        self._network.load_state_dict(info["model"])
+
+        if self._optimizer and "optimizer" in info:
+            self._optimizer.load_state_dict(info["optimizer"])
+
+        if self._scheduler and "scheduler" in info:
+            self._scheduler.load_state_dict(info["scheduler"])
+
+        if "epoch" in info:
+            self._start_epoch = info["epoch"]
+
+    def _load_network(self) -> None:
         if self._config.should_parallelize():
-            network = torch.nn.DataParallel(network, device_ids=self._config.enabled_gpus)
+            self._network = torch.nn.DataParallel(self._network, device_ids=self._config.enabled_gpus)
 
-        network.to(self._config.get_device())
-
-        optimizer = torch.optim.Adam(
-            network.parameters(),
-            lr=self._config.learning_rate,
-            weight_decay=self._config.weight_decay
-        )
+        self._network.to(self._config.get_device())
 
         if self._config.checkpoint_path is not None:
             logging.info("Restoring from Checkpoint: {}".format(self._config.checkpoint_path))
+
             info = torch.load(self._config.checkpoint_path, map_location=self._config.get_device())
-
-            network.load_state_dict(info["model"])
-
-            if "optimizer" in info:
-                optimizer.load_state_dict(info["optimizer"])
-
-            if "epoch" in info:
-                self._start_epoch = info["epoch"]
-
-        return network, optimizer
+            self._load_checkpoint(info)
 
 
 class Trainer(AbstractExecutor):
 
     def run(self, data_loader: TorchDataLoader):
 
-        criterion = WeightedBinaryCrossEntropyLoss().to(self._config.get_device())
-        network, optimizer = self.load_network()
+        self._load_network()
+        self._criterion = SuperFactory.create(AbstractCriterion, self._config.criterion).to(self._config.get_device())
 
-        network = network.train()
+        self._optimizer = SuperFactory.create(AbstractOptimizer, self._config.optimizer, {
+            "params": self._network.parameters()
+        })
+        self._scheduler = SuperFactory.create(AbstractLearningRateScheduler, self._config.scheduler, {
+            "optimizer": self._optimizer,
+            "steps_per_epoch": len(data_loader.dataset) // self._config.batch_size
+        })
+
+        network = self._network.train()
         logging.debug(network)
 
         dataset_size = len(data_loader)
@@ -67,7 +79,7 @@ class Trainer(AbstractExecutor):
             accumulated_loss = 0.0
             data: Batch
             for iteration, data in enumerate(iter(data_loader), start=1):
-                optimizer.zero_grad()
+                self._optimizer.zero_grad()
                 outputs = network(data.inputs)
 
                 is_non_empty = data.outputs == data.outputs
@@ -75,23 +87,29 @@ class Trainer(AbstractExecutor):
                 labels = data.outputs
                 labels[~is_non_empty] = 0
 
-                loss = criterion(outputs, labels, weights)
+                loss = self._criterion(outputs, labels, weights)
                 loss.backward()
 
-                optimizer.step()
+                self._optimizer.step()
 
                 accumulated_loss += loss.item()
                 if iteration % self._config.log_frequency == 0:
                     self.log(epoch, iteration, accumulated_loss, dataset_size)
                     accumulated_loss = 0.0
 
-            self.save(epoch, network, optimizer)
+            self.save(epoch)
 
-    def save(self, epoch: int, network: torch.nn.Module, optimizer: torch.optim.Optimizer) -> None:
-        info = {"epoch": epoch, "optimizer": optimizer.state_dict(), "model": network.state_dict()}
+    def save(self, epoch: int) -> None:
+        info = {
+            "epoch": epoch,
+            "model": self._network.state_dict(),
+            "optimizer": self._optimizer.state_dict(),
+            "scheduler": self._scheduler.state_dict()
+        }
+
         model_path = "{}checkpoint.{}".format(self._config.output_path, epoch)
-
         logging.info("Saving checkpoint: {}".format(model_path))
+
         torch.save(info, model_path)
 
     def log(self, epoch: int, iteration: int, loss: float, dataset_size: int) -> None:
@@ -113,21 +131,16 @@ class Predictor(AbstractExecutor):
 
     def __init__(self, config: Config):
         super().__init__(config)
-        self._loaded_model = self.load()
 
-    def load(self):
         if self._config.checkpoint_path is None:
             raise CheckpointNotFound("No 'checkpoint_path' specified.")
 
-        model, _ = self.load_network()
-        model = model.eval()
-
-        return model
+        self._load_network()
+        self._network = self._network.eval()
 
     @torch.no_grad()
     def run(self, batch: Batch) -> torch.Tensor:
-        outputs = self._loaded_model(batch.inputs)
-        return outputs
+        return self._network(batch.inputs)
 
 
 class Evaluator(AbstractExecutor):

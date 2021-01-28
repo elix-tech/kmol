@@ -4,11 +4,12 @@ import json
 import logging
 import os
 import timeit
-from typing import Type, Any, Dict, Union, T
+from typing import Type, Any, Dict, Union, T, Optional
 
 import humps
 import torch
 
+import importlib
 from lib.core.exceptions import ReflectionError
 
 
@@ -31,76 +32,103 @@ class Timer:
 class SuperFactory:
 
     @staticmethod
-    def get_descendants(parent: Type[T]) -> Dict[str, Type[T]]:
+    def find_descendants(parent: Type[T]) -> Dict[str, Type[T]]:
         descendants = {}
 
-        for subclass in parent.__subclasses__():
-            if "Abstract" not in subclass.__name__:
-                descendants[subclass.__name__] = subclass
-            else:
-                descendants = {**descendants, **SuperFactory.get_descendants(subclass)}
+        for child in parent.__subclasses__():
+            descendants[child.__name__] = child
+
+            if len(child.__subclasses__()) > 0:
+                descendants = {**descendants, **SuperFactory.find_descendants(child)}
 
         return descendants
 
     @staticmethod
-    def create(required_type: Type[Any], option_values: Dict[str, Any]) -> Any:
+    def create(
+            instantiator: Optional[Type[Any]],
+            dynamic_parameters: Dict[str, Any],
+            loaded_parameters: Optional[Dict[str, Any]] = None
+    ) -> Any:
         """
         The super factory is a mix between an abstract factory and a dependency injector.
         If an abstract class is requested, we check all child classes which extend that abstract class
         and select the one specified by the "type" option. We then proceed to set all other attributes
         based on the "option_values". If one of the attributes is expected to be another object, it will
         be created in a recursive manner. The typing of the constructor is important for dependency injection to work!
+
+        :type instantiator: The desired class, or its abstraction. Can be "None" when using reflections (see below).
+        :type loaded_parameters: Additional options which are already loaded. They just get appended to the dynamic ones
+        :type dynamic_parameters: A list of options which will be injected recursively. Can include a "type" option.
+            if "type" is of format "lib.package.subpackage.ObjectName" it will be reflected directly.
+            if "type" is a string in "snake_case" format, a matching descendant from "instantiator" will be searched for
+            ie: requesting a "very_smart" object descendant of "AbstractCalculator" will fetch the "VerySmartCalculator"
         """
 
-        logging.debug("Super Factory --- Required Type --- {}".format(required_type))
-        logging.debug("Super Factory --- Option Values --- {}".format(option_values))
+        logging.debug("Super Factory --- Instantiator --- {}".format(instantiator))
+        logging.debug("Super Factory --- Dynamic Parameters --- {}".format(dynamic_parameters))
+        logging.debug("Super Factory --- Loaded Parameters --- {}".format(loaded_parameters))
         logging.debug("------------------------------------------------------------")
 
-        option_values = option_values.copy()
-        if "type" in option_values:
+        dynamic_parameters = dynamic_parameters.copy()
+        if "type" in dynamic_parameters:
 
-            if type(required_type) is type(Union) and type(None) in required_type.__args__:
-                required_type = required_type.__args__[0]  # Fix for Optional arguments
+            dependency_type = dynamic_parameters.pop("type")
 
-            option_key = required_type.__name__.replace("Abstract", "")
+            if "." in dependency_type:
+                instantiator = SuperFactory.reflect(dependency_type)
+            else:
+                if type(instantiator) is type(Union) and type(None) in instantiator.__args__:
+                    # Fix for Optional arguments
+                    instantiator = instantiator.__args__[0]
 
-            dependency_name = "{}_{}".format(option_values["type"], option_key)
-            dependency_name = humps.pascalize(dependency_name)
-            option_values.pop("type")
+                option_key = instantiator.__name__.replace("Abstract", "")
+                dependency_name = "{}_{}".format(dependency_type, option_key)
+                dependency_name = humps.pascalize(dependency_name)
 
-            subclasses = SuperFactory.get_descendants(required_type)
-            if dependency_name not in subclasses:
-                raise ReflectionError("Dependency not found: {}. Available options are: {}".format(
-                    dependency_name, subclasses.keys())
-                )
+                subclasses = SuperFactory.find_descendants(instantiator)
+                if dependency_name not in subclasses:
+                    raise ReflectionError("Dependency not found: {}. Available options are: {}".format(
+                        dependency_name, subclasses.keys())
+                    )
 
-            required_type = subclasses.get(dependency_name)
+                instantiator = subclasses.get(dependency_name)
 
-        if len(option_values) > 0:
-            attributes = required_type.__init__.__annotations__
-            for option_name, option_value in option_values.items():
+        if len(dynamic_parameters) > 0:
+            parameters = instantiator.__init__.__code__.co_varnames
+            attributes = instantiator.__init__.__annotations__
+
+            for option_name, option_value in dynamic_parameters.items():
+                if option_name not in parameters:
+                    raise ReflectionError("Unknown option for [{}] ---> [{}]".format(
+                        instantiator.__name__, option_name)
+                    )
+
                 if option_name not in attributes:
-                    raise ReflectionError("Unknown option for [{}] ---> [{}]".format(required_type.__name__, option_name))
+                    continue  # for 3rd party libraries that don't use type hints...
 
                 if (
-                        type(option_value) is dict  # dictionaries usually mean additional objects
-                        and not (  # except when the input is expected to actually be a dictionary
-                            hasattr(attributes[option_name], "_name") and
-                            attributes[option_name]._name == "Dict"
-                        )
+                        type(option_value) is dict
+                        and not (hasattr(attributes[option_name], "_name") and attributes[option_name]._name == "Dict")
                 ):
-                    option_values[option_name] = SuperFactory.create(attributes[option_name], option_value)
+                    # if the option is a dictionary, and the argument is not expected to be one
+                    # we consider it an additional object which we instantiate/inject recursively
+                    dynamic_parameters[option_name] = SuperFactory.create(attributes[option_name], option_value)
 
-        return required_type(**option_values)
+        options = dynamic_parameters
+        if loaded_parameters is not None:
+            options = {**options, **loaded_parameters}
+
+        return instantiator(**options)
 
     @staticmethod
-    def select(required_dependency: str, available_options: Dict[str, object]) -> Any:
-        if required_dependency not in available_options:
-            raise ReflectionError("Dependency not found: {}. Available options are: {}".format(
-                required_dependency, available_options.keys())
-            )
+    def reflect(dependency: str) -> Type[Any]:
+        logging.debug("Reflecting --- {}".format(dependency))
+        logging.debug("------------------------------------------------------------")
 
-        return available_options.get(required_dependency)
+        module_name, class_name = dependency.rsplit(".", 1)
+        module = importlib.import_module(module_name)
+
+        return getattr(module, class_name)
 
 
 class CacheManager:
