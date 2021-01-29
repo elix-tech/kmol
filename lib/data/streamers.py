@@ -16,6 +16,17 @@ from lib.data.splitters import AbstractSplitter
 
 class AbstractStreamer(metaclass=ABCMeta):
 
+    def __init__(self):
+        self._dataset = self._load_dataset()
+
+    @property
+    def labels(self) -> List[str]:
+        return self._dataset.get_labels()
+
+    @abstractmethod
+    def _load_dataset(self) -> AbstractLoader:
+        raise NotImplementedError
+
     @abstractmethod
     def get(self, shuffle: bool, batch_size: int) -> DataLoader:
         raise NotImplementedError

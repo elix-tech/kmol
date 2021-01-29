@@ -23,7 +23,9 @@ class Config(AbstractConfiguration):
     threshold: float = 0.5
 
     train_split: str = "train"
+    train_metrics: List[str] = field(default_factory=lambda: [])
     test_split: str = "test"
+    test_metrics: List[str] = field(default_factory=lambda: [])
 
     epochs: int = 100
     batch_size: int = 32

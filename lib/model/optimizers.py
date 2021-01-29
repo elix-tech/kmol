@@ -1,27 +1,13 @@
 import logging
 import math
-from typing import Optional
 
 import torch
 
 
-class WeightedBinaryCrossEntropyLoss(torch.nn.BCEWithLogitsLoss):
-
-    def forward(
-            self, predictions: torch.Tensor, ground_truth: torch.Tensor, weights: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
-
-        return torch.nn.functional.binary_cross_entropy_with_logits(
-            input=predictions, target=ground_truth, weight=weights,
-            pos_weight=self.pos_weight, reduction=self.reduction
-        )
-
-
 class AdaBelief(torch.optim.Optimizer):
     """
-    AdaBelief Optimizer, adapting stepsizes by the belief in observed gradients (NeurIPS 2020 Spotlight)
-
-    Modified from Adam in PyTorch
+    AdaBelief Optimizer, adapting stepsizes by the belief in observed gradients
+    Paper: https://papers.nips.cc/paper/2020/file/d9d4f495e875a2e075a1a4a6e1b9770f-Paper.pdf
     Source: github.com/juntang-zhuang/Adabelief-Optimizer/blob/update_0.1.0/PyTorch_Experiments/LSTM/AdaBelief.py
     """
 

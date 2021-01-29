@@ -21,6 +21,10 @@ class AbstractLoader(TorchDataset):
     def list_ids(self) -> List[str]:
         raise NotImplementedError
 
+    @abstractmethod
+    def get_labels(self) -> List[str]:
+        raise NotImplementedError
+
     def __iter__(self) -> Iterator[Data]:
         for id_ in self.list_ids():
             yield self[id_]
@@ -49,6 +53,9 @@ class CsvLoader(AbstractLoader):
     def list_ids(self) -> List[str]:
         return list(range(len(self)))
 
+    def get_labels(self) -> List[str]:
+        return self._target_columns
+
 
 class ExcelLoader(CsvLoader):
 
@@ -72,3 +79,6 @@ class ListLoader(AbstractLoader):
 
     def list_ids(self) -> List[str]:
         return list(range(len(self)))
+
+    def get_labels(self) -> List[str]:
+        return self._dataset[0].labels
