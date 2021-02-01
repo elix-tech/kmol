@@ -1,10 +1,12 @@
 name: federated
 channels:
   - pytorch
+  - zeroae
   - conda-forge
   - defaults
 dependencies:
   - _libgcc_mutex=0.1=main
+  - alembic=1.5.2=pyhd8ed1ab_0
   - argon2-cffi=20.1.0=py38h1e0a361_2
   - async_generator=1.10=py_0
   - attrs=20.2.0=pyh9f0ad1d_0
@@ -18,11 +20,16 @@ dependencies:
   - brotlipy=0.7.0=py38h1e0a361_1000
   - bzip2=1.0.8=h516909a_3
   - c-ares=1.16.1=h7b6447c_0
-  - ca-certificates=2020.10.14=0
+  - ca-certificates=2020.12.5=ha878542_0
   - cairo=1.16.0=h3fc0475_1005
-  - certifi=2020.6.20=py38_0
+  - certifi=2020.12.5=py38h578d9bd_1
   - cffi=1.14.3=py38h1bdcb99_1
   - chardet=3.0.4=py38h32f6830_1007
+  - cliff=3.6.0=pyhd8ed1ab_0
+  - cmaes=0.7.0=pyhac0dd68_0
+  - cmd2=0.9.22=py38h32f6830_1
+  - colorama=0.4.4=pyh9f0ad1d_0
+  - colorlog=4.6.2=py38h578d9bd_1
   - cryptography=3.1.1=py38h766eaa4_0
   - cudatoolkit=10.2.89=hfd86e86_1
   - dbus=1.13.6=he372182_0
@@ -32,12 +39,16 @@ dependencies:
   - expat=2.2.9=he1b5a44_2
   - fontconfig=2.13.1=h1056068_1002
   - freetype=2.10.2=h5ab3b9f_0
+  - fribidi=1.0.10=h36c2ea0_0
   - gettext=0.19.8.1=hc5be6a0_1002
   - glib=2.66.1=h680cd38_0
+  - graphite2=1.3.13=h58526e2_1001
+  - graphviz=2.42.3=h0511662_0
   - grpcio=1.31.0=py38hf8bcb03_0
   - grpcio-tools=1.16.1=py38he6710b0_0
   - gst-plugins-base=1.14.5=h0935bb2_2
   - gstreamer=1.14.5=h36ae1b5_2
+  - harfbuzz=2.7.2=hee91db6_0
   - icu=67.1=he1b5a44_0
   - idna=2.10=pyh9f0ad1d_0
   - importlib-metadata=2.0.0=py_1
@@ -75,12 +86,14 @@ dependencies:
   - libsodium=1.0.18=h516909a_1
   - libstdcxx-ng=9.1.0=hdf63c60_0
   - libtiff=4.1.0=h2733197_1
+  - libtool=2.4.6=h58526e2_1006
   - libuuid=2.32.1=h14c3975_1000
   - libxcb=1.13=h14c3975_1002
   - libxkbcommon=0.10.0=he1b5a44_0
   - libxml2=2.9.10=h68273f3_2
   - littleutils=0.2.2=py_0
   - lz4-c=1.9.2=he6710b0_1
+  - mako=1.1.4=pyh44b312d_0
   - markupsafe=1.1.1=py38h8df0ef7_2
   - mistune=0.8.4=py38h1e0a361_1002
   - mkl=2020.2=256
@@ -100,21 +113,24 @@ dependencies:
   - nss=3.57=he751ad9_0
   - numpy=1.19.1=py38hbc911f0_0
   - numpy-base=1.19.1=py38hfa32c7d_0
-  - ogb=1.2.3=pyh9f0ad1d_0
   - olefile=0.46=py_0
-  - openssl=1.1.1h=h7b6447c_0
+  - openssl=1.1.1h=h516909a_0
+  - optuna=2.4.0=pyhd8ed1ab_0
   - outdated=0.2.0=py_0
   - packaging=20.4=pyh9f0ad1d_0
   - pandas=1.1.3=py38h950e882_0
   - pandoc=2.11.0.1=hd18ef5c_0
   - pandocfilters=1.4.2=py_1
+  - pango=1.42.4=h7062337_4
   - parso=0.7.1=pyh9f0ad1d_0
+  - pbr=5.5.1=pyh9f0ad1d_0
   - pcre=8.44=he1b5a44_0
   - pexpect=4.8.0=pyh9f0ad1d_2
   - pickleshare=0.7.5=py_1003
   - pillow=7.2.0=py38hb39fc2d_0
   - pip=20.2.3=py38_0
   - pixman=0.38.0=h516909a_1003
+  - prettytable=2.0.0=pyhd8ed1ab_0
   - prometheus_client=0.8.0=pyh9f0ad1d_0
   - prompt-toolkit=3.0.8=py_0
   - prompt_toolkit=3.0.8=0
@@ -123,17 +139,23 @@ dependencies:
   - ptyprocess=0.6.0=py_1001
   - pycairo=1.19.1=py38h323dad1_3
   - pycparser=2.20=pyh9f0ad1d_2
+  - pydot=1.4.1=py38h32f6830_1003
   - pygments=2.7.1=py_0
+  - pyhumps=1.6.1=pyh9f0ad1d_1
   - pyopenssl=19.1.0=py_1
   - pyparsing=2.4.7=pyh9f0ad1d_0
+  - pyperclip=1.8.1=pyhd3deb0d_0
   - pyqt=5.12.3=py38ha8c2ead_4
   - pyrsistent=0.17.3=py38h1e0a361_1
   - pysocks=1.7.1=py38h32f6830_1
   - python=3.8.3=cpython_he5300dc_0
   - python-dateutil=2.8.1=py_0
+  - python-editor=1.0.4=py_0
+  - python-graphviz=0.14.2=pyh9f0ad1d_0
   - python_abi=3.8=1_cp38
   - pytorch=1.6.0=py3.8_cuda10.2.89_cudnn7.6.5_0
   - pytz=2020.1=pyh9f0ad1d_0
+  - pyyaml=5.3.1=py38h8df0ef7_1
   - pyzmq=19.0.2=py38ha71036d_2
   - qt=5.12.9=h1f2b2cb_0
   - qtconsole=4.7.7=pyh9f0ad1d_0
@@ -146,7 +168,9 @@ dependencies:
   - send2trash=1.5.0=py_0
   - setuptools=50.3.0=py38hb0f4dca_1
   - six=1.15.0=py_0
+  - sqlalchemy=1.3.20=py38h1e0a361_0
   - sqlite=3.33.0=h62c20be_0
+  - stevedore=3.3.0=py38h578d9bd_1
   - terminado=0.9.1=py38h32f6830_1
   - testpath=0.4.4=py_0
   - threadpoolctl=2.1.0=pyh5ca1d4c_0
@@ -166,11 +190,14 @@ dependencies:
   - xorg-libxau=1.0.9=h14c3975_0
   - xorg-libxdmcp=1.1.3=h516909a_0
   - xorg-libxext=1.3.4=h516909a_0
+  - xorg-libxpm=3.5.13=h516909a_0
   - xorg-libxrender=0.9.10=h516909a_1002
+  - xorg-libxt=1.1.5=h516909a_1003
   - xorg-renderproto=0.11.1=h14c3975_1002
   - xorg-xextproto=7.3.0=h14c3975_1002
   - xorg-xproto=7.0.31=h14c3975_1007
   - xz=5.2.5=h7b6447c_0
+  - yaml=0.2.5=h516909a_0
   - zeromq=4.3.3=he1b5a44_2
   - zipp=3.3.0=py_0
   - zlib=1.2.11=h7b6447c_3
@@ -191,6 +218,11 @@ dependencies:
     - pyqtchart==5.12
     - pyqtwebengine==5.12.1
     - rdflib==5.0.0
+    - torch-cluster==1.5.8
+    - torch-geometric==1.6.1
+    - torch-scatter==2.0.5
+    - torch-sparse==0.6.8
+    - torch-spline-conv==1.2.0
     - tqdm==4.50.1
 prefix: /home/elix/anaconda3/envs/federated
 

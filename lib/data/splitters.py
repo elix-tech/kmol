@@ -19,14 +19,14 @@ class AbstractSplitter(metaclass=ABCMeta):
             SplitError("Split ratios do not add up to 1!")
 
     @abstractmethod
-    def apply(self, data_loader: AbstractLoader) -> Dict[str, List[str]]:
+    def apply(self, data_loader: AbstractLoader) -> Dict[str, List[Union[int, str]]]:
         raise NotImplementedError
 
 
 class IndexSplitter(AbstractSplitter):
     """Split the dataset based on their order"""
 
-    def apply(self, data_loader: AbstractLoader) -> Dict[str, List[str]]:
+    def apply(self, data_loader: AbstractLoader) -> Dict[str, List[Union[int, str]]]:
         splits = {}
 
         ids = data_loader.list_ids()
@@ -51,7 +51,7 @@ class RandomSplitter(AbstractSplitter):
         super().__init__(splits=splits)
         random.seed(seed)
 
-    def apply(self, data_loader: AbstractLoader) -> Dict[str, List[str]]:
+    def apply(self, data_loader: AbstractLoader) -> Dict[str, List[Union[int, str]]]:
         splits = {}
         ids = set(data_loader.list_ids())
 
@@ -93,7 +93,7 @@ class StratifiedSplitter(AbstractSplitter):
 
         return dict(zip(list(data.keys()), bins))
 
-    def apply(self, data_loader: AbstractLoader) -> Dict[str, List[str]]:
+    def apply(self, data_loader: AbstractLoader) -> Dict[str, List[Union[int, str]]]:
         from sklearn.model_selection import train_test_split
 
         leftover_data = self._load_labels(data_loader)

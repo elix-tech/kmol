@@ -11,11 +11,11 @@ from torch.utils.data import DataLoader as TorchDataLoader
 
 from lib.core.config import Config
 from lib.core.exceptions import CheckpointNotFound
-from lib.core.helpers import Timer, SuperFactory
+from lib.core.helpers import Timer, SuperFactory, Namespace
 from lib.data.resources import Batch
 from lib.model.architectures import AbstractNetwork
 from lib.model.metrics import PredictionProcessor
-from lib.model.trackers import ExponentialAverageMeter, AbstractMeter
+from lib.model.trackers import ExponentialAverageMeter
 
 
 class AbstractExecutor(metaclass=ABCMeta):
@@ -101,7 +101,7 @@ class Trainer(AbstractExecutor):
 
         for epoch in range(self._start_epoch + 1, self._config.epochs + 1):
 
-            for iteration, data in enumerate(iter(data_loader), start=1):
+            for iteration, data in enumerate(data_loader, start=1):
                 self._optimizer.zero_grad()
                 outputs = self._network(data.inputs)
 
@@ -189,12 +189,12 @@ class Evaluator(AbstractExecutor):
         self._predictor = Predictor(config=self._config)
         self._processor = PredictionProcessor(metrics=self._config.test_metrics, threshold=self._config.threshold)
 
-    def run(self, data_loader: TorchDataLoader) -> Dict[str, List[float]]:
+    def run(self, data_loader: TorchDataLoader) -> Namespace:
 
         ground_truth = []
         logits = []
 
-        for batch in iter(data_loader):
+        for batch in data_loader:
             ground_truth.append(batch.outputs)
             logits.append(self._predictor.run(batch))
 

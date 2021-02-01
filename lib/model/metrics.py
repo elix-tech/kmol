@@ -13,6 +13,8 @@ from sklearn.metrics import (
     r2_score, mean_absolute_error, mean_squared_error, cohen_kappa_score, jaccard_score
 )
 
+from lib.core.helpers import Namespace
+
 
 class MetricType(Enum):
     REGRESSION = "regression"
@@ -66,16 +68,16 @@ class PredictionProcessor:
 
     @classmethod
     def compute_statistics(
-            cls, metrics: Dict[str, List[float]],
+            cls, metrics: Namespace,
             statistics: Iterable[Callable] = (np.min, np.max, np.mean, np.median, np.std)
-    ) -> Dict[str, List[float]]:
+    ) -> Namespace:
 
         results = defaultdict(list)
-        for name, values in metrics.items():
+        for name, values in vars(metrics).items():
             for statistic in statistics:
                 results[name].append(statistic(values))
 
-        return results
+        return Namespace(**results)
 
     def _prepare(
             self, ground_truth: List[torch.Tensor], logits: List[torch.Tensor]
@@ -103,7 +105,7 @@ class PredictionProcessor:
 
         return ground_truth, logits, predictions
 
-    def compute_metrics(self, ground_truth: List[torch.Tensor], logits: List[torch.Tensor]) -> Dict[str, List[float]]:
+    def compute_metrics(self, ground_truth: List[torch.Tensor], logits: List[torch.Tensor]) -> Namespace:
         ground_truth, logits, predictions = self._prepare(ground_truth=ground_truth, logits=logits)
         metrics = defaultdict(list)
 
@@ -118,7 +120,7 @@ class PredictionProcessor:
 
                 metrics[metric_name].append(computed_value)
 
-        return metrics
+        return Namespace(**metrics)
 
 
 class AbstractMetricLogger(metaclass=ABCMeta):
@@ -128,7 +130,7 @@ class AbstractMetricLogger(metaclass=ABCMeta):
         raise NotImplementedError
 
     @abstractmethod
-    def log_content(self, content: Dict[str, List[float]]) -> None:
+    def log_content(self, content: Namespace) -> None:
         raise NotImplementedError
 
 
@@ -139,8 +141,8 @@ class JsonLogger(AbstractMetricLogger):
         logging.info(headers)
         logging.info("--------------------------------------------------------------")
 
-    def log_content(self, content: Dict[str, List[float]]) -> None:
-        print(json.dumps(content))
+    def log_content(self, content: Namespace) -> None:
+        print(json.dumps(vars(content)))
 
 
 class CsvLogger(AbstractMetricLogger):
@@ -150,7 +152,7 @@ class CsvLogger(AbstractMetricLogger):
         print("metric,{}".format(",".join(headers)))
         logging.info("--------------------------------------------------------------")
 
-    def log_content(self, content: Dict[str, List[float]]) -> None:
-        for name, values in content.items():
+    def log_content(self, content: Namespace) -> None:
+        for name, values in vars(content).items():
             values = [str(value) for value in values]
             print("{},{}".format(name, ",".join(values)))

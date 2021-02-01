@@ -1,15 +1,17 @@
 import datetime
 import hashlib
+import importlib
 import json
 import logging
 import os
 import timeit
-from typing import Type, Any, Dict, Union, T, Optional
+from functools import partial
+from typing import Type, Any, Dict, Union, T, Optional, List, Callable
 
 import humps
+import numpy as np
 import torch
 
-import importlib
 from lib.core.exceptions import ReflectionError
 
 
@@ -166,3 +168,42 @@ class CacheManager:
             os.remove("{}/{}".format(self._cache_location, key))
         except FileNotFoundError:
             pass
+
+
+class Namespace:
+    def __init__(self, **kwargs):
+        for name in kwargs:
+            setattr(self, name, kwargs[name])
+
+    def __eq__(self, other: "Namespace") -> bool:
+        return vars(self) == vars(other)
+
+    def __contains__(self, key: str):
+        return key in self.__dict__
+
+    def __repr__(self) -> str:
+        representation = ""
+        for key, value in self.__dict__.items():
+            representation += "{}={}, ".format(key, value)
+
+        return "Namespace[{}]".format(representation[:-2])
+
+    @staticmethod
+    def reduce(namespaces: List["Namespace"], operation: Callable) -> "Namespace":
+        options = {}
+        for key in vars(namespaces[0]).keys():
+            options[key] = operation([getattr(namespace, key) for namespace in namespaces])
+
+        return Namespace(**options)
+
+    @staticmethod
+    def max(namespaces: List["Namespace"]) -> "Namespace":
+        return Namespace.reduce(namespaces, np.maximum.reduce)
+
+    @staticmethod
+    def min(namespaces: List["Namespace"]) -> "Namespace":
+        return Namespace.reduce(namespaces, np.minimum.reduce)
+
+    @staticmethod
+    def mean(namespaces: List["Namespace"]) -> "Namespace":
+        return Namespace.reduce(namespaces, partial(np.mean, axis=0))

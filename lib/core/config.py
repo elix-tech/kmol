@@ -21,6 +21,7 @@ class Config(AbstractConfiguration):
 
     checkpoint_path: Optional[str] = None
     threshold: float = 0.5
+    cross_validation_folds: int = 5
 
     train_split: str = "train"
     train_metrics: List[str] = field(default_factory=lambda: [])

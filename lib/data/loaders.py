@@ -18,7 +18,7 @@ class AbstractLoader(TorchDataset):
         raise NotImplementedError
 
     @abstractmethod
-    def list_ids(self) -> List[str]:
+    def list_ids(self) -> List[Union[int, str]]:
         raise NotImplementedError
 
     @abstractmethod
@@ -50,7 +50,7 @@ class CsvLoader(AbstractLoader):
             outputs=entry[self._target_columns].to_list()
         )
 
-    def list_ids(self) -> List[str]:
+    def list_ids(self) -> List[Union[int, str]]:
         return list(range(len(self)))
 
     def get_labels(self) -> List[str]:
@@ -59,7 +59,9 @@ class CsvLoader(AbstractLoader):
 
 class ExcelLoader(CsvLoader):
 
-    def __init__(self, input_path: str, sheet_index: str, input_column_names: List[str], target_column_names: List[str]):
+    def __init__(
+            self, input_path: str, sheet_index: str, input_column_names: List[str], target_column_names: List[str]
+    ):
         self._input_columns = input_column_names
         self._target_columns = target_column_names
 
@@ -68,17 +70,18 @@ class ExcelLoader(CsvLoader):
 
 class ListLoader(AbstractLoader):
 
-    def __init__(self, data: List[Data]):
+    def __init__(self, data: List[Data], indices: List[str]):
         self._dataset = data
+        self._indices = indices
 
     def __len__(self):
         return len(self._dataset)
 
-    def __getitem__(self, id_: int) -> Data:
-        return self._dataset[id_]
+    def __getitem__(self, id_: str) -> Data:
+        return self._dataset[self._indices.index(id_)]
 
-    def list_ids(self) -> List[str]:
-        return list(range(len(self)))
+    def list_ids(self) -> List[Union[int, str]]:
+        return self._indices
 
     def get_labels(self) -> List[str]:
         return self._dataset[0].labels
