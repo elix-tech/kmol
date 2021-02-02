@@ -1,6 +1,5 @@
 import logging
 from abc import ABCMeta
-from typing import List, Dict
 
 import numpy as np
 import torch
@@ -16,6 +15,7 @@ from lib.data.resources import Batch
 from lib.model.architectures import AbstractNetwork
 from lib.model.metrics import PredictionProcessor
 from lib.model.trackers import ExponentialAverageMeter
+from lib.core.observers import EventManager
 
 
 class AbstractExecutor(metaclass=ABCMeta):
@@ -105,12 +105,10 @@ class Trainer(AbstractExecutor):
                 self._optimizer.zero_grad()
                 outputs = self._network(data.inputs)
 
-                mask = data.outputs == data.outputs
-                weights = mask.float()
-                labels = data.outputs
-                labels[~mask] = 0
+                payload = Namespace(input=outputs, target=data.outputs)
+                EventManager.dispatch_event(event_name="before_criterion", payload=payload)
+                loss = self._criterion(**vars(payload))
 
-                loss = self._criterion(outputs, labels, weights)
                 loss.backward()
                 self._optimizer.step()
 

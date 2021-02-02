@@ -80,16 +80,17 @@ class StratifiedSplitter(AbstractSplitter):
         self._bins_count = bins_count
 
     def _load_labels(self, data_loader: AbstractLoader) -> Dict[Union[int, str], float]:
+        output_index = data_loader.get_labels().index(self._target_name)
         labels = {}
 
         for entry in iter(data_loader):
-            labels[entry.id_] = entry.outputs[self._target_name]
+            labels[entry.id_] = entry.outputs[output_index]
 
         return labels
 
     def _binify(self, data: Dict[Union[int, str], float]) -> Dict[Union[int, str], int]:
         entries = list(data.values())
-        bins = pd.cut(entries, self._bins_count, labels=False).to_list()
+        bins = pd.qcut(entries, self._bins_count, labels=False).tolist()
 
         return dict(zip(list(data.keys()), bins))
 

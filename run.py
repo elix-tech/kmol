@@ -1,3 +1,4 @@
+import logging
 import os
 from argparse import ArgumentParser
 from glob import glob
@@ -85,6 +86,7 @@ class Executor(AbstractExecutor):
         for result in results:
             self.__log_results(results=result, labels=streamer.labels)
 
+        logging.info("============================ Best ============================")
         results = Namespace.max(results)
         self.__log_results(results=results, labels=streamer.labels)
 

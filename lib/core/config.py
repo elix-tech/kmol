@@ -1,10 +1,13 @@
 import logging
 import os
+from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Literal, Optional, List, Dict, Any
+from typing import Literal, Optional, List, Dict, Any, DefaultDict, Type
 
 import torch
 
+from lib.core.helpers import SuperFactory
+from lib.core.observers import EventManager, EventHandler
 from mila.factories import AbstractConfiguration
 
 
@@ -20,7 +23,7 @@ class Config(AbstractConfiguration):
     scheduler: Dict[str, Any]
 
     checkpoint_path: Optional[str] = None
-    threshold: float = 0.5
+    threshold: Optional[float] = None
     cross_validation_folds: int = 5
 
     train_split: str = "train"
@@ -41,6 +44,8 @@ class Config(AbstractConfiguration):
     log_format: str = ""
     log_frequency: int = 20
 
+    observers: DefaultDict[str, List[str]] = field(default_factory=lambda: defaultdict(list))
+
     def should_parallelize(self) -> bool:
         return torch.cuda.is_available() and self.use_cuda and len(self.enabled_gpus) > 1
 
@@ -55,3 +60,8 @@ class Config(AbstractConfiguration):
             os.makedirs(self.output_path)
 
         logging.basicConfig(format=self.log_format, level=self.log_level.upper())
+
+        for event_name, event_handlers in self.observers.items():
+            for event_handler_definition in event_handlers:
+                event_handler_instantiator: Type[EventHandler] = SuperFactory.reflect(event_handler_definition)
+                EventManager.add_event_listener(event_name=event_name, handler=event_handler_instantiator)

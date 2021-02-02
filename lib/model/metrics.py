@@ -25,12 +25,13 @@ class MetricConfiguration(NamedTuple):
     type: MetricType
     calculator: Callable
     uses_threshold: bool = False
+    maximize: bool = True
 
 
 class AvailableMetrics:
-    MAE = MetricConfiguration(type=MetricType.REGRESSION, calculator=mean_absolute_error)
-    MSE = MetricConfiguration(type=MetricType.REGRESSION, calculator=mean_squared_error)
-    RMSE = MetricConfiguration(type=MetricType.REGRESSION, calculator=partial(mean_squared_error, squared=False))
+    MAE = MetricConfiguration(type=MetricType.REGRESSION, calculator=mean_absolute_error, maximize=False)
+    MSE = MetricConfiguration(type=MetricType.REGRESSION, calculator=mean_squared_error, maximize=False)
+    RMSE = MetricConfiguration(type=MetricType.REGRESSION, calculator=partial(mean_squared_error, squared=False), maximize=False)
     R2 = MetricConfiguration(type=MetricType.REGRESSION, calculator=r2_score)
     ROC_AUC = MetricConfiguration(type=MetricType.CLASSIFICATION, calculator=roc_auc_score)
     PR_AUC = MetricConfiguration(type=MetricType.CLASSIFICATION, calculator=average_precision_score)
@@ -61,6 +62,9 @@ class PredictionProcessor:
 
     @classmethod
     def apply_threshold(cls, logits: torch.Tensor, threshold: float) -> np.ndarray:
+        if threshold is None:
+            return np.array(cls.detach(logits))
+
         predictions = torch.sigmoid(logits)
         predictions = cls.detach(predictions)
 
@@ -115,6 +119,8 @@ class PredictionProcessor:
 
                 try:
                     computed_value = metric_settings.calculator(ground_truth[target_index], labels)
+                    if not metric_settings.maximize:
+                        computed_value *= -1
                 except ValueError:
                     computed_value = self._error_value
 
