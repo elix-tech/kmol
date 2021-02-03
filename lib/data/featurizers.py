@@ -1,8 +1,8 @@
 import itertools
+import logging
 from abc import ABCMeta, abstractmethod
 from functools import partial
 from typing import Any, List, Tuple, Callable, Optional, Union
-import logging
 
 import numpy as np
 import torch
@@ -23,15 +23,13 @@ class AbstractFeaturizer(metaclass=ABCMeta):
     def _process(self, data: Any) -> Any:
         raise NotImplementedError
 
-    def run(self, data: Data) -> Data:
+    def run(self, data: Data) -> None:
         if len(self._inputs) != len(self._outputs):
             raise FeaturizationError("Inputs and mappings must have the same length.")
 
         for index in range(len(self._inputs)):
             raw_data = data.inputs.pop(self._inputs[index])
             data.inputs[self._outputs[index]] = self._process(raw_data)
-
-        return data
 
 
 class AbstractTorchGeometricFeaturizer(AbstractFeaturizer):
@@ -186,21 +184,27 @@ class GraphFeaturizer(AbstractTorchGeometricFeaturizer):
         ]
 
     def _list_molecule_featurizers(self) -> List[Callable]:
-        # 10 features
-        from rdkit.Chem import Descriptors, Lipinski, Crippen
-        from rdkit.Chem.QED import qed
+        # 16 features
+        from rdkit.Chem import Descriptors, Lipinski, Crippen, MolSurf, GraphDescriptors, rdMolDescriptors, QED
 
         return [
             Descriptors.MolWt,
             Descriptors.NumRadicalElectrons,
             Descriptors.NumValenceElectrons,
+            rdMolDescriptors.CalcTPSA,
+            MolSurf.LabuteASA,
+            GraphDescriptors.BalabanJ,
+            Lipinski.RingCount,
+            Lipinski.NumAliphaticRings,
+            Lipinski.NumSaturatedRings,
+            Lipinski.NumRotatableBonds,
+            Lipinski.NumHeteroatoms,
             Lipinski.HeavyAtomCount,
             Lipinski.NumHDonors,
             Lipinski.NumHAcceptors,
             Lipinski.NumAromaticRings,
-            Lipinski.NumRotatableBonds,
             Crippen.MolLogP,
-            qed
+            QED.qed
         ]
 
 

@@ -2,9 +2,11 @@ import logging
 import operator
 from abc import ABCMeta, abstractmethod
 from copy import copy
+from enum import Enum
 from functools import reduce
 from typing import List, Dict, Union
 
+import numpy as np
 from torch.utils.data import DataLoader, Subset
 from tqdm import tqdm
 
@@ -15,7 +17,7 @@ from lib.data.featurizers import AbstractFeaturizer
 from lib.data.loaders import AbstractLoader, ListLoader
 from lib.data.resources import Data, Collater
 from lib.data.splitters import AbstractSplitter
-from enum import Enum
+from lib.data.transformers import AbstractTransformer
 
 
 class AbstractStreamer(metaclass=ABCMeta):
@@ -46,6 +48,10 @@ class GeneralStreamer(AbstractStreamer):
             SuperFactory.create(AbstractFeaturizer, featurizer) for featurizer in self._config.featurizers
         ]
 
+        self._transformers = [
+            SuperFactory.create(AbstractTransformer, transformer) for transformer in self._config.transformers
+        ]
+
         self._dataset = self._load_dataset()
         self._splits = self._generate_splits()
 
@@ -54,7 +60,9 @@ class GeneralStreamer(AbstractStreamer):
         return splitter.apply(data_loader=self._dataset)
 
     def _load_dataset(self) -> AbstractLoader:
-        cache_key = self._cache_manager.key(loader=self._config.loader, featurizers=self._config.featurizers)
+        cache_key = self._cache_manager.key(
+            loader=self._config.loader, featurizers=self._config.featurizers, transformers=self._config.transformers
+        )
 
         if self._config.clear_cache:
             self._cache_manager.delete(cache_key)
@@ -67,16 +75,22 @@ class GeneralStreamer(AbstractStreamer):
 
         return dataset
 
-    def _featurize(self, sample: Data, featurizers: List[AbstractFeaturizer]) -> Data:
-        for featurizer in featurizers:
+    def _featurize(self, sample: Data):
+        for featurizer in self._featurizers:
             try:
-                sample = featurizer.run(sample)
+                featurizer.run(sample)
             except (FeaturizationError, ValueError, IndexError, AttributeError) as e:
-                raise FeaturizationError("[WARNING] Could not apply '{}' on '{}' --- {}".format(
+                raise FeaturizationError("[WARNING] Could not run featurizer '{}' on '{}' --- {}".format(
                     featurizer.__class__.__name__, sample.id_, e
                 ))
 
-        return sample
+    def _apply_transformers(self, sample: Data) -> None:
+        for transformer in self._transformers:
+            transformer.apply(sample)
+
+    def reverse_transformers(self, sample: Data) -> None:
+        for transformer in reversed(self._transformers):
+            transformer.reverse(sample)
 
     def _prepare_dataset(self) -> ListLoader:
 
@@ -89,7 +103,8 @@ class GeneralStreamer(AbstractStreamer):
         with tqdm(total=len(loader)) as progress_bar:
             for sample in loader:
                 try:
-                    sample = self._featurize(sample, self._featurizers)
+                    self._featurize(sample)
+                    self._apply_transformers(sample)
 
                     dataset.append(sample)
                     ids.append(sample.id_)

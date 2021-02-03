@@ -1,6 +1,6 @@
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Any, Dict, Union, List
+from typing import Any, Dict, Union, List, Optional
 
 import torch
 from torch_geometric.data.dataloader import Collater as TorchGeometricCollater
@@ -9,10 +9,10 @@ import numpy as np
 
 @dataclass
 class Data:
-    id_: Union[str, int]
-    labels: List[str]
-    inputs: Dict[str, Any]
-    outputs: List[Any]
+    id_: Optional[Union[str, int]] = None
+    labels: Optional[List[str]] = None
+    inputs: Optional[Dict[str, Any]] = None
+    outputs: Optional[Union[List[Any], np.ndarray]] = None
 
 
 @dataclass

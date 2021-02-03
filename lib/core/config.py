@@ -18,6 +18,7 @@ class Config(AbstractConfiguration):
     loader: Dict[str, Any]
     splitter: Dict[str, Any]
     featurizers: List[Dict[str, Any]]
+    transformers: List[Dict[str, Any]]
     criterion: Dict[str, Any]
     optimizer: Dict[str, Any]
     scheduler: Dict[str, Any]

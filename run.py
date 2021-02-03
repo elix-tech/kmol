@@ -9,6 +9,7 @@ from torch.utils.data import DataLoader
 
 from lib.core.config import Config
 from lib.core.helpers import Namespace
+from lib.data.resources import Data
 from lib.data.streamers import GeneralStreamer, CrossValidationStreamer
 from lib.model.executors import Trainer, Evaluator, Predictor
 from lib.model.metrics import PredictionProcessor, CsvLogger
@@ -32,6 +33,12 @@ class Executor(AbstractExecutor):
 
         logger.log_header(statistics)
         logger.log_content(values)
+
+    def __revert_transformations(self, predictions: np.ndarray, streamer: GeneralStreamer):
+        data = Data(outputs=predictions.transpose())
+        streamer.reverse_transformers(data)
+
+        return data.outputs.transpose()
 
     def __train(self, data_loader: DataLoader) -> None:
         trainer = Trainer(self._config)
@@ -141,6 +148,7 @@ class Executor(AbstractExecutor):
             logits = predictor.run(batch)
 
             predictions = PredictionProcessor.apply_threshold(logits, self._config.threshold)
+            predictions = self.__revert_transformations(predictions, streamer)
             predictions = predictions.astype("str").tolist()
 
             for prediction in predictions:

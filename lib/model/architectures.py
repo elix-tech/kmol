@@ -34,6 +34,7 @@ class GraphConvolutionalNetwork(AbstractNetwork):
 
         self.molecular_head = torch.nn.Sequential(
             torch.nn.Linear(molecule_features, hidden_features // 4),
+            torch.nn.Dropout(p=min(hidden_features / in_features, 0.7)),
             torch.nn.BatchNorm1d(hidden_features // 4),
             torch.nn.ReLU()
         )

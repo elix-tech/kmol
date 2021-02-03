@@ -10,5 +10,9 @@ class FeaturizationError(ValueError):
     pass
 
 
+class TransformerError(ValueError):
+    pass
+
+
 class SplitError(ValueError):
     pass

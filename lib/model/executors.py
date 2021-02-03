@@ -128,12 +128,12 @@ class Trainer(AbstractExecutor):
         averages = self._metric_computer.compute_statistics(metrics, (np.mean,))
 
         for metric_name, tracker in self._metric_trackers.items():
-            tracker.update(averages[metric_name][0])
+            tracker.update(getattr(averages, metric_name)[0])
 
     def _reset_trackers(self) -> None:
         self._loss_tracker.reset()
 
-        for tracker in self._metric_trackers:
+        for tracker in self._metric_trackers.values():
             tracker.reset()
 
     def save(self, epoch: int) -> None:
