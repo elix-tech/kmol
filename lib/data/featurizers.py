@@ -135,7 +135,10 @@ class GraphFeaturizer(AbstractTorchGeometricFeaturizer):
     def _process(self, data: str) -> TorchGeometricData:
         data = super()._process(data=data)
 
-        data.molecule_features = self._featurize_molecule(data.mol)
+        molecule_features = self._featurize_molecule(data.mol)
+        molecule_features = torch.FloatTensor(molecule_features).view(-1, len(molecule_features))
+
+        data.molecule_features = molecule_features
         return data
 
     def _featurize_atom(self, atom: Chem.Atom) -> List[float]:

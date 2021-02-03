@@ -83,7 +83,7 @@ class Trainer(AbstractExecutor):
 
         self._scheduler = SuperFactory.create(AbstractLearningRateScheduler, self._config.scheduler, {
             "optimizer": self._optimizer,
-            "steps_per_epoch": training_examples // self._config.batch_size
+            "steps_per_epoch": max(training_examples // self._config.batch_size, 1)
         })
 
         try:

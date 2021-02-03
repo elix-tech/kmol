@@ -1,7 +1,10 @@
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 import torch
 import torch_geometric as geometric
+
+from lib.model.layers import GraphConvolutionWrapper
+from math import floor
 
 
 class AbstractNetwork(torch.nn.Module):
@@ -11,34 +14,50 @@ class AbstractNetwork(torch.nn.Module):
 class GraphConvolutionalNetwork(AbstractNetwork):
 
     def __init__(
-            self, in_features: int, hidden_features: int, out_features:
-            int, dropout: float, layer_type: str = "GraphConv", layers_count: int = 2, **kwargs
+            self, in_features: int, hidden_features: int, out_features: int, molecule_features: int,
+            dropout: float, layer_type: str = "torch_geometric.nn.GCNConv", layers_count: int = 2,
+            is_residual: bool = True, norm_layer: Optional[str] = None, activation: str = "torch.nn.ReLU", **kwargs
     ):
         super().__init__()
-        convolution = getattr(geometric.nn, layer_type)
 
         self.convolutions = torch.nn.ModuleList()
-        self.convolutions.append(convolution(in_features, hidden_features, **kwargs))
+        self.convolutions.append(GraphConvolutionWrapper(
+            in_features=in_features, out_features=hidden_features, dropout=dropout, layer_type=layer_type,
+            is_residual=is_residual, norm_layer=norm_layer, activation=activation, **kwargs
+        ))
 
-        for _ in range(layers_count - 2):
-            self.convolutions.append(convolution(hidden_features, hidden_features, **kwargs))
+        for _ in range(layers_count - 1):
+            self.convolutions.append(GraphConvolutionWrapper(
+                in_features=hidden_features, out_features=hidden_features, dropout=dropout, layer_type=layer_type,
+                is_residual=is_residual, norm_layer=norm_layer, activation=activation, **kwargs
+            ))
 
-        self.convolutions.append(convolution(hidden_features, out_features, **kwargs))
+        self.molecular_head = torch.nn.Sequential(
+            torch.nn.Linear(molecule_features, hidden_features // 4),
+            torch.nn.BatchNorm1d(hidden_features // 4),
+            torch.nn.ReLU()
+        )
 
-        self.activation = torch.nn.ReLU()
-        self.dropout = torch.nn.Dropout(p=dropout)
+        self.mlp = torch.nn.Sequential(
+            torch.nn.Linear(floor(2.25 * hidden_features), hidden_features),
+            torch.nn.ReLU(),
+            torch.nn.Dropout(p=dropout),
+            torch.nn.Linear(hidden_features, out_features)
+        )
 
     def forward(self, data: Dict[str, Any]) -> torch.Tensor:
         data = data["graph"]
         x = data.x.float()
 
-        for convolution in self.convolutions[:-1]:
+        for convolution in self.convolutions:
             x = convolution(x, data.edge_index)
-            x = self.activation(x)
-            x = self.dropout(x)
 
-        x = self.convolutions[-1](x, data.edge_index)
-        x = geometric.nn.global_max_pool(x, batch=data.batch)
+        max_pool_output = geometric.nn.global_max_pool(x, batch=data.batch)
+        add_pool_output = geometric.nn.global_add_pool(x, batch=data.batch)
+        molecule_features = self.molecular_head(data.molecule_features)
+
+        x = torch.cat((max_pool_output, add_pool_output, molecule_features), dim=1)
+        x = self.mlp(x)
 
         return x
 

@@ -20,9 +20,9 @@ dependencies:
   - brotlipy=0.7.0=py38h1e0a361_1000
   - bzip2=1.0.8=h516909a_3
   - c-ares=1.16.1=h7b6447c_0
-  - ca-certificates=2020.12.5=ha878542_0
+  - ca-certificates=2021.1.19=h06a4308_0
   - cairo=1.16.0=h3fc0475_1005
-  - certifi=2020.12.5=py38h578d9bd_1
+  - certifi=2020.12.5=py38h06a4308_0
   - cffi=1.14.3=py38h1bdcb99_1
   - chardet=3.0.4=py38h32f6830_1007
   - cliff=3.6.0=pyhd8ed1ab_0
@@ -114,7 +114,7 @@ dependencies:
   - numpy=1.19.1=py38hbc911f0_0
   - numpy-base=1.19.1=py38hfa32c7d_0
   - olefile=0.46=py_0
-  - openssl=1.1.1h=h516909a_0
+  - openssl=1.1.1i=h27cfd23_0
   - optuna=2.4.0=pyhd8ed1ab_0
   - outdated=0.2.0=py_0
   - packaging=20.4=pyh9f0ad1d_0
@@ -183,6 +183,7 @@ dependencies:
   - webencodings=0.5.1=py_1
   - wheel=0.35.1=py_0
   - widgetsnbextension=3.5.1=py38h32f6830_1
+  - xlrd=1.2.0=py_0
   - xorg-kbproto=1.0.7=h14c3975_1002
   - xorg-libice=1.0.10=h516909a_0
   - xorg-libsm=1.2.3=h84519dc_1000
