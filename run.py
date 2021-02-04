@@ -90,8 +90,8 @@ class Executor(AbstractExecutor):
         )
 
         results = self.__analyze(data_loader)
-        for result in results:
-            self.__log_results(results=result, labels=streamer.labels)
+        for checkpoint_id, result in enumerate(results):
+            self.__log_results(results=result, labels=streamer.labels + ["[{}]".format(checkpoint_id)])
 
         logging.info("============================ Best ============================")
         results = Namespace.max(results)

@@ -209,16 +209,22 @@ dependencies:
     - future==0.18.2
     - googledrivedownloader==0.4
     - h5py==2.10.0
+    - iniconfig==1.1.1
     - isodate==0.6.0
     - kiwisolver==1.2.0
     - llvmlite==0.34.0
     - matplotlib==3.3.2
     - networkx==2.5
     - numba==0.51.2
+    - opacus==0.11.0
+    - pluggy==0.13.1
+    - py==1.10.0
     - pyqt5-sip==4.19.18
     - pyqtchart==5.12
     - pyqtwebengine==5.12.1
+    - pytest==6.2.2
     - rdflib==5.0.0
+    - toml==0.10.2
     - torch-cluster==1.5.8
     - torch-geometric==1.6.1
     - torch-scatter==2.0.5

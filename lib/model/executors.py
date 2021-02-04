@@ -51,8 +51,12 @@ class AbstractExecutor(metaclass=ABCMeta):
             self._start_epoch = info["epoch"]
 
     def _setup_network(self) -> None:
-        self._network = SuperFactory.create(AbstractNetwork, self._config.model)
+        network = SuperFactory.create(AbstractNetwork, self._config.model)
 
+        payload = Namespace(network=network, config=self._config)
+        EventManager.dispatch_event(event_name="after_network_create", payload=payload)
+
+        self._network = payload.network
         if self._config.should_parallelize():
             self._network = torch.nn.DataParallel(self._network, device_ids=self._config.enabled_gpus)
 
@@ -98,6 +102,9 @@ class Trainer(AbstractExecutor):
 
         dataset_size = len(data_loader.dataset)
         self._setup(training_examples=dataset_size)
+
+        payload = Namespace(trainer=self, data_loader=data_loader)
+        EventManager.dispatch_event(event_name="before_train_start", payload=payload)
 
         for epoch in range(self._start_epoch + 1, self._config.epochs + 1):
 
@@ -163,7 +170,10 @@ class Trainer(AbstractExecutor):
         for name, tracker in self._metric_trackers.items():
             message += " - {}: {:.4f}".format(name, tracker.get())
 
-        logging.info(message)
+        payload = Namespace(message=message, epoch=epoch, iteration=iteration, dataset_size=dataset_size, trainer=self)
+        EventManager.dispatch_event(event_name="before_train_progress_log", payload=payload)
+
+        logging.info(payload.message)
 
 
 class Predictor(AbstractExecutor):
