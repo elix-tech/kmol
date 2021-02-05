@@ -11,7 +11,7 @@ from lib.core.config import Config
 from lib.core.helpers import Namespace
 from lib.data.resources import Data
 from lib.data.streamers import GeneralStreamer, CrossValidationStreamer
-from lib.model.executors import Trainer, Evaluator, Predictor
+from lib.model.executors import Trainer, Evaluator, Predictor, ThresholdFinder, LearningRareFinder
 from lib.model.metrics import PredictionProcessor, CsvLogger
 from mila.factories import AbstractExecutor
 
@@ -153,6 +153,29 @@ class Executor(AbstractExecutor):
 
             for prediction in predictions:
                 print(",".join(prediction))
+
+    def find_threshold(self) -> List[float]:
+        streamer = GeneralStreamer(config=self._config)
+        data_loader = streamer.get(
+            split_name=self._config.train_split, batch_size=self._config.batch_size, shuffle=False
+        )
+
+        evaluator = ThresholdFinder(self._config)
+        threshold = evaluator.run(data_loader)
+
+        print("Best Thresholds: {}".format(threshold))
+        print("Average: {}".format(np.mean(threshold)))
+
+        return threshold
+
+    def find_learning_rate(self):
+        streamer = GeneralStreamer(config=self._config)
+        data_loader = streamer.get(
+            split_name=self._config.train_split, batch_size=self._config.batch_size, shuffle=False
+        )
+
+        trainer = LearningRareFinder(self._config)
+        trainer.run(data_loader=data_loader)
 
 
 if __name__ == "__main__":

@@ -10,7 +10,7 @@ import numpy as np
 import torch
 from sklearn.metrics import (
     roc_auc_score, average_precision_score, accuracy_score, precision_score, recall_score, f1_score,
-    r2_score, mean_absolute_error, mean_squared_error, cohen_kappa_score, jaccard_score
+    r2_score, mean_absolute_error, mean_squared_error, cohen_kappa_score, jaccard_score, roc_curve
 )
 
 from lib.core.helpers import Namespace
@@ -127,6 +127,17 @@ class PredictionProcessor:
                 metrics[metric_name].append(computed_value)
 
         return Namespace(**metrics)
+
+    def find_best_threshold(self, ground_truth: List[torch.Tensor], logits: List[torch.Tensor]) -> List[float]:
+        logits = [torch.sigmoid(tensor) for tensor in logits]
+        ground_truth, logits, _ = self._prepare(ground_truth=ground_truth, logits=logits)
+
+        best = []
+        for i in range(len(ground_truth)):
+            false_positive_rate, true_positive_rate, thresholds = roc_curve(ground_truth[i], logits[i])
+            best.append(thresholds[np.argmax(true_positive_rate - false_positive_rate)])
+
+        return best
 
 
 class AbstractMetricLogger(metaclass=ABCMeta):

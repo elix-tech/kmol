@@ -71,6 +71,9 @@ class SuperFactory:
         logging.debug("Super Factory --- Loaded Parameters --- {}".format(loaded_parameters))
         logging.debug("------------------------------------------------------------")
 
+        if loaded_parameters is None:
+            loaded_parameters = {}
+
         dynamic_parameters = dynamic_parameters.copy()
         if "type" in dynamic_parameters:
 
@@ -95,8 +98,8 @@ class SuperFactory:
 
                 instantiator = subclasses.get(dependency_name)
 
+        parameters = instantiator.__init__.__code__.co_varnames
         if len(dynamic_parameters) > 0:
-            parameters = instantiator.__init__.__code__.co_varnames
             attributes = instantiator.__init__.__annotations__
 
             for option_name, option_value in dynamic_parameters.items():
@@ -117,8 +120,9 @@ class SuperFactory:
                     dynamic_parameters[option_name] = SuperFactory.create(attributes[option_name], option_value)
 
         options = dynamic_parameters
-        if loaded_parameters is not None:
-            options = {**options, **loaded_parameters}
+        for key, value in loaded_parameters.items():
+            if key in parameters:
+                options[key] = value
 
         return instantiator(**options)
 

@@ -1,21 +1,24 @@
 import logging
+import math
 from abc import ABCMeta
+from typing import List, Tuple
 
 import numpy as np
 import torch
 from torch.nn.modules.loss import _Loss as AbstractCriterion
 from torch.optim import Optimizer as AbstractOptimizer
-from torch.optim.lr_scheduler import _LRScheduler as AbstractLearningRateScheduler
+from torch.optim.lr_scheduler import _LRScheduler as AbstractLearningRateScheduler, ExponentialLR
 from torch.utils.data import DataLoader as TorchDataLoader
+from tqdm import tqdm
 
 from lib.core.config import Config
 from lib.core.exceptions import CheckpointNotFound
 from lib.core.helpers import Timer, SuperFactory, Namespace
+from lib.core.observers import EventManager
 from lib.data.resources import Batch
 from lib.model.architectures import AbstractNetwork
 from lib.model.metrics import PredictionProcessor
 from lib.model.trackers import ExponentialAverageMeter
-from lib.core.observers import EventManager
 
 
 class AbstractExecutor(metaclass=ABCMeta):
@@ -85,10 +88,7 @@ class Trainer(AbstractExecutor):
             "params": self._network.parameters()
         })
 
-        self._scheduler = SuperFactory.create(AbstractLearningRateScheduler, self._config.scheduler, {
-            "optimizer": self._optimizer,
-            "steps_per_epoch": max(training_examples // self._config.batch_size, 1)
-        })
+        self._scheduler = self._initialize_scheduler(optimizer=self._optimizer, training_examples=training_examples)
 
         try:
             self._load_checkpoint()
@@ -97,6 +97,15 @@ class Trainer(AbstractExecutor):
 
         self._network = self._network.train()
         logging.debug(self._network)
+
+    def _initialize_scheduler(
+            self, optimizer: AbstractOptimizer, training_examples: int
+    ) -> AbstractLearningRateScheduler:
+
+        return SuperFactory.create(AbstractLearningRateScheduler, self._config.scheduler, {
+            "optimizer": optimizer,
+            "steps_per_epoch": math.ceil(training_examples / self._config.batch_size)
+        })
 
     def run(self, data_loader: TorchDataLoader):
 
@@ -118,14 +127,17 @@ class Trainer(AbstractExecutor):
 
                 loss.backward()
                 self._optimizer.step()
+                if self._config.is_stepwise_scheduler:
+                    self._scheduler.step()
 
                 self._update_trackers(loss.item(), data.outputs, outputs)
                 if iteration % self._config.log_frequency == 0:
                     self.log(epoch, iteration, dataset_size)
 
-            self._scheduler.step()
-            self._reset_trackers()
+            if not self._config.is_stepwise_scheduler:
+                self._scheduler.step()
 
+            self._reset_trackers()
             self.save(epoch)
 
     def _update_trackers(self, loss: float, ground_truth: torch.Tensor, logits: torch.Tensor) -> None:
@@ -184,9 +196,19 @@ class Predictor(AbstractExecutor):
         self._load_checkpoint()
         self._network = self._network.eval()
 
-    @torch.no_grad()
     def run(self, batch: Batch) -> torch.Tensor:
-        return self._network(batch.inputs)
+        with torch.no_grad():
+            return self._network(batch.inputs)
+
+    def run_all(self, data_loader: TorchDataLoader) -> Tuple[List[torch.Tensor], List[torch.Tensor]]:
+        ground_truth = []
+        logits = []
+
+        for batch in data_loader:
+            ground_truth.append(batch.outputs)
+            logits.append(self.run(batch))
+
+        return ground_truth, logits
 
 
 class Evaluator(AbstractExecutor):
@@ -198,12 +220,82 @@ class Evaluator(AbstractExecutor):
         self._processor = PredictionProcessor(metrics=self._config.test_metrics, threshold=self._config.threshold)
 
     def run(self, data_loader: TorchDataLoader) -> Namespace:
-
-        ground_truth = []
-        logits = []
-
-        for batch in data_loader:
-            ground_truth.append(batch.outputs)
-            logits.append(self._predictor.run(batch))
-
+        ground_truth, logits = self._predictor.run_all(data_loader=data_loader)
         return self._processor.compute_metrics(ground_truth=ground_truth, logits=logits)
+
+
+class ThresholdFinder(Evaluator):
+
+    def run(self, data_loader: TorchDataLoader) -> List[float]:
+        ground_truth, logits = self._predictor.run_all(data_loader=data_loader)
+        return self._processor.find_best_threshold(ground_truth=ground_truth, logits=logits)
+
+
+class LearningRareFinder(Trainer):
+    """
+    Runs training for a given number of steps to find appropriate lr value.
+    https://sgugger.github.io/how-do-you-find-a-good-learning-rate.html
+    """
+
+    MAXIMUM_LEARNING_RATE = 0.1
+    MINIMUM_LEARNING_RATE = 1e-5
+
+    def _initialize_scheduler(
+            self, optimizer: AbstractOptimizer, training_examples: int
+    ) -> AbstractLearningRateScheduler:
+
+        gamma = max(training_examples // self._config.batch_size, 1)
+        gamma = np.log(self.MAXIMUM_LEARNING_RATE / self.MINIMUM_LEARNING_RATE) / gamma
+        gamma = float(np.exp(gamma))
+
+        return ExponentialLR(optimizer=optimizer, gamma=gamma)
+
+    def run(self, data_loader: TorchDataLoader) -> None:
+
+        dataset_size = len(data_loader.dataset)
+        self._setup(training_examples=dataset_size)
+
+        payload = Namespace(trainer=self, data_loader=data_loader)
+        EventManager.dispatch_event(event_name="before_train_start", payload=payload)
+
+        learning_rate_records = []
+        loss_records = []
+
+        try:
+            with tqdm(total=len(data_loader)) as progress_bar:
+                for iteration, data in enumerate(data_loader, start=1):
+                    self._optimizer.zero_grad()
+                    outputs = self._network(data.inputs)
+
+                    payload = Namespace(input=outputs, target=data.outputs)
+                    EventManager.dispatch_event(event_name="before_criterion", payload=payload)
+                    loss = self._criterion(**vars(payload))
+
+                    loss.backward()
+                    self._optimizer.step()
+
+                    self._scheduler.step()
+                    self._loss_tracker.update(loss.item())
+
+                    learning_rate_records.append(self._get_learning_rate())
+                    loss_records.append(self._loss_tracker.get())
+
+                    progress_bar.update(1)
+        except (KeyboardInterrupt, RuntimeError):
+            pass
+
+        self._plot(learning_rate_records, loss_records)
+
+    def _get_learning_rate(self) -> float:
+        return self._optimizer.param_groups[0]["lr"]
+
+    def _plot(self, learning_rate_records: List[float], loss_records: List[float]) -> None:
+        import matplotlib.pyplot as plt
+
+        plt.plot(learning_rate_records, loss_records)
+        plt.xscale("log")
+
+        plt.xlabel("Learning Rate")
+        plt.ylabel("Loss")
+
+        plt.show()
