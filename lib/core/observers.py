@@ -27,6 +27,10 @@ class EventManager:
         for handler in EventManager._LISTENERS[event_name]:
             payload = handler.run(payload=payload)
 
+    @staticmethod
+    def flush() -> None:
+        EventManager._LISTENERS = defaultdict(list)
+
 
 class MaskMissingLabelsHandler(EventHandler):
     """event: before_criterion"""

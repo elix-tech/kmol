@@ -3,7 +3,7 @@ from typing import Dict, Any, Optional
 import torch
 import torch_geometric as geometric
 
-from lib.model.layers import GraphConvolutionWrapper
+from lib.model.layers import GraphConvolutionWrapper, TripletMessagePassingLayer
 from math import floor
 
 
@@ -51,7 +51,7 @@ class GraphConvolutionalNetwork(AbstractNetwork):
         x = data.x.float()
 
         for convolution in self.convolutions:
-            x = convolution(x, data.edge_index)
+            x = convolution(x, data.edge_index, data.edge_attr, data.batch)
 
         max_pool_output = geometric.nn.global_max_pool(x, batch=data.batch)
         add_pool_output = geometric.nn.global_add_pool(x, batch=data.batch)
@@ -63,61 +63,99 @@ class GraphConvolutionalNetwork(AbstractNetwork):
         return x
 
 
-class GraphIsomorphismNetwork(AbstractNetwork):
+class MessagePassingNetwork(AbstractNetwork):
 
-    def __init__(self, in_features: int, hidden_features: int, out_features: int, dropout: float):
-
+    def __init__(
+            self, in_features: int, hidden_features: int, out_features: int,
+            edge_features: int, edge_hidden: int, steps: int, dropout: float = 0,
+            aggregation: str = "add", set2set_layers: int = 3, set2set_steps: int = 6
+    ):
         super().__init__()
 
-        self.convolution_1 = self.__create_gin_convolution(in_features, hidden_features)
-        self.convolution_2 = self.__create_gin_convolution(hidden_features, hidden_features)
-        self.convolution_3 = self.__create_gin_convolution(hidden_features, hidden_features)
-        self.convolution_4 = self.__create_gin_convolution(hidden_features, hidden_features)
-        self.convolution_5 = self.__create_gin_convolution(hidden_features, hidden_features)
+        self.projection = torch.nn.Linear(in_features, hidden_features)
 
-        self.batch_norm_1 = torch.nn.BatchNorm1d(hidden_features)
-        self.batch_norm_2 = torch.nn.BatchNorm1d(hidden_features)
-        self.batch_norm_3 = torch.nn.BatchNorm1d(hidden_features)
-        self.batch_norm_4 = torch.nn.BatchNorm1d(hidden_features)
-        self.batch_norm_5 = torch.nn.BatchNorm1d(hidden_features)
+        edge_network = torch.nn.Sequential(
+            torch.nn.Linear(edge_features, edge_hidden),
+            torch.nn.ReLU(),
+            torch.nn.Linear(edge_hidden, hidden_features * hidden_features)
+        )
 
-        self.fully_connected_1 = torch.nn.Linear(hidden_features, hidden_features)
-        self.fully_connected_2 = torch.nn.Linear(hidden_features, out_features)
+        self.convolution = geometric.nn.NNConv(hidden_features, hidden_features, edge_network, aggr=aggregation)
+        self.gru = torch.nn.GRU(hidden_features, hidden_features)
+
+        self.set2set = geometric.nn.Set2Set(hidden_features, processing_steps=set2set_steps, num_layers=set2set_layers)
+        self.mlp = torch.nn.Sequential(
+            torch.nn.Linear(2 * hidden_features, hidden_features),
+            torch.nn.ReLU(),
+            torch.nn.Dropout(p=dropout),
+            torch.nn.Linear(hidden_features, out_features)
+        )
 
         self.activation = torch.nn.ReLU()
-        self.dropout = torch.nn.Dropout(p=dropout)
+        self.steps = steps
 
-    def __create_gin_convolution(self, in_features: int, out_features: int) -> geometric.nn.GINConv:
-        return geometric.nn.GINConv(torch.nn.Sequential(
-            torch.nn.Linear(in_features, out_features),
+    def forward(self, data: Dict[str, Any]) -> torch.Tensor:
+        data = data["graph"]
+        x = data.x.float()
+
+        out = self.activation(self.projection(x))
+        h = out.unsqueeze(0)
+
+        for _ in range(self.steps):
+            m = self.activation(self.convolution(out, data.edge_index, data.edge_attr))
+            out, h = self.gru(m.unsqueeze(0), h)
+            out = out.squeeze(0)
+
+        out = self.set2set(out, data.batch)
+        out = self.mlp(out)
+
+        return out
+
+
+class TripletMessagePassingNetwork(AbstractNetwork):
+
+    def __init__(
+            self, in_features: int, hidden_features: int, out_features: int, edge_features: int,
+            layers_count: int, dropout: float = 0, set2set_layers: int = 1, set2set_steps: int = 6
+    ):
+        super().__init__()
+        self.dropout = dropout
+        self.projection = torch.nn.Linear(in_features, hidden_features)
+
+        self.message_passing_layers = torch.nn.ModuleList([
+            TripletMessagePassingLayer(hidden_features, edge_features) for _ in range(layers_count)
+        ])
+
+        self.set2set = geometric.nn.Set2Set(hidden_features, processing_steps=set2set_steps, num_layers=set2set_layers)
+
+        self.mlp = torch.nn.Sequential(
+            torch.nn.Linear(2 * hidden_features, hidden_features),
+            torch.nn.LayerNorm(hidden_features),
             torch.nn.ReLU(),
-            torch.nn.Linear(out_features, out_features))
+            torch.nn.Dropout(p=dropout),
+            torch.nn.Linear(hidden_features, out_features)
         )
 
     def forward(self, data: Dict[str, Any]) -> torch.Tensor:
         data = data["graph"]
         x = data.x.float()
 
-        x = self.activation(self.convolution_1(x, data.edge_index))
-        x = self.batch_norm_1(x)
+        out = self.projection(x)
+        out = torch.nn.functional.celu(out)
 
-        x = self.activation(self.convolution_2(x, data.edge_index))
-        x = self.batch_norm_2(x)
+        edge_attr = data.edge_attr.float()
+        for message_passing_layer in self.message_passing_layers:
+            out = out + torch.nn.functional.dropout(
+                message_passing_layer(out, data.edge_index, edge_attr),
+                p=self.dropout,
+                training=self.training
+            )
 
-        x = self.activation(self.convolution_3(x, data.edge_index))
-        x = self.batch_norm_3(x)
+        out = torch.nn.functional.dropout(
+            self.set2set(out, data.batch),
+            p=self.dropout,
+            training=self.training
+        )
 
-        x = self.activation(self.convolution_4(x, data.edge_index))
-        x = self.batch_norm_4(x)
-
-        x = self.activation(self.convolution_5(x, data.edge_index))
-        x = self.batch_norm_5(x)
-
-        x = geometric.nn.global_add_pool(x, data.batch)
-        x = self.fully_connected_1(x)
-        x = self.activation(x)
-
-        x = self.dropout(x)
-        x = self.fully_connected_2(x)
-
-        return x
+        out = self.mlp(out)
+        return out

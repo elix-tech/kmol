@@ -4,11 +4,14 @@ from argparse import ArgumentParser
 from glob import glob
 from typing import List
 
+import joblib
 import numpy as np
+import optuna
 from torch.utils.data import DataLoader
 
 from lib.core.config import Config
 from lib.core.helpers import Namespace
+from lib.core.tuning import OptunaTemplateParser
 from lib.data.resources import Data
 from lib.data.streamers import GeneralStreamer, CrossValidationStreamer
 from lib.model.executors import Trainer, Evaluator, Predictor, ThresholdFinder, LearningRareFinder
@@ -63,6 +66,20 @@ class Executor(AbstractExecutor):
             results.append(result)
 
         return results
+
+    def __run_trial(self, config: Config) -> float:
+        try:
+            executor = Executor(config=config)
+            executor.train()
+
+            results = executor.analyze()
+            joblib.dump(results, "{}/.metrics.pkl".format(config.output_path))
+
+            best = getattr(results, self._config.hyper_parameter_tuning["target"])
+            return float(np.mean(best))
+
+        except Exception:
+            return 0.
 
     def train(self):
         streamer = GeneralStreamer(config=self._config)
@@ -154,6 +171,25 @@ class Executor(AbstractExecutor):
             for prediction in predictions:
                 print(",".join(prediction))
 
+    def optimize(self) -> optuna.Study:
+        template_parser = OptunaTemplateParser(
+            template_path=self._config.hyper_parameter_tuning["template"],
+            evaluator=self.__run_trial,
+            delete_checkpoints=True
+        )
+
+        study = optuna.create_study(direction='maximize')
+        study.optimize(template_parser.objective, n_trials=self._config.hyper_parameter_tuning["trials"])
+
+        logging.info("---------------------------- [BEST VALUE] ----------------------------")
+        logging.info(study.best_value)
+        logging.info("---------------------------- [BEST TRIAL] ---------------------------- ")
+        logging.info(study.best_trial)
+        logging.info("---------------------------- [BEST PARAMS] ----------------------------")
+        logging.info(study.best_params)
+
+        return study
+
     def find_threshold(self) -> List[float]:
         streamer = GeneralStreamer(config=self._config)
         data_loader = streamer.get(
@@ -184,5 +220,4 @@ if __name__ == "__main__":
     parser.add_argument("config")
     args = parser.parse_args()
 
-    executor = Executor(Config.from_json(args.config))
-    executor.run(args.job)
+    Executor(Config.from_json(args.config)).run(args.job)

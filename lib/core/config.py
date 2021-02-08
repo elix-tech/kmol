@@ -48,6 +48,9 @@ class Config(AbstractConfiguration):
 
     observers: DefaultDict[str, List[str]] = field(default_factory=lambda: defaultdict(list))
     differential_privacy: Dict[str, Any] = field(default_factory=lambda: {"enabled": False})
+    hyper_parameter_tuning: Dict[str, Any] = field(default_factory=lambda: {
+        "template": "", "target": "", "trials": 100
+    })
 
     def should_parallelize(self) -> bool:
         return torch.cuda.is_available() and self.use_cuda and len(self.enabled_gpus) > 1
@@ -58,12 +61,13 @@ class Config(AbstractConfiguration):
 
         return torch.device(device_name)
 
-    def _after_load(self):
+    def __post_init__(self):
         if not os.path.exists(self.output_path):
             os.makedirs(self.output_path)
 
         logging.basicConfig(format=self.log_format, level=self.log_level.upper())
 
+        EventManager.flush()
         for event_name, event_handlers in self.observers.items():
             for event_handler_definition in event_handlers:
                 event_handler = SuperFactory.reflect(event_handler_definition)()

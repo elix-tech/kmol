@@ -103,7 +103,7 @@ class SuperFactory:
             attributes = instantiator.__init__.__annotations__
 
             for option_name, option_value in dynamic_parameters.items():
-                if option_name not in parameters:
+                if option_name not in parameters and "kwargs" not in parameters:
                     raise ReflectionError("Unknown option for [{}] ---> [{}]".format(
                         instantiator.__name__, option_name)
                     )
