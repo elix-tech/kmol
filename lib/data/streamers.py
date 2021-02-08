@@ -121,7 +121,7 @@ class GeneralStreamer(AbstractStreamer):
         return Subset(dataset=self._dataset, indices=self._splits[split_name])
 
     def get(self, split_name: str, batch_size: int, shuffle: bool, **kwargs) -> DataLoader:
-        collater = Collater()
+        collater = Collater(device=self._config.get_device())
 
         return DataLoader(
             dataset=self._get_subset(split_name, **kwargs),

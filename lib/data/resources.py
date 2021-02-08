@@ -19,11 +19,14 @@ class Data:
 class Batch:
     ids: List[Union[str, int]]
     labels: List[str]
-    inputs: Dict[str, List[Any]]
+    inputs: Dict[str, torch.FloatTensor]
     outputs: torch.FloatTensor
 
 
 class Collater:
+
+    def __init__(self, device: torch.device):
+        self._device = device
 
     def _unpack(self, batch: List[Data]) -> Batch:
         ids = []
@@ -43,6 +46,11 @@ class Collater:
 
         return Batch(ids=ids, labels=batch[0].labels, inputs=inputs, outputs=outputs)
 
+    def _set_device(self, batch: Batch) -> None:
+        batch.outputs.to(self._device)
+        for inputs in batch.inputs.values():
+            inputs.to(self._device)
+
     def apply(self, batch: List[Data]) -> Batch:
 
         batch = self._unpack(batch)
@@ -51,4 +59,5 @@ class Collater:
         for key, values in batch.inputs.items():
             batch.inputs[key] = collater.collate(values)
 
+        self._set_device(batch)
         return batch
