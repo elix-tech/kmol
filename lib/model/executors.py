@@ -1,6 +1,9 @@
 import logging
 import math
 from abc import ABCMeta
+from copy import copy
+from functools import partial
+from glob import glob
 from typing import List, Tuple
 
 import numpy as np
@@ -222,6 +225,60 @@ class Evaluator(AbstractExecutor):
     def run(self, data_loader: TorchDataLoader) -> Namespace:
         ground_truth, logits = self._predictor.run_all(data_loader=data_loader)
         return self._processor.compute_metrics(ground_truth=ground_truth, logits=logits)
+
+
+class Pipeliner(AbstractExecutor):
+
+    def __init__(self, config: Config):
+        self._config = config
+
+        self._trainer = Trainer(self._config)
+        self._processor = PredictionProcessor(metrics=self._config.test_metrics, threshold=self._config.threshold)
+        self._predictor = None
+
+    def initialize_predictor(self) -> "Pipeliner":
+        self._predictor = Predictor(config=self._config)
+        return self
+
+    def train(self, data_loader: TorchDataLoader) -> None:
+        self._trainer.run(data_loader=data_loader)
+
+    def evaluate(self, data_loader: TorchDataLoader) -> Namespace:
+        ground_truth, logits = self.predict(data_loader=data_loader)
+        return self._processor.compute_metrics(ground_truth=ground_truth, logits=logits)
+
+    def predict(self, data_loader: TorchDataLoader) -> Tuple[List[torch.Tensor], List[torch.Tensor]]:
+        return self._predictor.run_all(data_loader=data_loader)
+
+    def evaluate_all(self, data_loader: TorchDataLoader) -> List[Namespace]:
+        results = []
+
+        for checkpoint_path in self.find_all_checkpoints():
+            config = copy(self._config)
+            config.checkpoint_path = checkpoint_path
+
+            evaluator = Evaluator(config=config)
+            results.append(evaluator.run(data_loader=data_loader))
+
+        return results
+
+    def find_all_checkpoints(self) -> List[str]:
+        checkpoint_paths = glob(self._config.output_path + "*")
+        checkpoint_paths = sorted(checkpoint_paths)
+        return sorted(checkpoint_paths, key=len)
+
+    def find_best_checkpoint(self, data_loader: TorchDataLoader) -> "Pipeliner":
+        results = self.evaluate_all(data_loader=data_loader)
+
+        per_target_best = Namespace.reduce(results, partial(np.argmax, axis=0))
+        per_target_best = getattr(per_target_best, self._config.target_metric)
+
+        self._config.checkpoint_path = "{}checkpoint.{}".format(
+            self._config.output_path, np.argmax(np.bincount(per_target_best))
+        )
+
+        self.initialize_predictor()
+        return self
 
 
 class ThresholdFinder(Evaluator):

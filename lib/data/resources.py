@@ -2,9 +2,9 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any, Dict, Union, List, Optional
 
+import numpy as np
 import torch
 from torch_geometric.data.dataloader import Collater as TorchGeometricCollater
-import numpy as np
 
 
 @dataclass
@@ -19,7 +19,7 @@ class Data:
 class Batch:
     ids: List[Union[str, int]]
     labels: List[str]
-    inputs: Dict[str, torch.FloatTensor]
+    inputs: Dict[str, torch.Tensor]
     outputs: torch.FloatTensor
 
 
@@ -47,9 +47,9 @@ class Collater:
         return Batch(ids=ids, labels=batch[0].labels, inputs=inputs, outputs=outputs)
 
     def _set_device(self, batch: Batch) -> None:
-        batch.outputs.to(self._device)
-        for inputs in batch.inputs.values():
-            inputs.to(self._device)
+        batch.outputs = batch.outputs.to(self._device)
+        for key, values in batch.inputs.items():
+            batch.inputs[key] = values.to(self._device)
 
     def apply(self, batch: List[Data]) -> Batch:
 

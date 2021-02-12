@@ -105,7 +105,7 @@ class StratifiedSplitter(AbstractSplitter):
         ratio_left = 1
 
         for split_name, split_ratio in self.splits.items():
-            current_ratio = split_ratio / ratio_left
+            current_ratio = round(split_ratio / ratio_left, 4)
 
             if current_ratio < 1:
                 current_split_ids, leftover_ids = train_test_split(

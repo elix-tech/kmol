@@ -5,13 +5,13 @@ import json
 import logging
 import os
 import timeit
-from functools import partial
+from functools import partial, total_ordering
 from typing import Type, Any, Dict, Union, T, Optional, List, Callable
 
 import humps
 import numpy as np
 import torch
-
+from dataclasses import dataclass
 from lib.core.exceptions import ReflectionError
 
 
@@ -211,3 +211,50 @@ class Namespace:
     @staticmethod
     def mean(namespaces: List["Namespace"]) -> "Namespace":
         return Namespace.reduce(namespaces, partial(np.mean, axis=0))
+
+
+@dataclass
+@total_ordering
+class ConfidenceInterval:
+
+    mean: float
+    deviation: float
+    confidence: float
+
+    def __str__(self) -> str:
+        return "{:.4f}±{:.4f}".format(self.mean, self.deviation)
+
+    def __repr__(self) -> str:
+        return str(self)
+
+    def __lt__(self, other: "ConfidenceInterval") -> bool:
+        return self.mean < other.mean
+
+    def __eq__(self, other: "ConfidenceInterval") -> bool:
+        return self.mean == other.mean and self.deviation == other.deviation and self.confidence == other.confidence
+
+    def __add__(self, other: "ConfidenceInterval") -> "ConfidenceInterval":
+        return ConfidenceInterval(
+            mean=self.mean + other.mean,
+            deviation=self.deviation + other.deviation,
+            confidence=min(self.confidence, other.confidence)
+        )
+
+    def __truediv__(self, other: int) -> "ConfidenceInterval":
+        return ConfidenceInterval(
+            mean=self.mean / other,
+            deviation=self.deviation / other,
+            confidence=self.confidence
+        )
+
+    @staticmethod
+    def compute(values: Union[List[List[float]], np.ndarray], z: float = 1.96) -> List["ConfidenceInterval"]:
+        values = np.array(values).transpose()
+
+        return [
+            ConfidenceInterval(
+                mean=np.mean(values[i]),
+                deviation=z * np.std(values[i]) / np.sqrt(len(values[i])),
+                confidence=z
+            ) for i in range(len(values))
+        ]

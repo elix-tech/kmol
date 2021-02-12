@@ -48,9 +48,9 @@ class Config(AbstractConfiguration):
 
     observers: DefaultDict[str, List[str]] = field(default_factory=lambda: defaultdict(list))
     differential_privacy: Dict[str, Any] = field(default_factory=lambda: {"enabled": False})
-    hyper_parameter_tuning: Dict[str, Any] = field(default_factory=lambda: {
-        "template": "", "target": "", "trials": 100
-    })
+
+    target_metric: str = "roc_auc"
+    optuna_trials: int = 1000
 
     def should_parallelize(self) -> bool:
         return torch.cuda.is_available() and self.use_cuda and len(self.enabled_gpus) > 1

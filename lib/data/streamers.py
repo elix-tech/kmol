@@ -6,7 +6,6 @@ from enum import Enum
 from functools import reduce
 from typing import List, Dict, Union
 
-import numpy as np
 from torch.utils.data import DataLoader, Subset
 from tqdm import tqdm
 

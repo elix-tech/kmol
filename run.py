@@ -1,20 +1,17 @@
 import logging
-import os
 from argparse import ArgumentParser
-from glob import glob
-from typing import List
+from typing import List, Tuple, Callable
 
 import joblib
 import numpy as np
 import optuna
-from torch.utils.data import DataLoader
 
 from lib.core.config import Config
-from lib.core.helpers import Namespace
+from lib.core.helpers import Namespace, ConfidenceInterval
 from lib.core.tuning import OptunaTemplateParser
 from lib.data.resources import Data
 from lib.data.streamers import GeneralStreamer, CrossValidationStreamer
-from lib.model.executors import Trainer, Evaluator, Predictor, ThresholdFinder, LearningRareFinder
+from lib.model.executors import Predictor, ThresholdFinder, LearningRareFinder, Pipeliner
 from lib.model.metrics import PredictionProcessor, CsvLogger
 from mila.factories import AbstractExecutor
 
@@ -24,14 +21,16 @@ class Executor(AbstractExecutor):
     def __init__(self, config: Config):
         super().__init__(config)
 
-    def __log_results(self, results: Namespace, labels: List[str]):
+    def __log_results(
+            self, results: Namespace, labels: List[str],
+            statistics: Tuple[Callable, ...] = (np.min, np.max, np.mean, np.median, np.std)
+    ):
         logger = CsvLogger()
 
         logger.log_header(labels)
         logger.log_content(results)
 
-        statistics = [np.min, np.max, np.mean, np.median, np.std]
-        values = PredictionProcessor.compute_statistics(results)
+        values = PredictionProcessor.compute_statistics(results, statistics=statistics)
         statistics = [statistic.__name__ for statistic in statistics]
 
         logger.log_header(statistics)
@@ -43,30 +42,6 @@ class Executor(AbstractExecutor):
 
         return data.outputs.transpose()
 
-    def __train(self, data_loader: DataLoader) -> None:
-        trainer = Trainer(self._config)
-        trainer.run(data_loader=data_loader)
-
-    def __eval(self, data_loader: DataLoader) -> Namespace:
-        evaluator = Evaluator(self._config)
-        results = evaluator.run(data_loader)
-
-        return results
-
-    def __analyze(self, data_loader: DataLoader) -> List[Namespace]:
-        checkpoints = glob(self._config.output_path + "*")
-        checkpoints = sorted(checkpoints)
-        checkpoints = sorted(checkpoints, key=len)
-
-        results = []
-        for checkpoint in checkpoints:
-            self._config.checkpoint_path = checkpoint
-
-            result = self.__eval(data_loader=data_loader)
-            results.append(result)
-
-        return results
-
     def __run_trial(self, config: Config) -> float:
         try:
             executor = Executor(config=config)
@@ -75,38 +50,35 @@ class Executor(AbstractExecutor):
             results = executor.analyze()
             joblib.dump(results, "{}/.metrics.pkl".format(config.output_path))
 
-            best = getattr(results, self._config.hyper_parameter_tuning["target"])
+            best = getattr(results, self._config.target_metric)
             return float(np.mean(best))
 
-        except Exception:
+        except Exception as e:
+            logging.error("[Trial Failed] {}".format(e))
             return 0.
 
     def train(self):
         streamer = GeneralStreamer(config=self._config)
-        data_loader = streamer.get(
+        Pipeliner(config=self._config).train(data_loader=streamer.get(
             split_name=self._config.train_split, batch_size=self._config.batch_size, shuffle=True
-        )
+        ))
 
-        self.__train(data_loader=data_loader)
-
-    def eval(self) -> Namespace:
+    def eval(self):
         streamer = GeneralStreamer(config=self._config)
-        data_loader = streamer.get(
+        results = Pipeliner(config=self._config).evaluate(data_loader=streamer.get(
             split_name=self._config.test_split, batch_size=self._config.batch_size, shuffle=False
-        )
+        ))
 
-        results = self.__eval(data_loader=data_loader)
         self.__log_results(results=results, labels=streamer.labels)
-
         return results
 
-    def analyze(self) -> Namespace:
+    def analyze(self):
         streamer = GeneralStreamer(config=self._config)
         data_loader = streamer.get(
             split_name=self._config.test_split, batch_size=self._config.batch_size, shuffle=False
         )
 
-        results = self.__analyze(data_loader)
+        results = Pipeliner(config=self._config).evaluate_all(data_loader=data_loader)
         for checkpoint_id, result in enumerate(results):
             self.__log_results(results=result, labels=streamer.labels + ["[{}]".format(checkpoint_id)])
 
@@ -116,19 +88,18 @@ class Executor(AbstractExecutor):
 
         return results
 
-    def cv(self) -> Namespace:
+    def mean_cv(self) -> Namespace:
+        """Cross Validation: Evaluate all folds; compute the averages (+ confidence interval) on the results."""
         streamer = CrossValidationStreamer(config=self._config)
-        output_path = self._config.output_path
+        all_results = []
 
-        results = []
         for fold in range(self._config.cross_validation_folds):
-            self._config.checkpoint_path = None
-            self._config.output_path = "{}/.{}/".format(output_path, fold)
-            if not os.path.exists(self._config.output_path):
-                os.makedirs(self._config.output_path)
+            output_path = "{}/.{}/".format(self._config.output_path, fold)
+            config = Config(**{**vars(self._config), **{"output_path": output_path}})
+            pipeliner = Pipeliner(config=config)
 
-            self.__train(
-                streamer.get(
+            pipeliner.train(
+                data_loader=streamer.get(
                     split_name=streamer.get_fold_name(fold),
                     mode=CrossValidationStreamer.Mode.TRAIN,
                     batch_size=self._config.batch_size,
@@ -136,8 +107,9 @@ class Executor(AbstractExecutor):
                 )
             )
 
-            result = self.__analyze(
-                streamer.get(
+            # evaluate all checkpoints for the current fold
+            fold_results = pipeliner.evaluate_all(
+                data_loader=streamer.get(
                     split_name=streamer.get_fold_name(fold),
                     mode=CrossValidationStreamer.Mode.TEST,
                     batch_size=self._config.batch_size,
@@ -145,11 +117,53 @@ class Executor(AbstractExecutor):
                 )
             )
 
-            results.append(Namespace.max(result))
+            # reduction on all checkpoints for a single fold
+            all_results.append(Namespace.max(fold_results))
 
-        results = Namespace.mean(results)
+        # reduction on all fold summaries
+        results = Namespace.reduce(all_results, ConfidenceInterval.compute)
+        self.__log_results(results=results, labels=streamer.labels, statistics=(np.min, np.max, np.mean, np.median))
+
+        return results
+
+    def full_cv(self) -> Namespace:
+        """Cross Validation: Evaluate all folds; concatenate predictions from all folds; compute metrics on all data."""
+        streamer = CrossValidationStreamer(config=self._config)
+
+        ground_truth = []
+        logits = []
+
+        for fold in range(self._config.cross_validation_folds):
+            output_path = "{}/.{}/".format(self._config.output_path, fold)
+            config = Config(**{**vars(self._config), **{"output_path": output_path}})
+            pipeliner = Pipeliner(config=config)
+
+            pipeliner.train(
+                data_loader=streamer.get(
+                    split_name=streamer.get_fold_name(fold),
+                    mode=CrossValidationStreamer.Mode.TRAIN,
+                    batch_size=self._config.batch_size,
+                    shuffle=True
+                )
+            )
+
+            test_loader = streamer.get(
+                split_name=streamer.get_fold_name(fold),
+                mode=CrossValidationStreamer.Mode.TEST,
+                batch_size=self._config.batch_size,
+                shuffle=False
+            )
+
+            pipeliner.find_best_checkpoint(data_loader=test_loader)
+            fold_ground_truth, fold_logits = pipeliner.predict(data_loader=test_loader)
+
+            ground_truth.extend(fold_ground_truth)
+            logits.extend(fold_logits)
+
+        processor = PredictionProcessor(metrics=self._config.test_metrics, threshold=self._config.threshold)
+        results = processor.compute_metrics(ground_truth=ground_truth, logits=logits)
+
         self.__log_results(results=results, labels=streamer.labels)
-
         return results
 
     def predict(self):
@@ -173,13 +187,13 @@ class Executor(AbstractExecutor):
 
     def optimize(self) -> optuna.Study:
         template_parser = OptunaTemplateParser(
-            template_path=self._config.hyper_parameter_tuning["template"],
+            template_path=self._config.location,
             evaluator=self.__run_trial,
             delete_checkpoints=True
         )
 
         study = optuna.create_study(direction='maximize')
-        study.optimize(template_parser.objective, n_trials=self._config.hyper_parameter_tuning["trials"])
+        study.optimize(template_parser.objective, n_trials=self._config.optuna_trials)
 
         logging.info("---------------------------- [BEST VALUE] ----------------------------")
         logging.info(study.best_value)
