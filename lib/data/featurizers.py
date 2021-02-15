@@ -83,36 +83,51 @@ class AbstractTorchGeometricFeaturizer(AbstractFeaturizer):
         raise NotImplementedError
 
 
-class LegacyGraphFeaturizer(AbstractTorchGeometricFeaturizer):
-    """
-    The base molecule featurizer found in pytorch geometric.
-    The input is expected to be a SMILES string.
+class AbstractDescriptorComputer(metaclass=ABCMeta):
 
-    Adapted from: torch_geometric.datasets.molecule_net.MoleculeNet::process()
-    """
-    def _featurize_atom(self, atom: Chem.Atom) -> List[float]:
-        from torch_geometric.datasets.molecule_net import x_map as atom_mappings
+    @abstractmethod
+    def run(self, mol: Chem.Mol) -> List[float]:
+        raise NotImplementedError
 
-        return [
-            atom_mappings['atomic_num'].index(atom.GetAtomicNum()),
-            atom_mappings['chirality'].index(str(atom.GetChiralTag())),
-            atom_mappings['degree'].index(atom.GetTotalDegree()),
-            atom_mappings['formal_charge'].index(atom.GetFormalCharge()),
-            atom_mappings['num_hs'].index(atom.GetTotalNumHs()),
-            atom_mappings['num_radical_electrons'].index(atom.GetNumRadicalElectrons()),
-            atom_mappings['hybridization'].index(str(atom.GetHybridization())),
-            atom_mappings['is_aromatic'].index(atom.GetIsAromatic()),
-            atom_mappings['is_in_ring'].index(atom.IsInRing())
-        ]
 
-    def _featurize_bond(self, bond: Chem.Bond) -> List[float]:
-        from torch_geometric.datasets.molecule_net import e_map as bond_mappings
+class RdkitDescriptorComputer(AbstractDescriptorComputer):
+
+    def _get_descriptor_calculators(self) -> List[Callable]:
+        from rdkit.Chem import Descriptors, Lipinski, Crippen, MolSurf, GraphDescriptors, rdMolDescriptors, QED
 
         return [
-            bond_mappings['bond_type'].index(str(bond.GetBondType())),
-            bond_mappings['stereo'].index(str(bond.GetStereo())),
-            bond_mappings['is_conjugated'].index(bond.GetIsConjugated())
+            Descriptors.MolWt,
+            Descriptors.NumRadicalElectrons,
+            Descriptors.NumValenceElectrons,
+            rdMolDescriptors.CalcTPSA,
+            MolSurf.LabuteASA,
+            GraphDescriptors.BalabanJ,
+            Lipinski.RingCount,
+            Lipinski.NumAliphaticRings,
+            Lipinski.NumSaturatedRings,
+            Lipinski.NumRotatableBonds,
+            Lipinski.NumHeteroatoms,
+            Lipinski.HeavyAtomCount,
+            Lipinski.NumHDonors,
+            Lipinski.NumHAcceptors,
+            Lipinski.NumAromaticRings,
+            Crippen.MolLogP,
+            QED.qed
         ]
+
+    def run(self, mol: Chem.Mol) -> List[Union[int, float]]:
+        return [featurizer(mol) for featurizer in self._get_descriptor_calculators()]
+
+
+class MordredDescriptorComputer(AbstractDescriptorComputer):
+
+    def __init__(self):
+        from mordred import Calculator, descriptors
+        self._calculator = Calculator(descriptors, ignore_3D=True)
+
+    def run(self, mol: Chem.Mol) -> List[Union[int, float]]:
+        descriptors = self._calculator(mol)
+        return list(descriptors.fill_missing(0))
 
 
 class GraphFeaturizer(AbstractTorchGeometricFeaturizer):
@@ -122,18 +137,23 @@ class GraphFeaturizer(AbstractTorchGeometricFeaturizer):
 
     DEFAULT_ATOM_TYPES = ["B", "C", "N", "O", "F", "Na", "Si", "P", "S", "Cl", "K", "Br", "I"]
 
-    def __init__(self, inputs: List[str], outputs: List[str], allowed_atom_types: Optional[List[str]] = None):
+    def __init__(
+            self, inputs: List[str], outputs: List[str],
+            descriptor_calculator: AbstractDescriptorComputer,
+            allowed_atom_types: Optional[List[str]] = None
+    ):
         super().__init__(inputs, outputs)
 
         if allowed_atom_types is None:
             allowed_atom_types = self.DEFAULT_ATOM_TYPES
 
         self._allowed_atom_types = allowed_atom_types
+        self._descriptor_calculator = descriptor_calculator
 
     def _process(self, data: str) -> TorchGeometricData:
         data = super()._process(data=data)
 
-        molecule_features = self._featurize_molecule(data.mol)
+        molecule_features = self._descriptor_calculator.run(data.mol)
         molecule_features = torch.FloatTensor(molecule_features).view(-1, len(molecule_features))
 
         data.molecule_features = molecule_features
@@ -148,9 +168,6 @@ class GraphFeaturizer(AbstractTorchGeometricFeaturizer):
         return list(itertools.chain.from_iterable(
             [featurizer(bond) for featurizer in self._list_bond_featurizers()]
         ))
-
-    def _featurize_molecule(self, mol: Chem.Mol) -> List[float]:
-        return [featurizer(mol) for featurizer in self._list_molecule_featurizers()]
 
     def _list_atom_featurizers(self) -> List[Callable]:
         # 45 features by default
@@ -181,30 +198,6 @@ class GraphFeaturizer(AbstractTorchGeometricFeaturizer):
             bond_is_conjugated,
             bond_is_in_ring,
             bond_stereo_one_hot
-        ]
-
-    def _list_molecule_featurizers(self) -> List[Callable]:
-        # 16 features
-        from rdkit.Chem import Descriptors, Lipinski, Crippen, MolSurf, GraphDescriptors, rdMolDescriptors, QED
-
-        return [
-            Descriptors.MolWt,
-            Descriptors.NumRadicalElectrons,
-            Descriptors.NumValenceElectrons,
-            rdMolDescriptors.CalcTPSA,
-            MolSurf.LabuteASA,
-            GraphDescriptors.BalabanJ,
-            Lipinski.RingCount,
-            Lipinski.NumAliphaticRings,
-            Lipinski.NumSaturatedRings,
-            Lipinski.NumRotatableBonds,
-            Lipinski.NumHeteroatoms,
-            Lipinski.HeavyAtomCount,
-            Lipinski.NumHDonors,
-            Lipinski.NumHAcceptors,
-            Lipinski.NumAromaticRings,
-            Crippen.MolLogP,
-            QED.qed
         ]
 
 

@@ -51,6 +51,7 @@ class Config(AbstractConfiguration):
 
     target_metric: str = "roc_auc"
     optuna_trials: int = 1000
+    subset: Optional[Dict[str, Any]] = None
 
     def should_parallelize(self) -> bool:
         return torch.cuda.is_available() and self.use_cuda and len(self.enabled_gpus) > 1

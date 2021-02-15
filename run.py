@@ -10,7 +10,7 @@ from lib.core.config import Config
 from lib.core.helpers import Namespace, ConfidenceInterval
 from lib.core.tuning import OptunaTemplateParser
 from lib.data.resources import Data
-from lib.data.streamers import GeneralStreamer, CrossValidationStreamer
+from lib.data.streamers import GeneralStreamer, SubsetStreamer, CrossValidationStreamer
 from lib.model.executors import Predictor, ThresholdFinder, LearningRareFinder, Pipeliner
 from lib.model.metrics import PredictionProcessor, CsvLogger
 from mila.factories import AbstractExecutor
@@ -58,10 +58,17 @@ class Executor(AbstractExecutor):
             return 0.
 
     def train(self):
-        streamer = GeneralStreamer(config=self._config)
-        Pipeliner(config=self._config).train(data_loader=streamer.get(
-            split_name=self._config.train_split, batch_size=self._config.batch_size, shuffle=True
-        ))
+        if self._config.subset:
+            streamer = SubsetStreamer(config=self._config)
+            Pipeliner(config=self._config).train(data_loader=streamer.get(
+                split_name=self._config.train_split, batch_size=self._config.batch_size, shuffle=True,
+                subset_id=self._config.subset["id"], subset_distributions=self._config.subset["distribution"]
+            ))
+        else:
+            streamer = GeneralStreamer(config=self._config)
+            Pipeliner(config=self._config).train(data_loader=streamer.get(
+                split_name=self._config.train_split, batch_size=self._config.batch_size, shuffle=True
+            ))
 
     def eval(self):
         streamer = GeneralStreamer(config=self._config)

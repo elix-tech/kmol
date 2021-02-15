@@ -98,6 +98,9 @@ class SuperFactory:
 
                 instantiator = subclasses.get(dependency_name)
 
+        if not dynamic_parameters and not loaded_parameters:
+            return instantiator()
+
         parameters = instantiator.__init__.__code__.co_varnames
         if len(dynamic_parameters) > 0:
             attributes = instantiator.__init__.__annotations__

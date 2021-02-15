@@ -2,6 +2,7 @@ name: federated
 channels:
   - pytorch
   - zeroae
+  - mordred-descriptor
   - conda-forge
   - defaults
 dependencies:
@@ -100,6 +101,7 @@ dependencies:
   - mkl-service=2.3.0=py38he904b0f_0
   - mkl_fft=1.2.0=py38h23d657b_0
   - mkl_random=1.1.1=py38h0573a6f_0
+  - mordred=1.2.0=pyhe5148d4_0
   - mysql-common=8.0.21=2
   - mysql-libs=8.0.21=hf3661c5_2
   - nbclient=0.5.0=py_0
@@ -107,6 +109,7 @@ dependencies:
   - nbformat=5.0.8=py_0
   - ncurses=6.2=he6710b0_1
   - nest-asyncio=1.4.1=py_0
+  - networkx=2.5=py_0
   - ninja=1.10.1=py38hfd86e86_0
   - notebook=6.1.4=py38h32f6830_1
   - nspr=4.29=he1b5a44_0
@@ -214,7 +217,6 @@ dependencies:
     - kiwisolver==1.2.0
     - llvmlite==0.34.0
     - matplotlib==3.3.2
-    - networkx==2.5
     - numba==0.51.2
     - opacus==0.11.0
     - pluggy==0.13.1
@@ -225,6 +227,11 @@ dependencies:
     - pytest==6.2.2
     - rdflib==5.0.0
     - toml==0.10.2
+    - torch-cluster==1.5.8
+    - torch-geometric==1.6.1
+    - torch-scatter==2.0.5
+    - torch-sparse==0.6.8
+    - torch-spline-conv==1.2.0
     - tqdm==4.50.1
 prefix: /home/elix/anaconda3/envs/federated
 
