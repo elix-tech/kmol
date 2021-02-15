@@ -24,6 +24,7 @@ class Config(AbstractConfiguration):
     scheduler: Dict[str, Any]
 
     is_stepwise_scheduler: Optional[bool] = True
+    is_finetuning: Optional[bool] = False
     checkpoint_path: Optional[str] = None
     threshold: Optional[float] = None
     cross_validation_folds: int = 5

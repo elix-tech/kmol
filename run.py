@@ -72,7 +72,7 @@ class Executor(AbstractExecutor):
 
     def eval(self):
         streamer = GeneralStreamer(config=self._config)
-        results = Pipeliner(config=self._config).evaluate(data_loader=streamer.get(
+        results = Pipeliner(config=self._config).initialize_predictor().evaluate(data_loader=streamer.get(
             split_name=self._config.test_split, batch_size=self._config.batch_size, shuffle=False
         ))
 

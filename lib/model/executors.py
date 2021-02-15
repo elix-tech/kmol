@@ -45,16 +45,23 @@ class AbstractExecutor(metaclass=ABCMeta):
         logging.info("Restoring from Checkpoint: {}".format(self._config.checkpoint_path))
         info = torch.load(self._config.checkpoint_path, map_location=self._config.get_device())
 
+        payload = Namespace(executor=self, info=info)
+        EventManager.dispatch_event(event_name="before_checkpoint_load", payload=payload)
+
         self._network.load_state_dict(info["model"])
 
-        if self._optimizer and "optimizer" in info:
-            self._optimizer.load_state_dict(info["optimizer"])
+        if not self._config.is_finetuning:
+            if self._optimizer and "optimizer" in info:
+                self._optimizer.load_state_dict(info["optimizer"])
 
-        if self._scheduler and "scheduler" in info:
-            self._scheduler.load_state_dict(info["scheduler"])
+            if self._scheduler and "scheduler" in info:
+                self._scheduler.load_state_dict(info["scheduler"])
 
-        if "epoch" in info:
-            self._start_epoch = info["epoch"]
+            if "epoch" in info:
+                self._start_epoch = info["epoch"]
+
+        payload = Namespace(executor=self)
+        EventManager.dispatch_event(event_name="after_checkpoint_load", payload=payload)
 
     def _setup_network(self) -> None:
         network = SuperFactory.create(AbstractNetwork, self._config.model)
@@ -143,6 +150,8 @@ class Trainer(AbstractExecutor):
             self._reset_trackers()
             self.save(epoch)
 
+        EventManager.dispatch_event(event_name="after_train_end", payload=payload)
+
     def _update_trackers(self, loss: float, ground_truth: torch.Tensor, logits: torch.Tensor) -> None:
         self._loss_tracker.update(loss)
 
@@ -168,6 +177,9 @@ class Trainer(AbstractExecutor):
 
         model_path = "{}checkpoint.{}".format(self._config.output_path, epoch)
         logging.info("Saving checkpoint: {}".format(model_path))
+
+        payload = Namespace(info=info)
+        EventManager.dispatch_event(event_name="before_checkpoint_save", payload=payload)
 
         torch.save(info, model_path)
 
@@ -274,7 +286,7 @@ class Pipeliner(AbstractExecutor):
         per_target_best = getattr(per_target_best, self._config.target_metric)
 
         self._config.checkpoint_path = "{}checkpoint.{}".format(
-            self._config.output_path, np.argmax(np.bincount(per_target_best))
+            self._config.output_path, np.argmax(np.bincount(per_target_best)) + 1
         )
 
         self.initialize_predictor()

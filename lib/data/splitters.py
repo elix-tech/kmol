@@ -35,7 +35,7 @@ class IndexSplitter(AbstractSplitter):
         start_index = 0
         total_ratio = 0
         for split_name, split_ratio in self.splits.items():
-            total_ratio += split_ratio
+            total_ratio = round(total_ratio + split_ratio, 4)
             end_index = math.floor(dataset_size * total_ratio)
 
             splits[split_name] = ids[start_index:end_index]

@@ -25,7 +25,7 @@ class EventManager:
     @staticmethod
     def dispatch_event(event_name: str, payload: Namespace) -> None:
         for handler in EventManager._LISTENERS[event_name]:
-            payload = handler.run(payload=payload)
+            handler.run(payload=payload)
 
     @staticmethod
     def flush() -> None:
@@ -43,6 +43,28 @@ class MaskMissingLabelsHandler(EventHandler):
 
         payload.target = labels
         payload.weight = weights
+
+
+class DropBatchNormLayersHandler(EventHandler):
+    """event: various"""
+
+    def run(self, payload: Namespace) -> None:
+        from opacus.utils.module_modification import nullify_batchnorm_modules
+        nullify_batchnorm_modules(payload.executor._network)
+
+
+class DropParametersHandler(EventHandler):
+    """event: before_checkpoint_load"""
+
+    def __init__(self):
+        self._keywords = []
+
+    def run(self, payload: Namespace):
+        for keyword in self._keywords:
+            try:
+                del payload.info["model"][keyword]
+            except KeyError:
+                pass
 
 
 class DifferentialPrivacy:
