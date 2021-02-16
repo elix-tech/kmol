@@ -7,13 +7,12 @@ from typing import Any, List
 @dataclass
 class AbstractConfiguration(metaclass=ABCMeta):
 
-    location: str
     output_path: str
 
     @classmethod
     def from_json(cls, file_path: str) -> "AbstractConfiguration":
         with open(file_path) as read_handle:
-            return cls(location=file_path, **json.load(read_handle))
+            return cls(**json.load(read_handle))
 
 
 class AbstractExecutor(metaclass=ABCMeta):

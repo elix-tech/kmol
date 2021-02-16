@@ -1,6 +1,6 @@
 import logging
 from argparse import ArgumentParser
-from typing import List, Tuple, Callable
+from typing import List, Tuple, Callable, Optional
 
 import joblib
 import numpy as np
@@ -18,8 +18,9 @@ from mila.factories import AbstractExecutor
 
 class Executor(AbstractExecutor):
 
-    def __init__(self, config: Config):
+    def __init__(self, config: Config, config_path: Optional[str] = ""):
         super().__init__(config)
+        self._config_path = config_path
 
     def __log_results(
             self, results: Namespace, labels: List[str],
@@ -96,7 +97,12 @@ class Executor(AbstractExecutor):
         return results
 
     def mean_cv(self) -> Namespace:
-        """Cross Validation: Evaluate all folds; compute the averages (+ confidence interval) on the results."""
+        """
+        for each fold:
+            train the fold
+            evaluate the fold (keep metrics from the best checkpoint)
+        aggregate results (compute metric averages and confidence interval)
+        """
         streamer = CrossValidationStreamer(config=self._config)
         all_results = []
 
@@ -134,7 +140,13 @@ class Executor(AbstractExecutor):
         return results
 
     def full_cv(self) -> Namespace:
-        """Cross Validation: Evaluate all folds; concatenate predictions from all folds; compute metrics on all data."""
+        """
+        for each fold:
+            train the fold
+            find the best checkpoint
+            run inference on the test data (concatenating the output)
+        compute metrics on the predicted values in one go
+        """
         streamer = CrossValidationStreamer(config=self._config)
 
         ground_truth = []
@@ -173,6 +185,64 @@ class Executor(AbstractExecutor):
         self.__log_results(results=results, labels=streamer.labels)
         return results
 
+    def step_cv(self) -> Namespace:
+        """
+        for each fold:
+            train the fold
+        for range(checkpoint counts):
+            load each fold
+            run inference on the test data (concatenating the output)
+            compute metrics on the predicted values in one go
+        return the best checkpoint metrics
+        """
+        streamer = CrossValidationStreamer(config=self._config)
+        folds = {}
+
+        for fold in range(self._config.cross_validation_folds):
+            output_path = "{}/.{}/".format(self._config.output_path, fold)
+            config = Config(**{**vars(self._config), **{"output_path": output_path}})
+            pipeliner = Pipeliner(config=config)
+
+            pipeliner.train(
+                data_loader=streamer.get(
+                    split_name=streamer.get_fold_name(fold),
+                    mode=CrossValidationStreamer.Mode.TRAIN,
+                    batch_size=self._config.batch_size,
+                    shuffle=True
+                )
+            )
+
+            folds[pipeliner] = streamer.get(
+                split_name=streamer.get_fold_name(fold),
+                mode=CrossValidationStreamer.Mode.TEST,
+                batch_size=self._config.batch_size,
+                shuffle=False
+            )
+
+        processor = PredictionProcessor(metrics=self._config.test_metrics, threshold=self._config.threshold)
+        results = []
+
+        for checkpoint_id in range(1, self._config.epochs + 1):
+            ground_truth = []
+            logits = []
+
+            for pipeliner, test_loader in folds.items():
+                pipeliner._config.checkpoint_path = "{}/checkpoint.{}".format(
+                    pipeliner._config.output_path, checkpoint_id
+                )
+
+                pipeliner.initialize_predictor()
+                fold_ground_truth, fold_logits = pipeliner.predict(data_loader=test_loader)
+                ground_truth.extend(fold_ground_truth)
+                logits.extend(fold_logits)
+
+            results.append(processor.compute_metrics(ground_truth=ground_truth, logits=logits))
+
+        results = Namespace.max(results)
+        self.__log_results(results=results, labels=streamer.labels)
+
+        return results
+
     def predict(self):
         streamer = GeneralStreamer(config=self._config)
         data_loader = streamer.get(
@@ -193,8 +263,11 @@ class Executor(AbstractExecutor):
                 print(",".join(prediction))
 
     def optimize(self) -> optuna.Study:
+        if not self._config_path:
+            raise AttributeError("Cannot optimize. No configuration path specified.")
+
         template_parser = OptunaTemplateParser(
-            template_path=self._config.location,
+            template_path=self._config_path,
             evaluator=self.__run_trial,
             delete_checkpoints=True
         )
@@ -241,4 +314,4 @@ if __name__ == "__main__":
     parser.add_argument("config")
     args = parser.parse_args()
 
-    Executor(Config.from_json(args.config)).run(args.job)
+    Executor(config=Config.from_json(args.config), config_path=args.config).run(args.job)

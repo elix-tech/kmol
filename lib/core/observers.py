@@ -121,7 +121,7 @@ class DifferentialPrivacy:
 
         def run(self, payload: Namespace) -> None:
             from opacus.utils.module_modification import replace_all_modules
-            replace_all_modules(payload.network, BatchNormLayer, self.converter)
+            replace_all_modules(payload.executor._network, BatchNormLayer, self.converter)
 
     @staticmethod
     def setup(delta: float = 1e-5, **kwargs):

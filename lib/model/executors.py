@@ -64,12 +64,11 @@ class AbstractExecutor(metaclass=ABCMeta):
         EventManager.dispatch_event(event_name="after_checkpoint_load", payload=payload)
 
     def _setup_network(self) -> None:
-        network = SuperFactory.create(AbstractNetwork, self._config.model)
+        self._network = SuperFactory.create(AbstractNetwork, self._config.model)
 
-        payload = Namespace(network=network, config=self._config)
+        payload = Namespace(executor=self, config=self._config)
         EventManager.dispatch_event(event_name="after_network_create", payload=payload)
 
-        self._network = payload.network
         if self._config.should_parallelize():
             self._network = torch.nn.DataParallel(self._network, device_ids=self._config.enabled_gpus)
 
