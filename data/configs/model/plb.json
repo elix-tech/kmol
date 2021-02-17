@@ -42,7 +42,7 @@
     "scheduler": {
         "type": "torch.optim.lr_scheduler.OneCycleLR",
         "max_lr": 0.01,
-        "epochs": 200,
+        "epochs": 50,
         "pct_start": 0.3,
         "div_factor": 25,
         "final_div_factor": 1000
@@ -55,7 +55,7 @@
     "train_metrics": [],
     "test_metrics": ["roc_auc", "pr_auc", "accuracy", "precision", "recall"],
 
-    "epochs": 200,
+    "epochs": 50,
     "batch_size": 128,
 
     "use_cuda": true,

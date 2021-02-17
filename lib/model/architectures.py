@@ -203,8 +203,8 @@ class ConvolutionalProteinLigandNetwork(AbstractNetwork):
             )
 
     def forward(self, data: Dict[str, Any]) -> torch.Tensor:
-        ligand_features = data["ligand"].float()
-        protein_features = data["protein"].float()
+        ligand_features = data["ligand"]
+        protein_features = data["protein"].transpose(-1, -2)
 
         protein_convolution = self.protein_convolution(protein_features)
         protein_convolution = self.activation(protein_convolution)
