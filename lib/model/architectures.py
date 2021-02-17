@@ -1,14 +1,26 @@
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
+from abc import ABCMeta, abstractmethod
 
 import torch
 import torch_geometric as geometric
 
-from lib.model.layers import GraphConvolutionWrapper, TripletMessagePassingLayer
+from lib.model.layers import GraphConvolutionWrapper, TripletMessagePassingLayer, LinearBlock
 from math import floor
 
 
-class AbstractNetwork(torch.nn.Module):
-    pass
+class AbstractNetwork(torch.nn.Module, metaclass=ABCMeta):
+
+    @abstractmethod
+    def get_requirements(self) -> List[str]:
+        raise NotImplementedError
+
+    def map(self, module: "AbstractNetwork", *args) -> Dict[str, Any]:
+        requirements = module.get_requirements()
+
+        if len(args) != len(requirements):
+            raise AttributeError("Cannot map inputs to module")
+
+        return {requirements[index]: args[index] for index in range(len(requirements))}
 
 
 class GraphConvolutionalNetwork(AbstractNetwork):
@@ -46,8 +58,11 @@ class GraphConvolutionalNetwork(AbstractNetwork):
             torch.nn.Linear(hidden_features, out_features)
         )
 
+    def get_requirements(self) -> List[str]:
+        return ["graph"]
+
     def forward(self, data: Dict[str, Any]) -> torch.Tensor:
-        data = data["graph"]
+        data = data[self.get_requirements()[0]]
         x = data.x.float()
 
         for convolution in self.convolutions:
@@ -94,8 +109,11 @@ class MessagePassingNetwork(AbstractNetwork):
         self.activation = torch.nn.ReLU()
         self.steps = steps
 
+    def get_requirements(self) -> List[str]:
+        return ["graph"]
+
     def forward(self, data: Dict[str, Any]) -> torch.Tensor:
-        data = data["graph"]
+        data = data[self.get_requirements()[0]]
         x = data.x.float()
 
         out = self.activation(self.projection(x))
@@ -136,8 +154,11 @@ class TripletMessagePassingNetwork(AbstractNetwork):
             torch.nn.Linear(hidden_features, out_features)
         )
 
+    def get_requirements(self) -> List[str]:
+        return ["graph"]
+
     def forward(self, data: Dict[str, Any]) -> torch.Tensor:
-        data = data["graph"]
+        data = data[self.get_requirements()[0]]
         x = data.x.float()
 
         out = self.projection(x)
@@ -161,40 +182,60 @@ class TripletMessagePassingNetwork(AbstractNetwork):
         return out
 
 
-class ConvolutionalProteinLigandNetwork(AbstractNetwork):
+class LinearNetwork(AbstractNetwork, LinearBlock):
 
-    def __init__(self, ligand_features: int, out_features: int, dropout: float = 0.2):
+    def get_requirements(self) -> List[str]:
+        return ["features"]
+
+    def forward(self, data: Dict[str, Any]) -> torch.Tensor:
+        features = data[self.get_requirements()[0]]
+        return super().forward(features)
+
+
+class ConvolutionalNetwork(AbstractNetwork):
+
+    def __init__(self, in_features: int, hidden_features: int, out_features: int):
         super().__init__()
 
-        self.protein_convolution = torch.nn.Conv1d(in_channels=21, out_channels=10, kernel_size=3, stride=1)
-        self.protein_max_pooling = torch.nn.MaxPool1d(16)
-
-        self.protein_module = torch.nn.Sequential(
-            torch.nn.Linear(1880, 64, bias=True),
+        self.convolutional_block = torch.nn.Sequential(
+            torch.nn.Conv1d(in_channels=in_features, out_channels=10, kernel_size=3, stride=1),
             torch.nn.ReLU(),
-            torch.nn.Linear(64, 16, bias=True),
-            torch.nn.ReLU(),
+            torch.nn.MaxPool1d(16),
+            torch.nn.ReLU()
         )
 
-        self.ligand_module = torch.nn.Sequential(
-            torch.nn.Linear(ligand_features, 64, bias=True),
-            torch.nn.ReLU(),
-            torch.nn.Linear(64, 16, bias=True),
-            torch.nn.ReLU(),
-        )
+        self.linear_block = LinearBlock(in_features=1880, hidden_features=hidden_features, out_features=out_features)
 
-        self.output_module = torch.nn.Sequential(
-            torch.nn.Linear(32, 16, bias=True),
-            torch.nn.ReLU(),
-            torch.nn.Linear(16, out_features, bias=True),
-        )
+    def get_requirements(self) -> List[str]:
+        return ["features"]
+
+    def forward(self, data: Dict[str, Any]) -> torch.Tensor:
+        x = data[self.get_requirements()[0]]
+
+        x = self.convolutional_block(x)
+        x = torch.flatten(x, start_dim=1)
+        x = self.linear_block(x)
+
+        return x
+
+
+class ProteinLigandNetwork(AbstractNetwork):
+
+    def __init__(
+            self, protein_module: AbstractNetwork, ligand_module: AbstractNetwork,
+            hidden_features: int, out_features: int
+    ):
+        super().__init__()
+
+        self.protein_module = protein_module
+        self.ligand_module = ligand_module
+        self.output_module = LinearBlock(hidden_features, 16, out_features)
 
         self.protein_module.apply(self._init_weights)
         self.ligand_module.apply(self._init_weights)
         self.output_module.apply(self._init_weights)
 
         self.activation = torch.nn.ReLU()
-        self.dropout = torch.nn.Dropout(p=dropout)
 
     def _init_weights(self, layer: torch.nn) -> None:
         if type(layer) == torch.nn.Linear:
@@ -202,19 +243,17 @@ class ConvolutionalProteinLigandNetwork(AbstractNetwork):
                 torch.nn.init.xavier_uniform_(layer.weight.data)
             )
 
+    def get_requirements(self) -> List[str]:
+        return ["ligand", "protein"]
+
     def forward(self, data: Dict[str, Any]) -> torch.Tensor:
-        ligand_features = data["ligand"]
-        protein_features = data["protein"].transpose(-1, -2)
+        requirements = self.get_requirements()
 
-        protein_convolution = self.protein_convolution(protein_features)
-        protein_convolution = self.activation(protein_convolution)
+        ligand_features = self.map(self.ligand_module, data[requirements[0]])
+        protein_features = self.map(self.protein_module, data[requirements[1]])
 
-        protein_max_pooling = self.protein_max_pooling(protein_convolution)
-        protein_max_pooling = self.activation(protein_max_pooling)
-
-        protein_flatten = torch.flatten(protein_max_pooling, start_dim=1)
-        protein_features = self.protein_module(protein_flatten)
-        ligand_features = self.ligand_module(ligand_features)
+        protein_features = self.activation(self.protein_module(protein_features))
+        ligand_features = self.activation(self.ligand_module(ligand_features))
 
         combined_features = torch.cat((protein_features, ligand_features), dim=-1)
         output = self.output_module(combined_features)

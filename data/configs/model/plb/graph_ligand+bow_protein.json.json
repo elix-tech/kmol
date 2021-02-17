@@ -1,13 +1,30 @@
 {
     "model": {
-        "type": "convolutional_protein_ligand",
-        "ligand_features": 2048,
-        "out_features": 1,
-        "dropout": 0.2
+        "type": "protein_ligand",
+        "protein_module": {
+            "type": "linear",
+            "in_features": 9723,
+            "hidden_features": 64,
+            "out_features": 16
+        },
+        "ligand_module": {
+            "type": "graph_convolutional",
+            "in_features": 45,
+            "out_features": 16,
+            "hidden_features": 64,
+            "dropout": 0.1,
+            "layer_type": "torch_geometric.nn.GCNConv",
+            "layers_count": 2,
+            "molecule_features": 17,
+            "is_residual": 1,
+            "norm_layer": "lib.model.layers.BatchNorm"
+        },
+        "hidden_features": 32,
+        "out_features": 1
     },
     "loader": {
         "type": "csv",
-        "input_path": "data/input/chembl/assay_ready.csv",
+        "input_path": "data/input/chembl/demo.csv",
         "input_column_names": ["smiles", "target_sequence"],
         "target_column_names": ["label"]
     },
@@ -17,11 +34,10 @@
     },
     "featurizers": [
         {
-            "type": "circular_fingerprint",
+            "type": "graph",
             "inputs": ["smiles"],
             "outputs": ["ligand"],
-            "fingerprint_size": 2048,
-            "radius": 2
+            "descriptor_calculator": {"type": "rdkit"}
         },{
             "type": "bag_of_words",
             "inputs": ["target_sequence"],

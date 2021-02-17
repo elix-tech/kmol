@@ -54,17 +54,30 @@ class GraphConvolutionWrapper(torch.nn.Module):
         return x
 
 
+class LinearBlock(torch.nn.Module):
+
+    def __init__(
+            self, in_features: int, hidden_features: int,
+            out_features: int, activation: torch.nn.Module = torch.nn.ReLU()
+    ):
+        super().__init__()
+        self.block = torch.nn.Sequential(
+            torch.nn.Linear(in_features, hidden_features),
+            activation,
+            torch.nn.Linear(hidden_features, out_features),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.block(x)
+
+
 class GINConvolution(torch.nn.Module):
 
     def __init__(self, in_features: int, out_features: int):
         super().__init__()
 
         self.convolution = torch_geometric.nn.GINConv(
-            torch.nn.Sequential(
-                torch.nn.Linear(in_features, out_features),
-                torch.nn.ReLU(),
-                torch.nn.Linear(out_features, out_features)
-            ),
+            LinearBlock(in_features=in_features, hidden_features=out_features, out_features=out_features)
         )
 
     def forward(self, x: torch.Tensor, edge_index: torch.Tensor) -> torch.Tensor:

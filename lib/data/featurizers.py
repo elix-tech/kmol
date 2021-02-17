@@ -321,3 +321,9 @@ class BagOfWordsFeaturizer(AbstractFeaturizer):
                 sample[data[start_index:start_index + length]] += 1
 
         return torch.FloatTensor(list(sample.values()))
+
+
+class TransposeFeaturizer(AbstractFeaturizer):
+
+    def _process(self, data: torch.Tensor) -> torch.Tensor:
+        return data.transpose(-1, -2)
