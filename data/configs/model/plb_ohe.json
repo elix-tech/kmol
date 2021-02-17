@@ -7,7 +7,7 @@
     },
     "loader": {
         "type": "csv",
-        "input_path": "data/input/chembl/assay_ready.csv",
+        "input_path": "data/input/chembl/demo.csv",
         "input_column_names": ["smiles", "target_sequence"],
         "target_column_names": ["label"]
     },
@@ -63,7 +63,8 @@
     "enabled_gpus": [0],
 
     "cache_location": "data/cache/",
-    "clear_cache": false,
+    "clear_cache": true,
+    "preload_data": true,
 
     "log_level": "info",
     "log_format": "",

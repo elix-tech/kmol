@@ -176,6 +176,23 @@ class CacheManager:
         except FileNotFoundError:
             pass
 
+    def execute_cached_operation(
+            self, processor: Callable, arguments: Dict[str, Any], cache_key: Dict[str, Any], clear_cache: bool = False
+    ) -> Any:
+
+        cache_key = self.key(**cache_key)
+
+        if clear_cache:
+            self.delete(cache_key)
+
+        if self.has(cache_key):
+            return self.load(cache_key)
+
+        content = processor(**arguments)
+        self.save(content, cache_key)
+
+        return content
+
 
 class Namespace:
     def __init__(self, **kwargs):

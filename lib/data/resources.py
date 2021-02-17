@@ -1,6 +1,6 @@
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Any, Dict, Union, List, Optional
+from typing import Any, Dict, Union, List, Optional, Iterable
 
 import numpy as np
 import torch
@@ -21,6 +21,14 @@ class Batch:
     labels: List[str]
     inputs: Dict[str, torch.Tensor]
     outputs: torch.FloatTensor
+
+
+@dataclass
+class LoadedContent:
+
+    dataset: Iterable[Batch]
+    samples: int
+    batches: int
 
 
 class Collater:

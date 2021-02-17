@@ -42,6 +42,7 @@ class Config(AbstractConfiguration):
 
     cache_location: str = "/tmp/federated/"
     clear_cache: bool = True
+    preload_data: bool = False
 
     log_level: Literal["debug", "info", "warn", "error", "critical"] = "info"
     log_format: str = ""

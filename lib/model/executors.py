@@ -11,14 +11,13 @@ import torch
 from torch.nn.modules.loss import _Loss as AbstractCriterion
 from torch.optim import Optimizer as AbstractOptimizer
 from torch.optim.lr_scheduler import _LRScheduler as AbstractLearningRateScheduler, ExponentialLR
-from torch.utils.data import DataLoader as TorchDataLoader
 from tqdm import tqdm
 
 from lib.core.config import Config
 from lib.core.exceptions import CheckpointNotFound
 from lib.core.helpers import Timer, SuperFactory, Namespace
 from lib.core.observers import EventManager
-from lib.data.resources import Batch
+from lib.data.resources import Batch, LoadedContent
 from lib.model.architectures import AbstractNetwork
 from lib.model.metrics import PredictionProcessor
 from lib.model.trackers import ExponentialAverageMeter
@@ -116,17 +115,16 @@ class Trainer(AbstractExecutor):
             "steps_per_epoch": math.ceil(training_examples / self._config.batch_size)
         })
 
-    def run(self, data_loader: TorchDataLoader):
+    def run(self, data_loader: LoadedContent):
 
-        dataset_size = len(data_loader.dataset)
-        self._setup(training_examples=dataset_size)
+        self._setup(training_examples=data_loader.samples)
 
         payload = Namespace(trainer=self, data_loader=data_loader)
         EventManager.dispatch_event(event_name="before_train_start", payload=payload)
 
         for epoch in range(self._start_epoch + 1, self._config.epochs + 1):
 
-            for iteration, data in enumerate(data_loader, start=1):
+            for iteration, data in enumerate(data_loader.dataset, start=1):
                 self._optimizer.zero_grad()
                 outputs = self._network(data.inputs)
 
@@ -141,7 +139,7 @@ class Trainer(AbstractExecutor):
 
                 self._update_trackers(loss.item(), data.outputs, outputs)
                 if iteration % self._config.log_frequency == 0:
-                    self.log(epoch, iteration, dataset_size)
+                    self.log(epoch, iteration, data_loader.samples)
 
             if not self._config.is_stepwise_scheduler:
                 self._scheduler.step()
@@ -214,11 +212,11 @@ class Predictor(AbstractExecutor):
         with torch.no_grad():
             return self._network(batch.inputs)
 
-    def run_all(self, data_loader: TorchDataLoader) -> Tuple[List[torch.Tensor], List[torch.Tensor]]:
+    def run_all(self, data_loader: LoadedContent) -> Tuple[List[torch.Tensor], List[torch.Tensor]]:
         ground_truth = []
         logits = []
 
-        for batch in data_loader:
+        for batch in data_loader.dataset:
             ground_truth.append(batch.outputs)
             logits.append(self.run(batch))
 
@@ -233,7 +231,7 @@ class Evaluator(AbstractExecutor):
         self._predictor = Predictor(config=self._config)
         self._processor = PredictionProcessor(metrics=self._config.test_metrics, threshold=self._config.threshold)
 
-    def run(self, data_loader: TorchDataLoader) -> Namespace:
+    def run(self, data_loader: LoadedContent) -> Namespace:
         ground_truth, logits = self._predictor.run_all(data_loader=data_loader)
         return self._processor.compute_metrics(ground_truth=ground_truth, logits=logits)
 
@@ -251,17 +249,17 @@ class Pipeliner(AbstractExecutor):
         self._predictor = Predictor(config=self._config)
         return self
 
-    def train(self, data_loader: TorchDataLoader) -> None:
+    def train(self, data_loader: LoadedContent) -> None:
         self._trainer.run(data_loader=data_loader)
 
-    def evaluate(self, data_loader: TorchDataLoader) -> Namespace:
+    def evaluate(self, data_loader: LoadedContent) -> Namespace:
         ground_truth, logits = self.predict(data_loader=data_loader)
         return self._processor.compute_metrics(ground_truth=ground_truth, logits=logits)
 
-    def predict(self, data_loader: TorchDataLoader) -> Tuple[List[torch.Tensor], List[torch.Tensor]]:
+    def predict(self, data_loader: LoadedContent) -> Tuple[List[torch.Tensor], List[torch.Tensor]]:
         return self._predictor.run_all(data_loader=data_loader)
 
-    def evaluate_all(self, data_loader: TorchDataLoader) -> List[Namespace]:
+    def evaluate_all(self, data_loader: LoadedContent) -> List[Namespace]:
         results = []
 
         for checkpoint_path in self.find_all_checkpoints():
@@ -278,7 +276,7 @@ class Pipeliner(AbstractExecutor):
         checkpoint_paths = sorted(checkpoint_paths)
         return sorted(checkpoint_paths, key=len)
 
-    def find_best_checkpoint(self, data_loader: TorchDataLoader) -> "Pipeliner":
+    def find_best_checkpoint(self, data_loader: LoadedContent) -> "Pipeliner":
         results = self.evaluate_all(data_loader=data_loader)
 
         per_target_best = Namespace.reduce(results, partial(np.argmax, axis=0))
@@ -294,7 +292,7 @@ class Pipeliner(AbstractExecutor):
 
 class ThresholdFinder(Evaluator):
 
-    def run(self, data_loader: TorchDataLoader) -> List[float]:
+    def run(self, data_loader: LoadedContent) -> List[float]:
         ground_truth, logits = self._predictor.run_all(data_loader=data_loader)
         return self._processor.find_best_threshold(ground_truth=ground_truth, logits=logits)
 
@@ -318,10 +316,9 @@ class LearningRareFinder(Trainer):
 
         return ExponentialLR(optimizer=optimizer, gamma=gamma)
 
-    def run(self, data_loader: TorchDataLoader) -> None:
+    def run(self, data_loader: LoadedContent) -> None:
 
-        dataset_size = len(data_loader.dataset)
-        self._setup(training_examples=dataset_size)
+        self._setup(training_examples=data_loader.samples)
 
         payload = Namespace(trainer=self, data_loader=data_loader)
         EventManager.dispatch_event(event_name="before_train_start", payload=payload)
@@ -330,8 +327,8 @@ class LearningRareFinder(Trainer):
         loss_records = []
 
         try:
-            with tqdm(total=len(data_loader)) as progress_bar:
-                for iteration, data in enumerate(data_loader, start=1):
+            with tqdm(total=data_loader.batches) as progress_bar:
+                for iteration, data in enumerate(data_loader.dataset, start=1):
                     self._optimizer.zero_grad()
                     outputs = self._network(data.inputs)
 

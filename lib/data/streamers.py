@@ -3,7 +3,7 @@ import operator
 from abc import ABCMeta, abstractmethod
 from copy import copy
 from enum import Enum
-from functools import reduce
+from functools import reduce, partial
 from typing import List, Dict, Union
 
 from torch.utils.data import DataLoader, Subset
@@ -14,7 +14,7 @@ from lib.core.exceptions import FeaturizationError
 from lib.core.helpers import SuperFactory, CacheManager
 from lib.data.featurizers import AbstractFeaturizer
 from lib.data.loaders import AbstractLoader, ListLoader
-from lib.data.resources import Data, Collater
+from lib.data.resources import Data, Collater, Batch, LoadedContent
 from lib.data.splitters import AbstractSplitter
 from lib.data.transformers import AbstractTransformer
 
@@ -59,20 +59,13 @@ class GeneralStreamer(AbstractStreamer):
         return splitter.apply(data_loader=self._dataset)
 
     def _load_dataset(self) -> AbstractLoader:
-        cache_key = self._cache_manager.key(
-            loader=self._config.loader, featurizers=self._config.featurizers, transformers=self._config.transformers
+        return self._cache_manager.execute_cached_operation(
+            processor=self._prepare_dataset, clear_cache=self._config.clear_cache, arguments={}, cache_key={
+                "loader": self._config.loader,
+                "featurizers": self._config.featurizers,
+                "transformers": self._config.transformers
+            }
         )
-
-        if self._config.clear_cache:
-            self._cache_manager.delete(cache_key)
-
-        if self._cache_manager.has(cache_key):
-            return self._cache_manager.load(cache_key)
-
-        dataset = self._prepare_dataset()
-        self._cache_manager.save(dataset, cache_key)
-
-        return dataset
 
     def _featurize(self, sample: Data):
         for featurizer in self._featurizers:
@@ -90,6 +83,10 @@ class GeneralStreamer(AbstractStreamer):
     def reverse_transformers(self, sample: Data) -> None:
         for transformer in reversed(self._transformers):
             transformer.reverse(sample)
+
+    def _preload_data_loader(self, data_loader: DataLoader) -> List[Batch]:
+        logging.info("Preloading data...")
+        return [batch for batch in tqdm(data_loader)]
 
     def _prepare_dataset(self) -> ListLoader:
 
@@ -119,15 +116,28 @@ class GeneralStreamer(AbstractStreamer):
     def _get_subset(self, split_name: str, **kwargs) -> Subset:
         return Subset(dataset=self._dataset, indices=self._splits[split_name])
 
-    def get(self, split_name: str, batch_size: int, shuffle: bool, **kwargs) -> DataLoader:
+    def get(self, split_name: str, batch_size: int, shuffle: bool, **kwargs) -> LoadedContent:
         collater = Collater(device=self._config.get_device())
 
-        return DataLoader(
+        data_loader = DataLoader(
             dataset=self._get_subset(split_name, **kwargs),
             collate_fn=collater.apply,
             batch_size=batch_size,
             shuffle=shuffle
         )
+
+        content_instantiator = partial(LoadedContent, samples=len(data_loader.dataset), batches=len(data_loader))
+        if self._config.preload_data:
+            data_loader = self._cache_manager.execute_cached_operation(
+                processor=self._preload_data_loader, arguments={"data_loader": data_loader},
+                clear_cache=self._config.clear_cache, cache_key={
+                    "split_name": split_name, "batch_size": batch_size, "shuffle": shuffle,
+                    "loader": self._config.loader, "featurizers": self._config.featurizers,
+                    "transformers": self._config.transformers, "splitter": self._config.splitter, **kwargs
+                }
+            )
+
+        return content_instantiator(dataset=data_loader)
 
 
 class SubsetStreamer(GeneralStreamer):

@@ -64,6 +64,7 @@
 
     "cache_location": "data/cache/",
     "clear_cache": false,
+    "preload_data": true,
 
     "log_level": "info",
     "log_format": "",
