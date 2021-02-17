@@ -3,7 +3,7 @@ import operator
 from abc import ABCMeta, abstractmethod
 from copy import copy
 from enum import Enum
-from functools import reduce, partial
+from functools import reduce
 from typing import List, Dict, Union
 
 from torch.utils.data import DataLoader, Subset
@@ -14,7 +14,7 @@ from lib.core.exceptions import FeaturizationError
 from lib.core.helpers import SuperFactory, CacheManager
 from lib.data.featurizers import AbstractFeaturizer
 from lib.data.loaders import AbstractLoader, ListLoader
-from lib.data.resources import Data, Collater, Batch, LoadedContent
+from lib.data.resources import Data, Collater
 from lib.data.splitters import AbstractSplitter
 from lib.data.transformers import AbstractTransformer
 
@@ -84,10 +84,6 @@ class GeneralStreamer(AbstractStreamer):
         for transformer in reversed(self._transformers):
             transformer.reverse(sample)
 
-    def _preload_data_loader(self, data_loader: DataLoader) -> List[Batch]:
-        logging.info("Preloading data...")
-        return [batch for batch in tqdm(data_loader)]
-
     def _prepare_dataset(self) -> ListLoader:
 
         loader = SuperFactory.create(AbstractLoader, self._config.loader)
@@ -116,28 +112,15 @@ class GeneralStreamer(AbstractStreamer):
     def _get_subset(self, split_name: str, **kwargs) -> Subset:
         return Subset(dataset=self._dataset, indices=self._splits[split_name])
 
-    def get(self, split_name: str, batch_size: int, shuffle: bool, **kwargs) -> LoadedContent:
+    def get(self, split_name: str, batch_size: int, shuffle: bool, **kwargs) -> DataLoader:
         collater = Collater(device=self._config.get_device())
 
-        data_loader = DataLoader(
+        return DataLoader(
             dataset=self._get_subset(split_name, **kwargs),
             collate_fn=collater.apply,
             batch_size=batch_size,
             shuffle=shuffle
         )
-
-        content_instantiator = partial(LoadedContent, samples=len(data_loader.dataset), batches=len(data_loader))
-        if self._config.preload_data:
-            data_loader = self._cache_manager.execute_cached_operation(
-                processor=self._preload_data_loader, arguments={"data_loader": data_loader},
-                clear_cache=self._config.clear_cache, cache_key={
-                    "split_name": split_name, "batch_size": batch_size, "shuffle": shuffle,
-                    "loader": self._config.loader, "featurizers": self._config.featurizers,
-                    "transformers": self._config.transformers, "splitter": self._config.splitter, **kwargs
-                }
-            )
-
-        return content_instantiator(dataset=data_loader)
 
 
 class SubsetStreamer(GeneralStreamer):
