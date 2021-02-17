@@ -1,6 +1,6 @@
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Any, Dict, Union, List, Optional, Sequence
+from typing import Any, Dict, Union, List, Optional
 
 import numpy as np
 import torch
@@ -52,22 +52,11 @@ class Collater:
         for key, values in batch.inputs.items():
             batch.inputs[key] = values.to(self._device)
 
-    def _collate(self, data: Sequence[Any]) -> Any:
-        try:
-            return self._collater.collate(data)
-        except TypeError as e:
-            element = data[0]
-
-            if isinstance(element, np.ndarray):
-                return torch.tensor(data, dtype=torch.float)
-
-            raise e
-
     def apply(self, batch: List[Data]) -> Batch:
 
         batch = self._unpack(batch)
         for key, values in batch.inputs.items():
-            batch.inputs[key] = self._collate(data=values)
+            batch.inputs[key] = self._collater.collate(values)
 
         self._set_device(batch)
         return batch

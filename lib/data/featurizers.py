@@ -15,13 +15,25 @@ from lib.data.resources import Data
 
 class AbstractFeaturizer(metaclass=ABCMeta):
 
-    def __init__(self, inputs: List[str], outputs: List[str]):
+    def __init__(self, inputs: List[str], outputs: List[str], should_cache: bool = False):
         self._inputs = inputs
         self._outputs = outputs
+
+        self._should_cache = should_cache
+        self.__cache = {}
 
     @abstractmethod
     def _process(self, data: Any) -> Any:
         raise NotImplementedError
+
+    def __process(self, data: Any) -> Any:
+        if self._should_cache:
+            if data not in self.__cache:
+                self.__cache[data] = self._process(data)
+
+            return self.__cache[data]
+        else:
+            return self._process(data)
 
     def run(self, data: Data) -> None:
         if len(self._inputs) != len(self._outputs):
@@ -29,7 +41,7 @@ class AbstractFeaturizer(metaclass=ABCMeta):
 
         for index in range(len(self._inputs)):
             raw_data = data.inputs.pop(self._inputs[index])
-            data.inputs[self._outputs[index]] = self._process(raw_data)
+            data.inputs[self._outputs[index]] = self.__process(raw_data)
 
 
 class AbstractTorchGeometricFeaturizer(AbstractFeaturizer):
@@ -138,11 +150,10 @@ class GraphFeaturizer(AbstractTorchGeometricFeaturizer):
     DEFAULT_ATOM_TYPES = ["B", "C", "N", "O", "F", "Na", "Si", "P", "S", "Cl", "K", "Br", "I"]
 
     def __init__(
-            self, inputs: List[str], outputs: List[str],
-            descriptor_calculator: AbstractDescriptorComputer,
-            allowed_atom_types: Optional[List[str]] = None
+            self, inputs: List[str], outputs: List[str], descriptor_calculator: AbstractDescriptorComputer,
+            allowed_atom_types: Optional[List[str]] = None, should_cache: bool = False
     ):
-        super().__init__(inputs, outputs)
+        super().__init__(inputs, outputs, should_cache)
 
         if allowed_atom_types is None:
             allowed_atom_types = self.DEFAULT_ATOM_TYPES
@@ -212,18 +223,21 @@ class AbstractFingerprintFeaturizer(AbstractFeaturizer):
 class CircularFingerprintFeaturizer(AbstractFingerprintFeaturizer):
     """Morgan fingerprint featurizer"""
 
-    def __init__(self, inputs: List[str], outputs: List[str], fingerprint_size: int = 2048, radius: int = 2):
-        super().__init__(inputs, outputs)
+    def __init__(
+            self, inputs: List[str], outputs: List[str], should_cache: bool = False,
+            fingerprint_size: int = 2048, radius: int = 2
+    ):
+        super().__init__(inputs, outputs, should_cache)
 
         self._fingerprint_size = fingerprint_size
         self._radius = radius
 
-    def _process(self, data: str) -> np.ndarray:
+    def _process(self, data: str) -> torch.FloatTensor:
         mol = Chem.MolFromSmiles(data)
         if mol is None:
             raise FeaturizationError("Could not featurize entry: [{}]".format(data))
 
-        return self._generate_fingerprint(mol)
+        return torch.FloatTensor(self._generate_fingerprint(mol))
 
     def _generate_fingerprint(self, mol: Chem.Mol) -> np.ndarray:
         from rdkit.Chem import AllChem
@@ -239,51 +253,71 @@ class CircularFingerprintFeaturizer(AbstractFingerprintFeaturizer):
 class OneHotEncoderFeaturizer(AbstractFeaturizer):
     """One-Hot encode a single string"""
 
-    def __init__(self, inputs: List[str], outputs: List[str], classes: List[str]):
-        super().__init__(inputs, outputs)
+    def __init__(self, inputs: List[str], outputs: List[str], classes: List[str], should_cache: bool = False):
+        super().__init__(inputs, outputs, should_cache)
 
         self._classes = classes
 
-    def _process(self, data: str) -> np.ndarray:
+    def _process(self, data: str) -> torch.FloatTensor:
         features = np.zeros(len(self._classes))
         features[self._classes.index(data)] = 1
 
-        return features
+        return torch.FloatTensor(features)
 
 
 class TokenFeaturizer(AbstractFeaturizer):
     """Similar to the one-hot encoder, but will tokenize a whole sentence."""
 
-    def __init__(self, inputs: List[str], outputs: List[str], classes: List[str], length: int, separator: str = ""):
-        super().__init__(inputs, outputs)
+    def __init__(
+            self, inputs: List[str], outputs: List[str],
+            vocabulary: List[str], max_length: int, separator: str = "", should_cache: bool = False
+    ):
+        super().__init__(inputs, outputs, should_cache)
 
-        self._classes = classes
+        self._vocabulary = vocabulary
         self._separator = separator
-        self._length = length
+        self._max_length = max_length
 
-    def _process(self, data: str) -> np.ndarray:
+    def _process(self, data: str) -> torch.FloatTensor:
         tokens = data.split(self._separator) if self._separator else [character for character in data]
-        features = np.zeros((self._length, len(self._classes)))
+        features = np.zeros((self._max_length, len(self._vocabulary)))
 
         for index in range(len(tokens)):
-            if index == self._length:
+            if index == self._max_length:
                 logging.warning("[CAUTION] Input is out of bounds. Features will be trimmed. --- {}".format(data))
                 break
 
-            features[index][self._classes.index(tokens[index])] = 1
+            features[index][self._vocabulary.index(tokens[index])] = 1
 
-        return features
+        return torch.FloatTensor(features)
 
 
-class CachedTokenFeaturizer(TokenFeaturizer):
+class BagOfWordsFeaturizer(AbstractFeaturizer):
 
-    def __init__(self, inputs: List[str], outputs: List[str], classes: List[str], length: int, separator: str = ""):
-        super().__init__(inputs=inputs, outputs=outputs, classes=classes, length=length, separator=separator)
-        self._cache = {}
+    def __init__(
+            self, inputs: List[str], outputs: List[str],
+            vocabulary: List[str], max_length: int, should_cache: bool = False
+    ):
 
-    def _process(self, data: str) -> np.ndarray:
-        if data not in self._cache:
-            features = super()._process(data)
-            self._cache[data] = features
+        super().__init__(inputs, outputs, should_cache)
 
-        return self._cache[data]
+        self._vocabulary = self._get_combinations(vocabulary, max_length)
+        self._max_length = max_length
+
+    def _get_combinations(self, vocabulary: List[str], max_length: int) -> List[str]:
+        combinations = []
+
+        for length in range(1, max_length + 1):
+            for variation in itertools.product(vocabulary, repeat=length):
+                combinations.append("".join(variation))
+
+        return combinations
+
+    def _process(self, data: str) -> torch.FloatTensor:
+        sample = dict.fromkeys(self._vocabulary, 0)
+
+        for length in range(1, self._max_length + 1):
+            for start_index in range(0, len(data) - length + 1):
+                sample[data[start_index:start_index + length]] += 1
+
+        return torch.FloatTensor(list(sample.values()))

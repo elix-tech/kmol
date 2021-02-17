@@ -23,11 +23,12 @@
             "fingerprint_size": 2048,
             "radius": 2
         },{
-            "type": "cached_token",
+            "type": "bag_of_words",
             "inputs": ["target_sequence"],
             "outputs": ["protein"],
-            "classes": ["A", "C", "D", "E", "F", "G", "H", "I", "K", "L", "M", "N", "P", "Q", "R", "S", "T", "V", "W", "Y", "X"],
-            "length": 3011
+            "should_cache": true,
+            "vocabulary": ["A", "C", "D", "E", "F", "G", "H", "I", "K", "L", "M", "N", "P", "Q", "R", "S", "T", "V", "W", "Y", "X"],
+            "max_length": 3
         }
     ],
     "transformers": [],
