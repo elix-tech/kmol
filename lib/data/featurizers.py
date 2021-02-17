@@ -262,7 +262,7 @@ class TokenFeaturizer(AbstractFeaturizer):
         self._length = length
 
     def _process(self, data: str) -> np.ndarray:
-        tokens = data.split(self._separator)
+        tokens = data.split(self._separator) if self._separator else [character for character in data]
         features = np.zeros((self._length, len(self._classes)))
 
         for index in range(len(tokens)):
@@ -273,3 +273,17 @@ class TokenFeaturizer(AbstractFeaturizer):
             features[index][self._classes.index(tokens[index])] = 1
 
         return features
+
+
+class CachedTokenFeaturizer(TokenFeaturizer):
+
+    def __init__(self, inputs: List[str], outputs: List[str], classes: List[str], length: int, separator: str = ""):
+        super().__init__(inputs=inputs, outputs=outputs, classes=classes, length=length, separator=separator)
+        self._cache = {}
+
+    def _process(self, data: str) -> np.ndarray:
+        if data not in self._cache:
+            features = super()._process(data)
+            self._cache[data] = features
+
+        return self._cache[data]

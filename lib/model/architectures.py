@@ -159,3 +159,64 @@ class TripletMessagePassingNetwork(AbstractNetwork):
 
         out = self.mlp(out)
         return out
+
+
+class ConvolutionalProteinLigandNetwork(AbstractNetwork):
+
+    def __init__(self, ligand_features: int, out_features: int, dropout: float = 0.2):
+        super().__init__()
+
+        self.protein_convolution = torch.nn.Conv1d(in_channels=21, out_channels=10, kernel_size=3, stride=1)
+        self.protein_max_pooling = torch.nn.MaxPool1d(16)
+
+        self.protein_module = torch.nn.Sequential(
+            torch.nn.Linear(1880, 64, bias=True),
+            torch.nn.ReLU(),
+            torch.nn.Linear(64, 16, bias=True),
+            torch.nn.ReLU(),
+        )
+
+        self.ligand_module = torch.nn.Sequential(
+            torch.nn.Linear(ligand_features, 64, bias=True),
+            torch.nn.ReLU(),
+            torch.nn.Linear(64, 16, bias=True),
+            torch.nn.ReLU(),
+        )
+
+        self.output_module = torch.nn.Sequential(
+            torch.nn.Linear(32, 16, bias=True),
+            torch.nn.ReLU(),
+            torch.nn.Linear(16, out_features, bias=True),
+        )
+
+        self.protein_module.apply(self._init_weights)
+        self.ligand_module.apply(self._init_weights)
+        self.output_module.apply(self._init_weights)
+
+        self.activation = torch.nn.ReLU()
+        self.dropout = torch.nn.Dropout(p=dropout)
+
+    def _init_weights(self, layer: torch.nn) -> None:
+        if type(layer) == torch.nn.Linear:
+            layer.weight.data.copy_(
+                torch.nn.init.xavier_uniform_(layer.weight.data)
+            )
+
+    def forward(self, data: Dict[str, Any]) -> torch.Tensor:
+        ligand_features = data["ligand"].float()
+        protein_features = data["protein"].float()
+
+        protein_convolution = self.protein_convolution(protein_features)
+        protein_convolution = self.activation(protein_convolution)
+
+        protein_max_pooling = self.protein_max_pooling(protein_convolution)
+        protein_max_pooling = self.activation(protein_max_pooling)
+
+        protein_flatten = torch.flatten(protein_max_pooling, start_dim=1)
+        protein_features = self.protein_module(protein_flatten)
+        ligand_features = self.ligand_module(ligand_features)
+
+        combined_features = torch.cat((protein_features, ligand_features), dim=-1)
+        output = self.output_module(combined_features)
+
+        return output
