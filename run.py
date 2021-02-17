@@ -284,7 +284,22 @@ class Executor(AbstractExecutor):
 
         return study
 
+    def find_best_checkpoint(self) -> str:
+        streamer = GeneralStreamer(config=self._config)
+        Pipeliner(self._config).find_best_checkpoint(data_loader=streamer.get(
+            split_name=self._config.test_split, batch_size=self._config.batch_size, shuffle=False
+        ))
+
+        logging.info("-----------------------------------------------------------------------")
+        print("Best checkpoint: {}".format(self._config.checkpoint_path))
+        self.eval()
+
+        return self._config.checkpoint_path
+
     def find_threshold(self) -> List[float]:
+        if not self._config.checkpoint_path:
+            self.find_best_checkpoint()
+
         streamer = GeneralStreamer(config=self._config)
         data_loader = streamer.get(
             split_name=self._config.train_split, batch_size=self._config.batch_size, shuffle=False
