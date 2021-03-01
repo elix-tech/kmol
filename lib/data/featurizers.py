@@ -327,3 +327,13 @@ class TransposeFeaturizer(AbstractFeaturizer):
 
     def _process(self, data: torch.Tensor) -> torch.Tensor:
         return data.transpose(-1, -2)
+
+
+class FixedFeaturizer(AbstractFeaturizer):
+
+    def __init__(self, inputs: List[str], outputs: List[str], value: float, should_cache: bool = False):
+        super().__init__(inputs, outputs, should_cache)
+        self._value = value
+
+    def _process(self, data: float) -> float:
+        return round(data / self._value, 8)

@@ -1,11 +1,11 @@
-from typing import Dict, Any, Optional, List
 from abc import ABCMeta, abstractmethod
+from math import floor
+from typing import Dict, Any, Optional, List
 
 import torch
 import torch_geometric as geometric
 
 from lib.model.layers import GraphConvolutionWrapper, TripletMessagePassingLayer, LinearBlock
-from math import floor
 
 
 class AbstractNetwork(torch.nn.Module, metaclass=ABCMeta):

@@ -90,7 +90,7 @@ class StratifiedSplitter(AbstractSplitter):
 
     def _binify(self, data: Dict[Union[int, str], float]) -> Dict[Union[int, str], int]:
         entries = list(data.values())
-        bins = pd.qcut(entries, self._bins_count, labels=False).tolist()
+        bins = pd.qcut(entries, self._bins_count, labels=False, duplicates="drop").tolist()
 
         return dict(zip(list(data.keys()), bins))
 

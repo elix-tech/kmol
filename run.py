@@ -243,7 +243,7 @@ class Executor(AbstractExecutor):
 
         return results
 
-    def predict(self):
+    def predict(self) -> List[List[float]]:
         streamer = GeneralStreamer(config=self._config)
         data_loader = streamer.get(
             split_name=self._config.test_split, batch_size=self._config.batch_size, shuffle=False
@@ -252,15 +252,19 @@ class Executor(AbstractExecutor):
         predictor = Predictor(config=self._config)
         print(",".join(streamer.labels))
 
+        results = []
         for batch in data_loader:
             logits = predictor.run(batch)
 
             predictions = PredictionProcessor.apply_threshold(logits, self._config.threshold)
             predictions = self.__revert_transformations(predictions, streamer)
-            predictions = predictions.astype("str").tolist()
+            results.extend(predictions)
 
+            predictions = predictions.astype("str").tolist()
             for prediction in predictions:
                 print(",".join(prediction))
+
+        return results
 
     def optimize(self) -> optuna.Study:
         if not self._config_path:

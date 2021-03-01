@@ -1,5 +1,6 @@
 from abc import ABCMeta, abstractmethod
 from typing import List
+import logging
 
 import numpy as np
 
@@ -46,6 +47,21 @@ class MinMaxNormalizeTransformer(AbstractTransformer):
         data.outputs[self._target] = data.outputs[self._target] * (self._maximum - self._minimum) + self._minimum
 
 
+class FixedNormalizeTransformer(AbstractTransformer):
+
+    def __init__(self, targets: List[int], value: float):
+        self._targets = targets
+        self._value = value
+
+    def apply(self, data: Data) -> None:
+        for target in self._targets:
+            data.outputs[target] = round(data.outputs[target] / self._value, 8)
+
+    def reverse(self, data: Data) -> None:
+        for target in self._targets:
+            data.outputs[target] = round(data.outputs[target] * self._value, 8)
+
+
 class StandardizeTransformer(AbstractTransformer):
 
     def __init__(self, target: int, mean: float, std: float):
@@ -58,3 +74,18 @@ class StandardizeTransformer(AbstractTransformer):
 
     def reverse(self, data: Data) -> None:
         data.outputs[self._target] = data.outputs[self._target] * self._std + self._mean
+
+
+class CutoffTransformer(AbstractTransformer):
+
+    def __init__(self, target: int, cutoff: float):
+        self._target = target
+        self._cutoff = cutoff
+
+        logging.warning("[WARNING] The cutoff transformer is destructive and cannot be reversed.")
+
+    def apply(self, data: Data) -> None:
+        data.outputs[self._target] = np.where(data.outputs[self._target] <= self._cutoff, 0, 1)
+
+    def reverse(self, data: Data) -> None:
+        pass

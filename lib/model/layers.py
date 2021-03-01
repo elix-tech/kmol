@@ -12,7 +12,7 @@ class GraphConvolutionWrapper(torch.nn.Module):
     def __init__(
             self, in_features: int, out_features: int, dropout: float, layer_type: str = "torch_geometric.nn.GCNConv",
             is_residual: bool = True, norm_layer: Optional[str] = None, has_edge_features: bool = False,
-            activation: str = "torch_geometric.nn.BatchNorm", **kwargs
+            activation: str = "torch.nn.ReLU", **kwargs
     ):
         super().__init__()
 
