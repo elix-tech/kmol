@@ -41,7 +41,9 @@ class Config(AbstractConfiguration):
     enabled_gpus: List[int] = field(default_factory=lambda: [0, 1, 2, 3])
 
     cache_location: str = "/tmp/federated/"
-    clear_cache: bool = True
+    clear_cache: bool = False
+    preload_data: bool = False
+    shard_size: int = 1024
 
     log_level: Literal["debug", "info", "warn", "error", "critical"] = "info"
     log_format: str = ""

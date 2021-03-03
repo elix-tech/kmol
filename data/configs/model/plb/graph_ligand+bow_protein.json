@@ -4,19 +4,19 @@
         "protein_module": {
             "type": "linear",
             "in_features": 9723,
-            "hidden_features": 64,
+            "hidden_features": 160,
             "out_features": 16
         },
         "ligand_module": {
             "type": "graph_convolutional",
             "in_features": 45,
             "out_features": 16,
-            "hidden_features": 64,
-            "dropout": 0.1,
-            "layer_type": "torch_geometric.nn.GCNConv",
-            "layers_count": 2,
+            "hidden_features": 192,
+            "dropout": 0.0,
+            "layer_type": "torch_geometric.nn.GENConv",
+            "layers_count": 5,
             "molecule_features": 17,
-            "is_residual": 1,
+            "is_residual": 0,
             "norm_layer": "lib.model.layers.BatchNorm"
         },
         "hidden_features": 32,
@@ -24,9 +24,9 @@
     },
     "loader": {
         "type": "csv",
-        "input_path": "data/input/chembl/assay_ready.csv",
+        "input_path": "data/input/chembl/assay_v2_ready.csv",
         "input_column_names": ["smiles", "target_sequence"],
-        "target_column_names": ["label"]
+        "target_column_names": ["t_100n", "t_1u", "t_10u"]
     },
     "splitter": {
         "type": "index",
@@ -49,9 +49,9 @@
     ],
     "transformers": [],
     "optimizer": {
-        "type": "torch.optim.AdamW",
-        "lr": 0.01,
-        "weight_decay": 0.00056
+        "type": "torch.optim.SGD",
+        "lr": 0.0041,
+        "weight_decay": 1e-05
     },
     "criterion": {
         "type": "torch.nn.BCEWithLogitsLoss"
@@ -70,7 +70,7 @@
     "threshold": 0.5,
     "cross_validation_folds": 5,
     "train_metrics": [],
-    "test_metrics": ["roc_auc", "pr_auc", "accuracy", "precision", "recall"],
+    "test_metrics": ["roc_auc", "pr_auc", "accuracy", "precision", "recall", "cohen_kappa"],
 
     "epochs": 50,
     "batch_size": 128,
@@ -80,6 +80,8 @@
 
     "cache_location": "data/cache/",
     "clear_cache": false,
+    "preload_data": true,
+    "shard_size": 4096,
 
     "log_level": "info",
     "log_format": "",

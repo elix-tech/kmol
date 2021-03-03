@@ -227,11 +227,6 @@ dependencies:
     - pytest==6.2.2
     - rdflib==5.0.0
     - toml==0.10.2
-    - torch-cluster==1.5.8
-    - torch-geometric==1.6.1
-    - torch-scatter==2.0.5
-    - torch-sparse==0.6.8
-    - torch-spline-conv==1.2.0
     - tqdm==4.50.1
 prefix: /home/elix/anaconda3/envs/federated
 

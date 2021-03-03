@@ -18,9 +18,9 @@
     },
     "loader": {
         "type": "csv",
-        "input_path": "data/input/chembl/assay_ready.csv",
+        "input_path": "data/input/chembl/assay_v2_ready.csv",
         "input_column_names": ["smiles", "target_sequence"],
-        "target_column_names": ["label"]
+        "target_column_names": ["t_100n", "t_1u", "t_10u"]
     },
     "splitter": {
         "type": "index",
@@ -69,13 +69,15 @@
     "threshold": 0.5,
     "cross_validation_folds": 5,
     "train_metrics": [],
-    "test_metrics": ["roc_auc", "pr_auc", "accuracy", "precision", "recall"],
+    "test_metrics": ["roc_auc", "pr_auc", "accuracy", "precision", "recall", "cohen_kappa"],
 
     "epochs": 50,
     "batch_size": 128,
 
     "use_cuda": true,
     "enabled_gpus": [0],
+    "preload_data": true,
+    "shard_size": 4096,
 
     "cache_location": "data/cache/",
     "clear_cache": false,
