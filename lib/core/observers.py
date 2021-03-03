@@ -32,17 +32,11 @@ class EventManager:
         EventManager._LISTENERS = defaultdict(list)
 
 
-class MaskMissingLabelsHandler(EventHandler):
-    """event: before_criterion"""
+class AddSigmoidHandler(EventHandler):
+    """event: before_criterion|before_predict"""
 
     def run(self, payload: Namespace):
-        mask = payload.target == payload.target
-        weights = mask.float()
-        labels = payload.target
-        labels[~mask] = 0
-
-        payload.target = labels
-        payload.weight = weights
+        payload.logits = torch.sigmoid(payload.logits)
 
 
 class DropBatchNormLayersHandler(EventHandler):

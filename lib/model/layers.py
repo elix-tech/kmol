@@ -2,7 +2,8 @@ from typing import Optional, Dict
 
 import torch
 import torch_geometric
-from torch_scatter import scatter_mean, scatter_std
+from torch.nn.functional import leaky_relu
+from torch_scatter import scatter_mean, scatter_std, scatter
 
 from lib.core.helpers import SuperFactory
 
@@ -11,15 +12,20 @@ class GraphConvolutionWrapper(torch.nn.Module):
 
     def __init__(
             self, in_features: int, out_features: int, dropout: float, layer_type: str = "torch_geometric.nn.GCNConv",
-            is_residual: bool = True, norm_layer: Optional[str] = None, has_edge_features: bool = False,
-            activation: str = "torch.nn.ReLU", **kwargs
+            is_residual: bool = True, norm_layer: Optional[str] = None, activation: str = "torch.nn.ReLU",
+            edge_features: int = 0, propagate_edge_features: bool = False, **kwargs
     ):
         super().__init__()
+        base_features = in_features + in_features // 2 if edge_features else in_features
+        self.convolution = SuperFactory.reflect(layer_type)(base_features, out_features, **kwargs)
 
-        self._has_edge_features = has_edge_features
-        self.convolution = SuperFactory.reflect(layer_type)(in_features, out_features, **kwargs)
+        self._propagate_edge_features = propagate_edge_features
+        self._edge_features = edge_features
+        if self._edge_features and not self._propagate_edge_features:
+            self.edge_projection = torch.nn.Linear(edge_features, in_features // 2)
+
         self.norm_layer = SuperFactory.reflect(norm_layer)(out_features) if norm_layer else None
-        self.residual_layer = torch.nn.Linear(in_features, out_features) if is_residual else None
+        self.residual_layer = torch.nn.Linear(base_features, out_features) if is_residual else None
         self.activation = SuperFactory.reflect(activation)()
         self.dropout = torch.nn.Dropout(p=dropout)
 
@@ -28,15 +34,38 @@ class GraphConvolutionWrapper(torch.nn.Module):
     ) -> Dict[str, torch.Tensor]:
 
         arguments = {"x": x, "edge_index": edge_index}
-        if self._has_edge_features:
+        if self._propagate_edge_features:
             arguments["edge_attr"] = edge_attr
 
         return arguments
+
+    def _add_edge_features(
+            self, x: torch.Tensor, edge_index: torch.Tensor, edge_attr: torch.Tensor
+    ) -> torch.Tensor:
+
+        if self._edge_features and not self._propagate_edge_features:
+            last_atom_index = x.size(0) - 1
+
+            if last_atom_index not in torch.unique(edge_index[0]):  # fix issue when last node has no bond
+                edge_index = torch.cat(
+                    (edge_index, torch.LongTensor([[last_atom_index], [last_atom_index]]).to(edge_index.device)),
+                    dim=1
+                )
+
+                edge_attr = torch.cat((edge_attr, torch.zeros((1, edge_attr.size(1))).to(edge_attr.device)), dim=0)
+
+            per_node_edge_features = scatter(edge_attr, edge_index[0], dim=0, reduce="sum")
+            per_node_edge_features = leaky_relu(self.edge_projection(per_node_edge_features))
+
+            x = torch.cat([x, per_node_edge_features], dim=1)
+
+        return x
 
     def forward(
             self, x: torch.Tensor, edge_index: torch.Tensor, edge_attr: torch.Tensor, batch: torch.Tensor
     ) -> torch.Tensor:
 
+        x = self._add_edge_features(x, edge_index, edge_attr)
         identity = x
 
         arguments = self._get_layer_arguments(x, edge_index, edge_attr)
@@ -90,7 +119,7 @@ class TrimConvolution(torch_geometric.nn.MessagePassing):
     Implementation taken from https://github.com/yvquanli/TrimNet.
     """
 
-    def __init__(self, in_features, out_features, edge_features, heads=4, negative_slope=0.2, **kwargs):
+    def __init__(self, in_features, out_features, in_edge_features, heads=4, negative_slope=0.2, **kwargs):
         super().__init__(aggr='add', node_dim=0, **kwargs)
 
         # node_dim = 0 for multi-head aggr support
@@ -98,7 +127,7 @@ class TrimConvolution(torch_geometric.nn.MessagePassing):
         self.heads = heads
         self.negative_slope = negative_slope
         self.weight_node = torch.nn.Parameter(torch.Tensor(in_features, heads * in_features))
-        self.weight_edge = torch.nn.Parameter(torch.Tensor(edge_features, heads * in_features))
+        self.weight_edge = torch.nn.Parameter(torch.Tensor(in_edge_features, heads * in_features))
         self.weight_triplet_att = torch.nn.Parameter(torch.Tensor(1, heads, 3 * in_features))
         self.weight_scale = torch.nn.Parameter(torch.Tensor(heads * in_features, out_features))
         self.bias = torch.nn.Parameter(torch.Tensor(out_features))

@@ -1,0 +1,13 @@
+{
+    "task_configuration_file": "data/configs/model/adme/papp_caco2_cls.json",
+    "aggregator_type": "mila.aggregators.PlainTorchAggregator",
+    "config_type": "lib.core.config.Config",
+    "executor_type": "run.Executor",
+
+    "rounds_count": 50,
+    "workers": 4,
+    "minimum_clients": 5,
+    "maximum_clients": 5,
+
+    "client_wait_time": 300
+}

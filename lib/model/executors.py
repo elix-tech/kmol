@@ -130,11 +130,12 @@ class Trainer(AbstractExecutor):
                 self._optimizer.zero_grad()
                 outputs = self._network(data.inputs)
 
-                payload = Namespace(input=outputs, target=data.outputs)
+                payload = Namespace(features=data, logits=outputs)
                 EventManager.dispatch_event(event_name="before_criterion", payload=payload)
-                loss = self._criterion(**vars(payload))
 
+                loss = self._criterion(payload.logits, payload.features.outputs)
                 loss.backward()
+
                 self._optimizer.step()
                 if self._config.is_stepwise_scheduler:
                     self._scheduler.step()
@@ -212,7 +213,12 @@ class Predictor(AbstractExecutor):
 
     def run(self, batch: Batch) -> torch.Tensor:
         with torch.no_grad():
-            return self._network(batch.inputs)
+            logits = self._network(batch.inputs)
+
+            payload = Namespace(features=batch, logits=logits)
+            EventManager.dispatch_event("after_predict", payload=payload)
+
+            return payload.logits
 
     def run_all(self, data_loader: TorchDataLoader) -> Tuple[List[torch.Tensor], List[torch.Tensor]]:
         ground_truth = []

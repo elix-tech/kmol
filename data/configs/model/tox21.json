@@ -36,7 +36,8 @@
         "weight_decay": 0.00056
     },
     "criterion": {
-        "type": "lib.model.criterions.WeightedBinaryCrossEntropyLoss"
+        "type": "lib.model.criterions.MaskedLoss",
+        "loss": {"type": "torch.nn.BCEWithLogitsLoss"}
     },
     "scheduler": {
         "type": "torch.optim.lr_scheduler.OneCycleLR",
@@ -46,11 +47,13 @@
         "div_factor": 25,
         "final_div_factor": 1000
     },
-    "output_path": "data/logs/server/",
+    "output_path": "data/logs/tox21/",
     "checkpoint_path": null,
+
     "threshold": 0.2162803616374731,
     "cross_validation_folds": 5,
     "train_metrics": [],
+
     "test_metrics": ["roc_auc", "pr_auc", "accuracy", "precision", "recall"],
     "epochs": 200,
     "batch_size": 128,
@@ -61,9 +64,6 @@
     "log_level": "info",
     "log_format": "",
     "log_frequency": 5,
-    "observers": {
-        "before_criterion": ["lib.core.observers.MaskMissingLabelsHandler"]
-    },
     "target_metric": "roc_auc",
     "optuna_trials": 1000
 }

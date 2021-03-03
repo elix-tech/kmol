@@ -38,7 +38,7 @@
         "weight_decay": 0.00036
     },
     "criterion": {
-        "type": "lib.model.criterions.WeightedBinaryCrossEntropyLoss"
+        "type": "torch.nn.BCEWithLogitsLoss"
     },
     "scheduler": {
         "type": "torch.optim.lr_scheduler.OneCycleLR",
