@@ -66,10 +66,7 @@ class AbstractTorchGeometricFeaturizer(AbstractFeaturizer):
             permutation = (edge_indices[0] * atom_features.size(0) + edge_indices[1]).argsort()
             edge_indices, edge_attributes = edge_indices[:, permutation], edge_attributes[permutation]
 
-        return TorchGeometricData(
-            x=atom_features, edge_index=edge_indices,
-            edge_attr=edge_attributes, smiles=data, mol=mol
-        )
+        return TorchGeometricData(x=atom_features, edge_index=edge_indices, edge_attr=edge_attributes, smiles=data)
 
     def _get_vertex_features(self, mol: Chem.Mol) -> List[List[float]]:
         return [self._featurize_atom(atom) for atom in mol.GetAtoms()]
@@ -162,9 +159,10 @@ class GraphFeaturizer(AbstractTorchGeometricFeaturizer):
         self._descriptor_calculator = descriptor_calculator
 
     def _process(self, data: str) -> TorchGeometricData:
+        mol = Chem.MolFromSmiles(data)
         data = super()._process(data=data)
 
-        molecule_features = self._descriptor_calculator.run(data.mol)
+        molecule_features = self._descriptor_calculator.run(mol)
         molecule_features = torch.FloatTensor(molecule_features).view(-1, len(molecule_features))
 
         data.molecule_features = molecule_features

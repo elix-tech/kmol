@@ -68,6 +68,26 @@ class ExcelLoader(CsvLoader):
         self._dataset = pd.read_excel(input_path, sheet_name=sheet_index)
 
 
+class SdfLoader(CsvLoader):
+
+    def __init__(
+            self, input_path: str, input_column_names: List[str], target_column_names: List[str]
+    ):
+        self._input_columns = input_column_names
+        self._target_columns = target_column_names
+
+        self._dataset = self._load_dataset(input_path)
+
+    def _load_dataset(self, input_path: str) -> pd.DataFrame:
+        from rdkit import Chem
+        from rdkit.Chem import PandasTools
+
+        dataset = PandasTools.LoadSDF(input_path)
+        dataset["smiles"] = [Chem.MolToSmiles(smiles) for smiles in dataset["ROMol"]]
+
+        return dataset
+
+
 class ListLoader(AbstractLoader):
 
     def __init__(self, data: List[Data], indices: List[str]):
