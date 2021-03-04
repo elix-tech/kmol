@@ -14,7 +14,7 @@
             "out_features": 16
         },
         "hidden_features": 32,
-        "out_features": 1
+        "out_features": 3
     },
     "loader": {
         "type": "csv",

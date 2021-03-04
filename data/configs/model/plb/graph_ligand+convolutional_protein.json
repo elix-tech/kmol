@@ -20,7 +20,7 @@
             "norm_layer": "lib.model.layers.BatchNorm"
         },
         "hidden_features": 32,
-        "out_features": 1
+        "out_features": 3
     },
     "loader": {
         "type": "csv",

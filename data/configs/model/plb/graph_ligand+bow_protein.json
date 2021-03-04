@@ -20,7 +20,7 @@
             "norm_layer": "lib.model.layers.BatchNorm"
         },
         "hidden_features": 32,
-        "out_features": 1
+        "out_features": 3
     },
     "loader": {
         "type": "csv",
@@ -75,7 +75,7 @@
     "epochs": 50,
     "batch_size": 128,
 
-    "use_cuda": true,
+    "use_cuda": false,
     "enabled_gpus": [0],
 
     "cache_location": "data/cache/",
