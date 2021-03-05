@@ -295,6 +295,12 @@ class Pipeliner(AbstractExecutor):
         self.initialize_predictor()
         return self
 
+    def get_network(self) -> AbstractNetwork:  # throws CheckpointNotFound Exception
+        super().__init__(self._config)
+
+        self._load_checkpoint()
+        return self._network
+
 
 class ThresholdFinder(Evaluator):
 

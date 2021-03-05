@@ -1,10 +1,12 @@
 import logging
+import os
 from argparse import ArgumentParser
 from typing import List, Tuple, Callable, Optional
 
 import joblib
 import numpy as np
 import optuna
+from tqdm import tqdm
 
 from lib.core.config import Config
 from lib.core.helpers import Namespace, ConfidenceInterval
@@ -328,6 +330,20 @@ class Executor(AbstractExecutor):
 
         trainer = LearningRareFinder(self._config)
         trainer.run(data_loader=data_loader)
+
+    def visualize(self):
+        from lib.visualization.models import IntegratedGradientsExplainer
+
+        streamer = GeneralStreamer(config=self._config)
+        data_loader = streamer.get(split_name=self._config.test_split, batch_size=1, shuffle=True)
+
+        network = Pipeliner(config=self._config).get_network()
+        visualizer = IntegratedGradientsExplainer(network, self._config.visualizer["output_path"])
+
+        for sample_id, batch in enumerate(tqdm(data_loader.dataset)):
+            for target_id in self._config.visualizer["targets"]:
+                save_path = "sample_{}_target_{}.png".format(sample_id, target_id)
+                visualizer.visualize(batch, target_id, save_path)
 
 
 if __name__ == "__main__":
