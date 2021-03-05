@@ -42,8 +42,6 @@ class Config(AbstractConfiguration):
 
     cache_location: str = "/tmp/federated/"
     clear_cache: bool = False
-    preload_data: bool = False
-    shard_size: int = 1024
 
     log_level: Literal["debug", "info", "warn", "error", "critical"] = "info"
     log_format: str = ""

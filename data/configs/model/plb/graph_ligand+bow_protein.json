@@ -80,8 +80,6 @@
 
     "cache_location": "data/cache/",
     "clear_cache": false,
-    "preload_data": true,
-    "shard_size": 4096,
 
     "log_level": "info",
     "log_format": "",

@@ -70,8 +70,6 @@
     },
     "output_path": "data/logs/server/",
     "checkpoint_path": null,
-    "preload_data": true,
-    "shard_size": 4096,
 
     "threshold": 0.5,
     "cross_validation_folds": 5,
