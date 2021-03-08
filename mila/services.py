@@ -333,10 +333,12 @@ class Client(IOManager):
     def _connect(self) -> grpc.Channel:
         if self._config.use_secure_connection:
             credentials = self._get_credentials()
-            return grpc.secure_channel(target=self._config.target, credentials=credentials)
+            return grpc.secure_channel(
+                target=self._config.target, credentials=credentials, options=self._config.options
+            )
         else:
             logging.warning("[CAUTION] Connection is insecure!")
-            return grpc.insecure_channel(self._config.target)
+            return grpc.insecure_channel(self._config.target, options=self._config.options)
 
     def _store_checkpoint(self, checkpoint: bytes) -> str:
         checkpoint_path = "{}/checkpoint.latest".format(self._config.save_path)

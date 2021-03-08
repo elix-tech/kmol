@@ -56,6 +56,11 @@ class ClientConfiguration(NamedTuple):
         "epochs": 5
     }
 
+    options: List[Tuple[str, Any]] = [
+        ("grpc.max_send_message_length", 1000000000),
+        ("grpc.max_receive_message_length", 1000000000)
+    ]
+
     use_secure_connection: bool = False
     ssl_private_key: str = "data/certificates/client.key"
     ssl_cert: str = "data/certificates/client.crt"
