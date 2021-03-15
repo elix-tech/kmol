@@ -26,7 +26,7 @@ class Config(AbstractConfiguration):
     is_stepwise_scheduler: Optional[bool] = True
     is_finetuning: Optional[bool] = False
     checkpoint_path: Optional[str] = None
-    threshold: Optional[float] = None
+    threshold: Optional[float] = 0.5
     cross_validation_folds: int = 5
 
     train_split: str = "train"
@@ -38,7 +38,7 @@ class Config(AbstractConfiguration):
     batch_size: int = 32
 
     use_cuda: bool = True
-    enabled_gpus: List[int] = field(default_factory=lambda: [0, 1, 2, 3])
+    enabled_gpus: List[int] = field(default_factory=lambda: [0])
 
     cache_location: str = "/tmp/federated/"
     clear_cache: bool = False

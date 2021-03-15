@@ -1,5 +1,4 @@
 import logging
-import os
 from argparse import ArgumentParser
 from typing import List, Tuple, Callable, Optional
 
@@ -258,7 +257,7 @@ class Executor(AbstractExecutor):
         print(",".join(streamer.labels))
 
         results = []
-        for batch in data_loader:
+        for batch in data_loader.dataset:
             logits = predictor.run(batch)
 
             predictions = PredictionProcessor.apply_threshold(logits, self._config.threshold)

@@ -119,8 +119,8 @@ class Trainer(AbstractExecutor):
 
         self._setup(training_examples=data_loader.samples)
 
-        payload = Namespace(trainer=self, data_loader=data_loader)
-        EventManager.dispatch_event(event_name="before_train_start", payload=payload)
+        initial_payload = Namespace(trainer=self, data_loader=data_loader)
+        EventManager.dispatch_event(event_name="before_train_start", payload=initial_payload)
 
         for epoch in range(self._start_epoch + 1, self._config.epochs + 1):
 
@@ -148,7 +148,7 @@ class Trainer(AbstractExecutor):
             self._reset_trackers()
             self.save(epoch)
 
-        EventManager.dispatch_event(event_name="after_train_end", payload=payload)
+        EventManager.dispatch_event(event_name="after_train_end", payload=initial_payload)
 
     def _update_trackers(self, loss: float, ground_truth: torch.Tensor, logits: torch.Tensor) -> None:
         self._loss_tracker.update(loss)
@@ -344,13 +344,13 @@ class LearningRareFinder(Trainer):
                     self._optimizer.zero_grad()
                     outputs = self._network(data.inputs)
 
-                    payload = Namespace(input=outputs, target=data.outputs)
+                    payload = Namespace(features=data, logits=outputs)
                     EventManager.dispatch_event(event_name="before_criterion", payload=payload)
-                    loss = self._criterion(**vars(payload))
 
+                    loss = self._criterion(payload.logits, payload.features.outputs)
                     loss.backward()
-                    self._optimizer.step()
 
+                    self._optimizer.step()
                     self._scheduler.step()
                     self._loss_tracker.update(loss.item())
 

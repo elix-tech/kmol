@@ -1,0 +1,14 @@
+{
+    "task_configuration_file": "data/configs/model/adme/fu_brain.json",
+    "aggregator_type": "mila.aggregators.WeightedTorchAggregator",
+    "aggregator_options": {"weights": {"tester1": 0.8, "tester2": 0.2}},
+    "config_type": "lib.core.config.Config",
+    "executor_type": "run.Executor",
+
+    "rounds_count": 50,
+    "workers": 4,
+    "minimum_clients": 2,
+    "maximum_clients": 2,
+
+    "client_wait_time": 300
+}

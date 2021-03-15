@@ -1,0 +1,80 @@
+{
+    "model": {
+        "type": "graph_convolutional",
+        "in_features": 45,
+        "out_features": 12,
+        "hidden_features": 96,
+        "dropout": 0.1,
+        "layer_type": "torch_geometric.nn.LEConv",
+        "layers_count": 7,
+        "molecule_features": 17,
+        "is_residual": 1,
+        "norm_layer": "lib.model.layers.BatchNorm"
+    },
+    "loader": {
+        "type": "csv",
+        "input_path": "data/input/tox21/raw/tox21.csv",
+        "input_column_names": ["smiles"],
+        "target_column_names": ["NR-AR", "NR-AR-LBD", "NR-AhR", "NR-Aromatase", "NR-ER", "NR-ER-LBD", "NR-PPAR-gamma", "SR-ARE", "SR-ATAD5", "SR-HSE", "SR-MMP", "SR-p53"]
+    },
+    "splitter": {
+        "type": "index",
+        "splits": {"train": 0.8, "test": 0.2}
+    },
+    "featurizers": [
+        {
+            "type": "graph",
+            "inputs": ["smiles"],
+            "outputs": ["graph"],
+            "descriptor_calculator": {"type": "rdkit"}
+        }
+    ],
+    "transformers": [],
+    "optimizer": {
+        "type": "torch.optim.AdamW",
+        "lr": 0.01,
+        "weight_decay": 0.00056
+    },
+    "criterion": {
+        "type": "lib.model.criterions.MaskedLoss",
+        "loss": {"type": "torch.nn.BCEWithLogitsLoss"}
+    },
+    "scheduler": {
+        "type": "torch.optim.lr_scheduler.OneCycleLR",
+        "max_lr": 0.01,
+        "epochs": 200,
+        "pct_start": 0.3,
+        "div_factor": 25,
+        "final_div_factor": 1000
+    },
+    "output_path": "data/logs/tox21/",
+    "checkpoint_path": null,
+
+    "threshold": 0.2162803616374731,
+    "cross_validation_folds": 5,
+    "train_metrics": [],
+
+    "test_metrics": ["roc_auc", "pr_auc", "accuracy", "precision", "recall", "cohen_kappa"],
+    "epochs": 200,
+    "batch_size": 32,
+    "use_cuda": true,
+    "enabled_gpus": [0],
+    "cache_location": "data/cache/",
+    "clear_cache": false,
+    "log_level": "info",
+    "log_format": "",
+    "log_frequency": 5,
+    "target_metric": "roc_auc",
+    "optuna_trials": 1000,
+
+    "differential_privacy": {
+        "enabled": true,
+        "options": {
+            "delta": 1e-5,
+            "alphas": [10, 100],
+            "noise_multiplier": 1.5,
+            "max_grad_norm": 1.0,
+            "secure_rng": false
+        }
+    }
+}

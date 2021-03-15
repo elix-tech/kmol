@@ -3,7 +3,7 @@
     "model": {
         "type": "graph_convolutional",
         "in_features": 45,
-        "out_features": 1,
+        "out_features": 2,
         "hidden_features": 64,
         "dropout": 0.2,
         "layer_type": "torch_geometric.nn.GCNConv",
@@ -16,7 +16,7 @@
         "type": "csv",
         "input_path": "data/input/adme/ready/fe_human.csv",
         "input_column_names": ["smiles"],
-        "target_column_names": ["label_07"]
+        "target_column_names": ["label_03", "label_07"]
     },
     "splitter": {
         "type": "random",

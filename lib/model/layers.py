@@ -87,12 +87,12 @@ class LinearBlock(torch.nn.Module):
 
     def __init__(
             self, in_features: int, hidden_features: int,
-            out_features: int, activation: torch.nn.Module = torch.nn.ReLU()
+            out_features: int, activation: str = "torch.nn.ReLU"
     ):
         super().__init__()
         self.block = torch.nn.Sequential(
             torch.nn.Linear(in_features, hidden_features),
-            activation,
+            SuperFactory.reflect(activation)(),
             torch.nn.Linear(hidden_features, out_features),
         )
 
