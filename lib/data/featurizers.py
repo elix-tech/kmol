@@ -347,3 +347,21 @@ class FixedFeaturizer(AbstractFeaturizer):
 
     def _process(self, data: float) -> float:
         return round(data / self._value, 8)
+
+
+class ConverterFeaturizer(AbstractFeaturizer):
+
+    def __init__(
+            self, inputs: List[str], outputs: List[str], source_format: str, target_format: str,
+            should_cache: bool = False, rewrite: bool = True,
+    ):
+        super().__init__(inputs, outputs, should_cache, rewrite)
+
+        self._source_format = source_format
+        self._target_format = target_format
+
+        from openbabel import pybel
+        self._pybel = pybel
+
+    def _process(self, data: str) -> str:
+        return self._pybel.readstring(self._source_format, data).write(self._target_format).strip()
