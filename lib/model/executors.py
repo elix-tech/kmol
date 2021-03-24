@@ -26,35 +26,35 @@ from lib.model.trackers import ExponentialAverageMeter
 class AbstractExecutor(metaclass=ABCMeta):
 
     def __init__(self, config: Config):
-        self._config = config
+        self.config = config
         self._timer = Timer()
         self._start_epoch = 0
 
-        self._network = None
+        self.network = None
         self._setup_network()
 
-        self._optimizer = None
-        self._criterion = None
-        self._scheduler = None
+        self.optimizer = None
+        self.criterion = None
+        self.scheduler = None
 
     def _load_checkpoint(self) -> None:
-        if self._config.checkpoint_path is None:
+        if self.config.checkpoint_path is None:
             raise CheckpointNotFound
 
-        logging.info("Restoring from Checkpoint: {}".format(self._config.checkpoint_path))
-        info = torch.load(self._config.checkpoint_path, map_location=self._config.get_device())
+        logging.info("Restoring from Checkpoint: {}".format(self.config.checkpoint_path))
+        info = torch.load(self.config.checkpoint_path, map_location=self.config.get_device())
 
         payload = Namespace(executor=self, info=info)
         EventManager.dispatch_event(event_name="before_checkpoint_load", payload=payload)
 
-        self._network.load_state_dict(info["model"])
+        self.network.load_state_dict(info["model"])
 
-        if not self._config.is_finetuning:
-            if self._optimizer and "optimizer" in info:
-                self._optimizer.load_state_dict(info["optimizer"])
+        if not self.config.is_finetuning:
+            if self.optimizer and "optimizer" in info:
+                self.optimizer.load_state_dict(info["optimizer"])
 
-            if self._scheduler and "scheduler" in info:
-                self._scheduler.load_state_dict(info["scheduler"])
+            if self.scheduler and "scheduler" in info:
+                self.scheduler.load_state_dict(info["scheduler"])
 
             if "epoch" in info:
                 self._start_epoch = info["epoch"]
@@ -63,15 +63,15 @@ class AbstractExecutor(metaclass=ABCMeta):
         EventManager.dispatch_event(event_name="after_checkpoint_load", payload=payload)
 
     def _setup_network(self) -> None:
-        self._network = SuperFactory.create(AbstractNetwork, self._config.model)
+        self.network = SuperFactory.create(AbstractNetwork, self.config.model)
 
-        payload = Namespace(executor=self, config=self._config)
+        payload = Namespace(executor=self, config=self.config)
         EventManager.dispatch_event(event_name="after_network_create", payload=payload)
 
-        if self._config.should_parallelize():
-            self._network = torch.nn.DataParallel(self._network, device_ids=self._config.enabled_gpus)
+        if self.config.should_parallelize():
+            self.network = torch.nn.DataParallel(self.network, device_ids=self.config.enabled_gpus)
 
-        self._network.to(self._config.get_device())
+        self.network.to(self.config.get_device())
 
 
 class Trainer(AbstractExecutor):
@@ -81,38 +81,38 @@ class Trainer(AbstractExecutor):
         self._loss_tracker = ExponentialAverageMeter(smoothing_factor=0.95)
 
         self._metric_trackers = {
-            name: ExponentialAverageMeter(smoothing_factor=0.9) for name in self._config.train_metrics
+            name: ExponentialAverageMeter(smoothing_factor=0.9) for name in self.config.train_metrics
         }
         self._metric_computer = PredictionProcessor(
-            metrics=self._config.train_metrics, threshold=self._config.threshold, error_value=0
+            metrics=self.config.train_metrics, threshold=self.config.threshold, error_value=0
         )
 
     def _setup(self, training_examples: int) -> None:
-        self._criterion = SuperFactory.create(
-            AbstractCriterion, self._config.criterion
-        ).to(self._config.get_device())
+        self.criterion = SuperFactory.create(
+            AbstractCriterion, self.config.criterion
+        ).to(self.config.get_device())
 
-        self._optimizer = SuperFactory.create(AbstractOptimizer, self._config.optimizer, {
-            "params": self._network.parameters()
+        self.optimizer = SuperFactory.create(AbstractOptimizer, self.config.optimizer, {
+            "params": self.network.parameters()
         })
 
-        self._scheduler = self._initialize_scheduler(optimizer=self._optimizer, training_examples=training_examples)
+        self.scheduler = self._initialize_scheduler(optimizer=self.optimizer, training_examples=training_examples)
 
         try:
             self._load_checkpoint()
         except CheckpointNotFound:
             pass
 
-        self._network = self._network.train()
-        logging.debug(self._network)
+        self.network = self.network.train()
+        logging.debug(self.network)
 
     def _initialize_scheduler(
             self, optimizer: AbstractOptimizer, training_examples: int
     ) -> AbstractLearningRateScheduler:
 
-        return SuperFactory.create(AbstractLearningRateScheduler, self._config.scheduler, {
+        return SuperFactory.create(AbstractLearningRateScheduler, self.config.scheduler, {
             "optimizer": optimizer,
-            "steps_per_epoch": math.ceil(training_examples / self._config.batch_size)
+            "steps_per_epoch": math.ceil(training_examples / self.config.batch_size)
         })
 
     def run(self, data_loader: LoadedContent):
@@ -122,28 +122,28 @@ class Trainer(AbstractExecutor):
         initial_payload = Namespace(trainer=self, data_loader=data_loader)
         EventManager.dispatch_event(event_name="before_train_start", payload=initial_payload)
 
-        for epoch in range(self._start_epoch + 1, self._config.epochs + 1):
+        for epoch in range(self._start_epoch + 1, self.config.epochs + 1):
 
             for iteration, data in enumerate(data_loader.dataset, start=1):
-                self._optimizer.zero_grad()
-                outputs = self._network(data.inputs)
+                self.optimizer.zero_grad()
+                outputs = self.network(data.inputs)
 
                 payload = Namespace(features=data, logits=outputs, extras=[])
                 EventManager.dispatch_event(event_name="before_criterion", payload=payload)
 
-                loss = self._criterion(payload.logits, payload.features.outputs, *payload.extras)
+                loss = self.criterion(payload.logits, payload.features.outputs, *payload.extras)
                 loss.backward()
 
-                self._optimizer.step()
-                if self._config.is_stepwise_scheduler:
-                    self._scheduler.step()
+                self.optimizer.step()
+                if self.config.is_stepwise_scheduler:
+                    self.scheduler.step()
 
                 self._update_trackers(loss.item(), data.outputs, outputs)
-                if iteration % self._config.log_frequency == 0:
+                if iteration % self.config.log_frequency == 0:
                     self.log(epoch, iteration, data_loader.samples)
 
-            if not self._config.is_stepwise_scheduler:
-                self._scheduler.step()
+            if not self.config.is_stepwise_scheduler:
+                self.scheduler.step()
 
             self._reset_trackers()
             self.save(epoch)
@@ -168,12 +168,12 @@ class Trainer(AbstractExecutor):
     def save(self, epoch: int) -> None:
         info = {
             "epoch": epoch,
-            "model": self._network.state_dict(),
-            "optimizer": self._optimizer.state_dict(),
-            "scheduler": self._scheduler.state_dict()
+            "model": self.network.state_dict(),
+            "optimizer": self.optimizer.state_dict(),
+            "scheduler": self.scheduler.state_dict()
         }
 
-        model_path = "{}checkpoint.{}".format(self._config.output_path, epoch)
+        model_path = "{}checkpoint.{}".format(self.config.output_path, epoch)
         logging.info("Saving checkpoint: {}".format(model_path))
 
         payload = Namespace(info=info)
@@ -182,7 +182,7 @@ class Trainer(AbstractExecutor):
         torch.save(info, model_path)
 
     def log(self, epoch: int, iteration: int, dataset_size: int) -> None:
-        processed_samples = iteration * self._config.batch_size
+        processed_samples = iteration * self.config.batch_size
         message = "epoch: {} - iteration: {} - examples: {} - loss: {:.4f} - time elapsed: {} - progress: {}".format(
             epoch,
             iteration,
@@ -207,11 +207,11 @@ class Predictor(AbstractExecutor):
         super().__init__(config)
 
         self._load_checkpoint()
-        self._network = self._network.eval()
+        self.network = self.network.eval()
 
     def run(self, batch: Batch) -> torch.Tensor:
         with torch.no_grad():
-            logits = self._network(batch.inputs)
+            logits = self.network(batch.inputs)
 
             payload = Namespace(features=batch, logits=logits)
             EventManager.dispatch_event("after_predict", payload=payload)
@@ -234,8 +234,8 @@ class Evaluator(AbstractExecutor):
     def __init__(self, config: Config):
         super().__init__(config)
 
-        self._predictor = Predictor(config=self._config)
-        self._processor = PredictionProcessor(metrics=self._config.test_metrics, threshold=self._config.threshold)
+        self._predictor = Predictor(config=self.config)
+        self._processor = PredictionProcessor(metrics=self.config.test_metrics, threshold=self.config.threshold)
 
     def run(self, data_loader: LoadedContent) -> Namespace:
         ground_truth, logits = self._predictor.run_all(data_loader=data_loader)
@@ -245,14 +245,14 @@ class Evaluator(AbstractExecutor):
 class Pipeliner(AbstractExecutor):
 
     def __init__(self, config: Config):
-        self._config = config
+        self.config = config
 
-        self._trainer = Trainer(self._config)
-        self._processor = PredictionProcessor(metrics=self._config.test_metrics, threshold=self._config.threshold)
+        self._trainer = Trainer(self.config)
+        self._processor = PredictionProcessor(metrics=self.config.test_metrics, threshold=self.config.threshold)
         self._predictor = None
 
     def initialize_predictor(self) -> "Pipeliner":
-        self._predictor = Predictor(config=self._config)
+        self._predictor = Predictor(config=self.config)
         return self
 
     def train(self, data_loader: LoadedContent) -> None:
@@ -269,7 +269,7 @@ class Pipeliner(AbstractExecutor):
         results = []
 
         for checkpoint_path in self.find_all_checkpoints():
-            config = copy(self._config)
+            config = copy(self.config)
             config.checkpoint_path = checkpoint_path
 
             evaluator = Evaluator(config=config)
@@ -278,7 +278,7 @@ class Pipeliner(AbstractExecutor):
         return results
 
     def find_all_checkpoints(self) -> List[str]:
-        checkpoint_paths = glob(self._config.output_path + "*")
+        checkpoint_paths = glob(self.config.output_path + "*")
         checkpoint_paths = sorted(checkpoint_paths)
         return sorted(checkpoint_paths, key=len)
 
@@ -286,20 +286,20 @@ class Pipeliner(AbstractExecutor):
         results = self.evaluate_all(data_loader=data_loader)
 
         per_target_best = Namespace.reduce(results, partial(np.argmax, axis=0))
-        per_target_best = getattr(per_target_best, self._config.target_metric)
+        per_target_best = getattr(per_target_best, self.config.target_metric)
 
-        self._config.checkpoint_path = "{}checkpoint.{}".format(
-            self._config.output_path, np.argmax(np.bincount(per_target_best)) + 1
+        self.config.checkpoint_path = "{}checkpoint.{}".format(
+            self.config.output_path, np.argmax(np.bincount(per_target_best)) + 1
         )
 
         self.initialize_predictor()
         return self
 
     def get_network(self) -> AbstractNetwork:  # throws CheckpointNotFound Exception
-        super().__init__(self._config)
+        super().__init__(self.config)
 
         self._load_checkpoint()
-        return self._network
+        return self.network
 
 
 class ThresholdFinder(Evaluator):
@@ -322,7 +322,7 @@ class LearningRareFinder(Trainer):
             self, optimizer: AbstractOptimizer, training_examples: int
     ) -> AbstractLearningRateScheduler:
 
-        gamma = max(training_examples // self._config.batch_size, 1)
+        gamma = max(training_examples // self.config.batch_size, 1)
         gamma = np.log(self.MAXIMUM_LEARNING_RATE / self.MINIMUM_LEARNING_RATE) / gamma
         gamma = float(np.exp(gamma))
 
@@ -341,17 +341,17 @@ class LearningRareFinder(Trainer):
         try:
             with tqdm(total=data_loader.batches) as progress_bar:
                 for iteration, data in enumerate(data_loader.dataset, start=1):
-                    self._optimizer.zero_grad()
-                    outputs = self._network(data.inputs)
+                    self.optimizer.zero_grad()
+                    outputs = self.network(data.inputs)
 
                     payload = Namespace(features=data, logits=outputs, extras=[])
                     EventManager.dispatch_event(event_name="before_criterion", payload=payload)
 
-                    loss = self._criterion(payload.logits, payload.features.outputs, *payload.extras)
+                    loss = self.criterion(payload.logits, payload.features.outputs, *payload.extras)
                     loss.backward()
 
-                    self._optimizer.step()
-                    self._scheduler.step()
+                    self.optimizer.step()
+                    self.scheduler.step()
                     self._loss_tracker.update(loss.item())
 
                     learning_rate_records.append(self._get_learning_rate())
@@ -364,7 +364,7 @@ class LearningRareFinder(Trainer):
         self._plot(learning_rate_records, loss_records)
 
     def _get_learning_rate(self) -> float:
-        return self._optimizer.param_groups[0]["lr"]
+        return self.optimizer.param_groups[0]["lr"]
 
     def _plot(self, learning_rate_records: List[float], loss_records: List[float]) -> None:
         import matplotlib.pyplot as plt

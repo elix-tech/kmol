@@ -1,6 +1,6 @@
 import logging
 from argparse import ArgumentParser
-from typing import List, Tuple, Callable, Optional
+from typing import List, Tuple, Callable, Optional, Dict, Union
 
 import joblib
 import numpy as np
@@ -349,6 +349,20 @@ class Executor:
             for target_id in self._config.visualizer["targets"]:
                 save_path = "sample_{}_target_{}.png".format(sample_id, target_id)
                 visualizer.visualize(batch, target_id, save_path)
+
+    def preload(self) -> None:
+        GeneralStreamer(config=self._config)
+
+    def splits(self) -> Dict[str, List[Union[int, str]]]:
+        streamer = GeneralStreamer(config=self._config)
+
+        for split_name, split_values in streamer.splits.items():
+            print(split_name)
+            print("-------------------------------------")
+            print(split_values)
+            print("")
+
+        return streamer.splits
 
 
 if __name__ == "__main__":

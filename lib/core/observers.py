@@ -76,7 +76,7 @@ class DropBatchNormLayersEventHandler(AbstractEventHandler):
 
     def run(self, payload: Namespace) -> None:
         from opacus.utils.module_modification import nullify_batchnorm_modules
-        nullify_batchnorm_modules(payload.executor._network)
+        nullify_batchnorm_modules(payload.executor.network)
 
 
 class ReplaceBatchNormLayersEventHandler(AbstractEventHandler):
@@ -87,7 +87,7 @@ class ReplaceBatchNormLayersEventHandler(AbstractEventHandler):
 
     def run(self, payload: Namespace) -> None:
         from opacus.utils.module_modification import replace_all_modules
-        replace_all_modules(payload.executor._network, BatchNormLayer, self.converter)
+        replace_all_modules(payload.executor.network, BatchNormLayer, self.converter)
 
 
 class DifferentialPrivacy:
@@ -105,19 +105,19 @@ class DifferentialPrivacy:
             from vendor.opacus.custom.privacy_engine import PrivacyEngine
 
             trainer = payload.trainer
-            network = trainer._network
+            network = trainer.network
 
             if not isinstance(self._options["max_grad_norm"], list):
                 self._options["max_grad_norm"] = [self._options["max_grad_norm"]] * len(list(network.parameters()))
 
             privacy_engine = PrivacyEngine(
                 module=network,
-                batch_size=trainer._config.batch_size,
+                batch_size=trainer.config.batch_size,
                 sample_size=len(payload.data_loader.dataset),
                 **self._options
             )
 
-            privacy_engine.attach(trainer._optimizer)
+            privacy_engine.attach(trainer.optimizer)
 
     class LogPrivacyCostEventHandler(AbstractEventHandler):
         """event: before_train_progress_log"""
@@ -126,7 +126,7 @@ class DifferentialPrivacy:
             self._delta = delta
 
         def run(self, payload: Namespace) -> None:
-            optimizer = payload.trainer._optimizer
+            optimizer = payload.trainer.optimizer
 
             try:
                 epsilon, best_alpha = optimizer.privacy_engine.get_privacy_spent(self._delta)
