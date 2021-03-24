@@ -60,7 +60,7 @@ class AbstractTorchGeometricFeaturizer(AbstractFeaturizer):
         edge_indices, edge_attributes = self._get_edge_features(mol)
         edge_indices = torch.tensor(edge_indices)
         edge_indices = edge_indices.t().to(torch.long).view(2, -1)
-        edge_attributes = torch.FloatTensor(edge_attributes).view(-1, len(edge_attributes[0]))
+        edge_attributes = torch.FloatTensor(edge_attributes)
 
         if edge_indices.numel() > 0:  # Sort indices
             permutation = (edge_indices[0] * atom_features.size(0) + edge_indices[1]).argsort()

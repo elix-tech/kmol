@@ -35,7 +35,7 @@ class CustomMetrics:
 
     @staticmethod
     def pearson_correlation_coefficient(ground_truth: List[float], predictions: List[float]) -> float:
-        return stats.pearsonr(ground_truth, predictions)
+        return stats.pearsonr(ground_truth, predictions)[0]
 
     @staticmethod
     def spearman_correlation_coefficient(ground_truth: List[float], predictions: List[float]) -> float:
