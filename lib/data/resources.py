@@ -58,7 +58,8 @@ class Collater:
     def _set_device(self, batch: Batch) -> None:
         batch.outputs = batch.outputs.to(self._device)
         for key, values in batch.inputs.items():
-            batch.inputs[key] = values.to(self._device)
+            if isinstance(values, torch.Tensor):
+                batch.inputs[key] = values.to(self._device)
 
     def apply(self, batch: List[Data]) -> Batch:
 

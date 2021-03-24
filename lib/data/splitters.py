@@ -72,21 +72,28 @@ class StratifiedSplitter(AbstractSplitter):
     If the target is continuous, we can split it into a number of bins.
     """
 
-    def __init__(self, splits: Dict[str, float], seed: int, target_name: str, bins_count: int = 0):
+    def __init__(
+            self, splits: Dict[str, float], seed: int, target_name: str,
+            bins_count: int = 0, is_target_input: bool = False
+    ):
         super().__init__(splits=splits)
 
         self._seed = seed
         self._target_name = target_name
         self._bins_count = bins_count
+        self._is_target_input = is_target_input
 
-    def _load_labels(self, data_loader: AbstractLoader) -> Dict[Union[int, str], float]:
+    def _load_outputs(self, data_loader: AbstractLoader) -> Dict[Union[int, str], float]:
         output_index = data_loader.get_labels().index(self._target_name)
-        labels = {}
+        results = {}
 
         for entry in iter(data_loader):
-            labels[entry.id_] = entry.outputs[output_index]
+            results[entry.id_] = entry.outputs[output_index]
 
-        return labels
+        return results
+
+    def _load_inputs(self, data_loader: AbstractLoader) -> Dict[Union[int, str], float]:
+        return {entry.id_: entry.inputs[self._target_name] for entry in iter(data_loader)}
 
     def _binify(self, data: Dict[Union[int, str], float]) -> Dict[Union[int, str], int]:
         entries = list(data.values())
@@ -97,7 +104,7 @@ class StratifiedSplitter(AbstractSplitter):
     def apply(self, data_loader: AbstractLoader) -> Dict[str, List[Union[int, str]]]:
         from sklearn.model_selection import train_test_split
 
-        leftover_data = self._load_labels(data_loader)
+        leftover_data = self._load_inputs(data_loader) if self._is_target_input else self._load_outputs(data_loader)
         if self._bins_count > 0:
             leftover_data = self._binify(leftover_data)
 

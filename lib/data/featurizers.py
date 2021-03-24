@@ -15,11 +15,13 @@ from lib.data.resources import Data
 
 class AbstractFeaturizer(metaclass=ABCMeta):
 
-    def __init__(self, inputs: List[str], outputs: List[str], should_cache: bool = False):
+    def __init__(self, inputs: List[str], outputs: List[str], should_cache: bool = False, rewrite: bool = True):
         self._inputs = inputs
         self._outputs = outputs
 
         self._should_cache = should_cache
+        self._rewrite = rewrite
+
         self.__cache = {}
 
     @abstractmethod
@@ -40,8 +42,12 @@ class AbstractFeaturizer(metaclass=ABCMeta):
             raise FeaturizationError("Inputs and mappings must have the same length.")
 
         for index in range(len(self._inputs)):
-            raw_data = data.inputs.pop(self._inputs[index])
+            raw_data = data.inputs[self._inputs[index]]
+            if self._rewrite:
+                data.inputs.pop(self._inputs[index])
+
             data.inputs[self._outputs[index]] = self.__process(raw_data)
+
 
 
 class AbstractTorchGeometricFeaturizer(AbstractFeaturizer):
@@ -148,9 +154,9 @@ class GraphFeaturizer(AbstractTorchGeometricFeaturizer):
 
     def __init__(
             self, inputs: List[str], outputs: List[str], descriptor_calculator: AbstractDescriptorComputer,
-            allowed_atom_types: Optional[List[str]] = None, should_cache: bool = False
+            allowed_atom_types: Optional[List[str]] = None, should_cache: bool = False, rewrite: bool = True
     ):
-        super().__init__(inputs, outputs, should_cache)
+        super().__init__(inputs, outputs, should_cache, rewrite)
 
         if allowed_atom_types is None:
             allowed_atom_types = self.DEFAULT_ATOM_TYPES
@@ -222,10 +228,10 @@ class CircularFingerprintFeaturizer(AbstractFingerprintFeaturizer):
     """Morgan fingerprint featurizer"""
 
     def __init__(
-            self, inputs: List[str], outputs: List[str], should_cache: bool = False,
+            self, inputs: List[str], outputs: List[str], should_cache: bool = False, rewrite: bool = True,
             fingerprint_size: int = 2048, radius: int = 2
     ):
-        super().__init__(inputs, outputs, should_cache)
+        super().__init__(inputs, outputs, should_cache, rewrite)
 
         self._fingerprint_size = fingerprint_size
         self._radius = radius
@@ -251,8 +257,11 @@ class CircularFingerprintFeaturizer(AbstractFingerprintFeaturizer):
 class OneHotEncoderFeaturizer(AbstractFeaturizer):
     """One-Hot encode a single string"""
 
-    def __init__(self, inputs: List[str], outputs: List[str], classes: List[str], should_cache: bool = False):
-        super().__init__(inputs, outputs, should_cache)
+    def __init__(
+            self, inputs: List[str], outputs: List[str], classes: List[str],
+            should_cache: bool = False, rewrite: bool = True
+    ):
+        super().__init__(inputs, outputs, should_cache, rewrite)
 
         self._classes = classes
 
@@ -267,10 +276,10 @@ class TokenFeaturizer(AbstractFeaturizer):
     """Similar to the one-hot encoder, but will tokenize a whole sentence."""
 
     def __init__(
-            self, inputs: List[str], outputs: List[str],
-            vocabulary: List[str], max_length: int, separator: str = "", should_cache: bool = False
+            self, inputs: List[str], outputs: List[str], vocabulary: List[str], max_length: int,
+            separator: str = "", should_cache: bool = False, rewrite: bool = True
     ):
-        super().__init__(inputs, outputs, should_cache)
+        super().__init__(inputs, outputs, should_cache, rewrite)
 
         self._vocabulary = vocabulary
         self._separator = separator
@@ -293,11 +302,11 @@ class TokenFeaturizer(AbstractFeaturizer):
 class BagOfWordsFeaturizer(AbstractFeaturizer):
 
     def __init__(
-            self, inputs: List[str], outputs: List[str],
-            vocabulary: List[str], max_length: int, should_cache: bool = False
+            self, inputs: List[str], outputs: List[str], vocabulary: List[str], max_length: int,
+            should_cache: bool = False, rewrite: bool = True
     ):
 
-        super().__init__(inputs, outputs, should_cache)
+        super().__init__(inputs, outputs, should_cache, rewrite)
 
         self._vocabulary = self._get_combinations(vocabulary, max_length)
         self._max_length = max_length
@@ -329,8 +338,11 @@ class TransposeFeaturizer(AbstractFeaturizer):
 
 class FixedFeaturizer(AbstractFeaturizer):
 
-    def __init__(self, inputs: List[str], outputs: List[str], value: float, should_cache: bool = False):
-        super().__init__(inputs, outputs, should_cache)
+    def __init__(
+            self, inputs: List[str], outputs: List[str], value: float,
+            should_cache: bool = False, rewrite: bool = True
+    ):
+        super().__init__(inputs, outputs, should_cache, rewrite)
         self._value = value
 
     def _process(self, data: float) -> float:
