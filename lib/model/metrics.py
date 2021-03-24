@@ -5,6 +5,9 @@ from collections import defaultdict
 from enum import Enum
 from functools import partial
 from typing import Callable, Optional, NamedTuple, Tuple, Iterable, Any, Dict, List
+from scipy import stats
+from scipy.spatial import distance
+import math
 
 import numpy as np
 import torch
@@ -28,11 +31,37 @@ class MetricConfiguration(NamedTuple):
     maximize: bool = True
 
 
+class CustomMetrics:
+
+    @staticmethod
+    def pearson_correlation_coefficient(ground_truth: List[float], predictions: List[float]) -> float:
+        return stats.pearsonr(ground_truth, predictions)
+
+    @staticmethod
+    def spearman_correlation_coefficient(ground_truth: List[float], predictions: List[float]) -> float:
+        return stats.spearmanr(ground_truth, predictions).correlation
+
+    @staticmethod
+    def kullback_leibler_divergence(ground_truth: List[float], predictions: List[float]) -> float:
+        return stats.entropy(ground_truth, predictions)
+
+    @staticmethod
+    def jensen_shannon_divergence(ground_truth: List[float], predictions: List[float]) -> float:
+        return math.exp(distance.jensenshannon(ground_truth, predictions))
+
+
 class AvailableMetrics:
     MAE = MetricConfiguration(type=MetricType.REGRESSION, calculator=mean_absolute_error, maximize=False)
     MSE = MetricConfiguration(type=MetricType.REGRESSION, calculator=mean_squared_error, maximize=False)
     RMSE = MetricConfiguration(type=MetricType.REGRESSION, calculator=partial(mean_squared_error, squared=False), maximize=False)
     R2 = MetricConfiguration(type=MetricType.REGRESSION, calculator=r2_score)
+    PEARSON = MetricConfiguration(type=MetricType.REGRESSION, calculator=CustomMetrics.pearson_correlation_coefficient)
+    SPEARMAN = MetricConfiguration(type=MetricType.REGRESSION, calculator=CustomMetrics.spearman_correlation_coefficient)
+    KL_DIV = MetricConfiguration(type=MetricType.REGRESSION, calculator=CustomMetrics.kullback_leibler_divergence, maximize=False)
+    JS_DIV = MetricConfiguration(type=MetricType.REGRESSION, calculator=CustomMetrics.jensen_shannon_divergence, maximize=False)
+    CHEBYSHEV = MetricConfiguration(type=MetricType.REGRESSION, calculator=distance.chebyshev, maximize=False)
+    MANHATTAN = MetricConfiguration(type=MetricType.REGRESSION, calculator=distance.cityblock, maximize=False)
+
     ROC_AUC = MetricConfiguration(type=MetricType.CLASSIFICATION, calculator=roc_auc_score)
     PR_AUC = MetricConfiguration(type=MetricType.CLASSIFICATION, calculator=average_precision_score)
     ACCURACY = MetricConfiguration(type=MetricType.CLASSIFICATION, calculator=accuracy_score, uses_threshold=True)
