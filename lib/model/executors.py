@@ -128,10 +128,10 @@ class Trainer(AbstractExecutor):
                 self._optimizer.zero_grad()
                 outputs = self._network(data.inputs)
 
-                payload = Namespace(features=data, logits=outputs)
+                payload = Namespace(features=data, logits=outputs, extras=[])
                 EventManager.dispatch_event(event_name="before_criterion", payload=payload)
 
-                loss = self._criterion(payload.logits, payload.features.outputs)
+                loss = self._criterion(payload.logits, payload.features.outputs, *payload.extras)
                 loss.backward()
 
                 self._optimizer.step()
@@ -344,10 +344,10 @@ class LearningRareFinder(Trainer):
                     self._optimizer.zero_grad()
                     outputs = self._network(data.inputs)
 
-                    payload = Namespace(features=data, logits=outputs)
+                    payload = Namespace(features=data, logits=outputs, extras=[])
                     EventManager.dispatch_event(event_name="before_criterion", payload=payload)
 
-                    loss = self._criterion(payload.logits, payload.features.outputs)
+                    loss = self._criterion(payload.logits, payload.features.outputs, *payload.extras)
                     loss.backward()
 
                     self._optimizer.step()

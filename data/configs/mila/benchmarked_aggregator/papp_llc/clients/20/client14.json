@@ -1,0 +1,11 @@
+{
+    "name": "tester14",
+    "config_type": "lib.core.config.Config",
+    "save_path": "data/logs/client/tester14/",
+    "executor_type": "run.Executor",
+    "model_overwrites": {
+        "output_path": "data/logs/local/tester14/",
+        "epochs": 10,
+        "subset": {"id": 13, "distribution": [0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05]}
+    }
+}

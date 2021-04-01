@@ -8,7 +8,7 @@ from torch.nn.modules.batchnorm import _BatchNorm as BatchNormLayer
 from lib.core.helpers import Namespace
 
 
-class EventHandler(metaclass=ABCMeta):
+class AbstractEventHandler(metaclass=ABCMeta):
 
     @abstractmethod
     def run(self, payload: Namespace):
@@ -16,10 +16,10 @@ class EventHandler(metaclass=ABCMeta):
 
 
 class EventManager:
-    _LISTENERS: DefaultDict[str, List[EventHandler]] = defaultdict(list)
+    _LISTENERS: DefaultDict[str, List[AbstractEventHandler]] = defaultdict(list)
 
     @staticmethod
-    def add_event_listener(event_name: str, handler: EventHandler) -> None:
+    def add_event_listener(event_name: str, handler: AbstractEventHandler) -> None:
         EventManager._LISTENERS[event_name].append(handler)
 
     @staticmethod
@@ -32,26 +32,36 @@ class EventManager:
         EventManager._LISTENERS = defaultdict(list)
 
 
-class AddSigmoidHandler(EventHandler):
+class AddSigmoidEventHandler(AbstractEventHandler):
     """event: before_criterion|before_predict"""
 
     def run(self, payload: Namespace):
         payload.logits = torch.sigmoid(payload.logits)
 
 
-class DropBatchNormLayersHandler(EventHandler):
-    """event: various"""
+class AddSoftmaxEventHandler(AbstractEventHandler):
+    """event: before_criterion|before_predict"""
 
-    def run(self, payload: Namespace) -> None:
-        from opacus.utils.module_modification import nullify_batchnorm_modules
-        nullify_batchnorm_modules(payload.executor._network)
+    def run(self, payload: Namespace):
+        payload.logits = torch.softmax(payload.logits, dim=-1)
 
 
-class DropParametersHandler(EventHandler):
+class InjectLossWeightsEventHandler(AbstractEventHandler):
+    """event: before_criterion"""
+
+    def __init__(self, mappers: List[str]):
+        self._mappers = mappers
+
+    def run(self, payload: Namespace):
+        for mapper in self._mappers:
+            payload.extras.append(payload.features.inputs[mapper].reshape(-1, 1))
+
+
+class DropParametersEventHandler(AbstractEventHandler):
     """event: before_checkpoint_load"""
 
-    def __init__(self):
-        self._keywords = []
+    def __init__(self, keywords: List[str]):
+        self._keywords = keywords
 
     def run(self, payload: Namespace):
         for keyword in self._keywords:
@@ -61,9 +71,28 @@ class DropParametersHandler(EventHandler):
                 pass
 
 
+class DropBatchNormLayersEventHandler(AbstractEventHandler):
+    """event: various"""
+
+    def run(self, payload: Namespace) -> None:
+        from opacus.utils.module_modification import nullify_batchnorm_modules
+        nullify_batchnorm_modules(payload.executor._network)
+
+
+class ReplaceBatchNormLayersEventHandler(AbstractEventHandler):
+    """event: various"""
+
+    def converter(self, module: BatchNormLayer) -> torch.nn.Module:
+        return torch.nn.GroupNorm(module.num_features, module.num_features, affine=True)
+
+    def run(self, payload: Namespace) -> None:
+        from opacus.utils.module_modification import replace_all_modules
+        replace_all_modules(payload.executor._network, BatchNormLayer, self.converter)
+
+
 class DifferentialPrivacy:
 
-    class AttachPrivacyEngineHandler(EventHandler):
+    class AttachPrivacyEngineEventHandler(AbstractEventHandler):
         """event: before_train_start"""
 
         def __init__(self, **kwargs):
@@ -90,7 +119,7 @@ class DifferentialPrivacy:
 
             privacy_engine.attach(trainer._optimizer)
 
-    class LogPrivacyCostHandler(EventHandler):
+    class LogPrivacyCostEventHandler(AbstractEventHandler):
         """event: before_train_progress_log"""
 
         def __init__(self, delta: float):
@@ -107,18 +136,12 @@ class DifferentialPrivacy:
             except AttributeError:
                 pass
 
-    class ReplaceBatchNormLayersHandler(EventHandler):
-        """event: after_network_create"""
-
-        def converter(self, module: BatchNormLayer) -> torch.nn.Module:
-            return torch.nn.GroupNorm(module.num_features, module.num_features, affine=True)
-
-        def run(self, payload: Namespace) -> None:
-            from opacus.utils.module_modification import replace_all_modules
-            replace_all_modules(payload.executor._network, BatchNormLayer, self.converter)
-
     @staticmethod
     def setup(delta: float = 1e-5, **kwargs):
-        EventManager.add_event_listener("after_network_create", DifferentialPrivacy.ReplaceBatchNormLayersHandler())
-        EventManager.add_event_listener("before_train_start", DifferentialPrivacy.AttachPrivacyEngineHandler(**kwargs))
-        EventManager.add_event_listener("before_train_progress_log", DifferentialPrivacy.LogPrivacyCostHandler(delta))
+        EventManager.add_event_listener(
+            "before_train_start", DifferentialPrivacy.AttachPrivacyEngineEventHandler(**kwargs)
+        )
+
+        EventManager.add_event_listener(
+            "before_train_progress_log", DifferentialPrivacy.LogPrivacyCostEventHandler(delta)
+        )

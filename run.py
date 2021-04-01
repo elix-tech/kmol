@@ -32,14 +32,15 @@ class Executor(AbstractExecutor):
         logger.log_header(labels)
         logger.log_content(results)
 
-        try:
-            values = PredictionProcessor.compute_statistics(results, statistics=statistics)
-            statistics = [statistic.__name__ for statistic in statistics]
+        if len(labels) > 1:
+            try:
+                values = PredictionProcessor.compute_statistics(results, statistics=statistics)
+                statistics = [statistic.__name__ for statistic in statistics]
 
-            logger.log_header(statistics)
-            logger.log_content(values)
-        except TypeError:
-            logging.debug("[Notice] Cannot compute statistics. Some metrics could not be computed for all targets.")
+                logger.log_header(statistics)
+                logger.log_content(values)
+            except TypeError:
+                logging.debug("[Notice] Cannot compute statistics. Some metrics could not be computed for all targets.")
 
     def __revert_transformations(self, predictions: np.ndarray, streamer: GeneralStreamer):
         data = Data(outputs=predictions.transpose())

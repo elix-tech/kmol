@@ -1,0 +1,14 @@
+{
+    "task_configuration_file": "data/configs/model/ames.json",
+    "aggregator_type": "mila.aggregators.BenchmarkedTorchAggregator",
+    "aggregator_options": {"config_type": "lib.core.config.Config", "config_path": "data/configs/model/ames.json", "executor_type": "run.Executor", "target_metric": "roc_auc"},
+    "config_type": "lib.core.config.Config",
+    "executor_type": "run.Executor",
+
+    "rounds_count": 50,
+    "workers": 4,
+    "minimum_clients": 16,
+    "maximum_clients": 16,
+
+    "client_wait_time": 300
+}

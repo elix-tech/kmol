@@ -2,7 +2,7 @@ import torch
 from typing import List
 
 
-class MaskedLoss(torch.nn.Module):
+class WeightedLoss(torch.nn.Module):
 
     def __init__(self, loss: torch.nn.modules.loss._Loss):
         super().__init__()
@@ -10,23 +10,29 @@ class MaskedLoss(torch.nn.Module):
         self._loss = loss
         self._loss.reduction = "none"
 
-    def _handle_missing_values(self, loss: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+    def forward(self, logits: torch.Tensor, ground_truth: torch.Tensor, weights: torch.Tensor) -> torch.Tensor:
 
-        loss *= mask
-        loss = loss.sum(dim=0) / (mask.sum(dim=0) + 1e-8)
+        loss = self._loss(logits, ground_truth)
 
+        loss *= weights
+        loss = loss.sum(dim=0) / (weights.sum(dim=0) + 1e-8)
+
+        loss = loss.mean()
         return loss
+
+
+class MaskedLoss(torch.nn.Module):
+
+    def __init__(self, loss: torch.nn.modules.loss._Loss):
+        super().__init__()
+        self._loss = WeightedLoss(loss=loss)
 
     def forward(self, logits: torch.Tensor, ground_truth: torch.Tensor) -> torch.Tensor:
 
         mask = ground_truth == ground_truth
         ground_truth[~mask] = 0
 
-        loss = self._loss(logits, ground_truth)
-        loss = self._handle_missing_values(loss, mask)
-
-        loss = loss.mean()
-        return loss
+        return self._loss(logits, ground_truth, mask)
 
 
 class MultiTaskLoss(torch.nn.Module):

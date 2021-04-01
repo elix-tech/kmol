@@ -44,15 +44,20 @@ class GraphConvolutionalNetwork(AbstractNetwork):
                 is_residual=is_residual, norm_layer=norm_layer, activation=activation, **kwargs
             ))
 
-        self.molecular_head = torch.nn.Sequential(
-            torch.nn.Linear(molecule_features, hidden_features // 4),
-            torch.nn.Dropout(p=min(hidden_features / in_features, 0.7)),
-            torch.nn.BatchNorm1d(hidden_features // 4),
-            torch.nn.ReLU()
-        )
+        self.molecular_head = lambda x: torch.Tensor()
+        if molecule_features:
+            self.molecular_head = torch.nn.Sequential(
+                torch.nn.Linear(molecule_features, hidden_features // 4),
+                torch.nn.Dropout(p=min(hidden_features / in_features, 0.7)),
+                torch.nn.BatchNorm1d(hidden_features // 4),
+                torch.nn.ReLU()
+            )
+
+        mlp_features = 2 + 0.25 * bool(molecule_features)
+        mlp_features = floor(mlp_features * hidden_features)
 
         self.mlp = torch.nn.Sequential(
-            torch.nn.Linear(floor(2.25 * hidden_features), hidden_features),
+            torch.nn.Linear(mlp_features, hidden_features),
             torch.nn.ReLU(),
             torch.nn.Dropout(p=dropout),
             torch.nn.Linear(hidden_features, out_features)

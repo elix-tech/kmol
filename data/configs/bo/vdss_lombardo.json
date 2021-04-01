@@ -1,0 +1,69 @@
+{
+    "model": {
+        "type": "graph_convolutional",
+        "in_features": 45,
+        "out_features": 1,
+        "hidden_features": "{{{hidden=32-256-16}}}",
+        "dropout": "{{{dropout=0.0-0.7-0.1}}}",
+        "layer_type": "{{{layer_type=torch_geometric.nn.GCNConv|torch_geometric.nn.GraphConv|torch_geometric.nn.GENConv|torch_geometric.nn.LEConv|torch_geometric.nn.SAGEConv|lib.model.layers.GINConvolution}}}",
+        "layers_count": "{{{layers_count=2-8-1}}}",
+        "molecule_features": 17,
+        "is_residual": "{{{is_residual=0-1-1}}}",
+        "norm_layer": "lib.model.layers.BatchNorm"
+    },
+    "loader": {
+        "type": "csv",
+        "input_path": "data/input/other/vdss_lombardo.csv",
+        "input_column_names": ["smiles"],
+        "target_column_names": ["label"]
+    },
+    "splitter": {
+        "type": "stratified",
+        "splits": {"train": 0.8, "test": 0.2},
+        "seed": 42,
+        "target_name": "label",
+        "bins_count": 10
+    },
+    "featurizers": [
+        {
+            "type": "graph",
+            "inputs": ["smiles"],
+            "outputs": ["graph"],
+            "descriptor_calculator": {"type": "rdkit"}
+        }
+    ],
+    "transformers": [{"type": "standardize", "target": 0, "mean": 4.11746017699115, "std": 22.35257743108947}],
+    "optimizer": {
+        "type": "{{{optimizer=torch.optim.SGD|torch.optim.Adam|torch.optim.AdamW|lib.model.optimizers.AdaBelief}}}",
+        "lr": "{{{lr=0.0001-0.01-0.0001}}}",
+        "weight_decay": "{{{weight_decay=0.00001-0.001-0.00001}}}"
+    },
+    "criterion": {
+        "type": "torch.nn.SmoothL1Loss"
+    },
+    "scheduler": {
+        "type": "torch.optim.lr_scheduler.OneCycleLR",
+        "max_lr": 0.01,
+        "epochs": 200,
+        "pct_start": 0.3,
+        "div_factor": 25,
+        "final_div_factor": 1000
+    },
+    "output_path": "data/bo/vdss_lombardo/",
+    "checkpoint_path": null,
+    "cross_validation_folds": 5,
+    "train_metrics": [],
+    "test_metrics": ["r2", "mae", "rmse"],
+    "epochs": 200,
+    "batch_size": 256,
+    "use_cuda": true,
+    "enabled_gpus": [0],
+    "cache_location": "data/cache/",
+    "clear_cache": false,
+    "log_level": "info",
+    "log_format": "",
+    "log_frequency": 5,
+    "observers": {},
+    "target_metric": "r2",
+    "optuna_trials": 25
+}

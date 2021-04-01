@@ -9,6 +9,7 @@ import torch
 from lib.core.helpers import SuperFactory
 from lib.core.observers import EventManager, DifferentialPrivacy
 from mila.factories import AbstractConfiguration
+from lib.core.observers import AbstractEventHandler
 
 
 @dataclass
@@ -47,7 +48,7 @@ class Config(AbstractConfiguration):
     log_format: str = ""
     log_frequency: int = 20
 
-    observers: DefaultDict[str, List[str]] = field(default_factory=lambda: defaultdict(list))
+    observers: DefaultDict[str, List[Dict]] = field(default_factory=lambda: defaultdict(list))
     differential_privacy: Dict[str, Any] = field(default_factory=lambda: {"enabled": False})
 
     target_metric: str = "roc_auc"
@@ -73,7 +74,7 @@ class Config(AbstractConfiguration):
         EventManager.flush()
         for event_name, event_handlers in self.observers.items():
             for event_handler_definition in event_handlers:
-                event_handler = SuperFactory.reflect(event_handler_definition)()
+                event_handler = SuperFactory.create(AbstractEventHandler, event_handler_definition)
                 EventManager.add_event_listener(event_name=event_name, handler=event_handler)
 
         if self.differential_privacy["enabled"]:

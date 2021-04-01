@@ -1,0 +1,86 @@
+{
+    "model": {
+        "type": "protein_ligand",
+        "protein_module": {
+            "type": "linear",
+            "in_features": 9723,
+            "hidden_features": 64,
+            "out_features": 16
+        },
+        "ligand_module": {
+            "type": "linear",
+            "in_features": 2048,
+            "hidden_features": 64,
+            "out_features": 16
+        },
+        "hidden_features": 32,
+        "out_features": 3
+    },
+    "loader": {
+        "type": "csv",
+        "input_path": "data/input/chembl/assay_v2_ready.csv",
+        "input_column_names": ["smiles", "target_sequence"],
+        "target_column_names": ["t_100n", "t_1u", "t_10u"]
+    },
+    "splitter": {
+        "type": "index",
+        "splits": {"train": 0.8, "test": 0.2}
+    },
+    "featurizers": [
+        {
+            "type": "circular_fingerprint",
+            "inputs": ["smiles"],
+            "outputs": ["ligand"],
+            "fingerprint_size": 2048,
+            "radius": 2
+        },{
+            "type": "bag_of_words",
+            "inputs": ["target_sequence"],
+            "outputs": ["protein"],
+            "should_cache": true,
+            "vocabulary": ["A", "C", "D", "E", "F", "G", "H", "I", "K", "L", "M", "N", "P", "Q", "R", "S", "T", "V", "W", "Y", "X"],
+            "max_length": 3
+        }
+    ],
+    "transformers": [],
+    "optimizer": {
+        "type": "torch.optim.AdamW",
+        "lr": 0.01,
+        "weight_decay": 0.00056
+    },
+    "criterion": {
+        "type": "torch.nn.BCEWithLogitsLoss"
+    },
+    "scheduler": {
+        "type": "torch.optim.lr_scheduler.OneCycleLR",
+        "max_lr": 0.01,
+        "epochs": 50,
+        "pct_start": 0.3,
+        "div_factor": 25,
+        "final_div_factor": 1000
+    },
+    "output_path": "data/logs/server/",
+    "checkpoint_path": null,
+
+    "threshold": 0.5,
+    "cross_validation_folds": 5,
+    "train_metrics": [],
+    "test_metrics": ["roc_auc", "pr_auc", "accuracy", "precision", "recall", "cohen_kappa"],
+
+    "epochs": 50,
+    "batch_size": 128,
+
+    "use_cuda": true,
+    "enabled_gpus": [0],
+
+    "cache_location": "data/cache/",
+    "clear_cache": false,
+
+    "log_level": "info",
+    "log_format": "",
+    "log_frequency": 5,
+
+    "observers": {},
+    "target_metric": "roc_auc",
+    "optuna_trials": 1000
+}

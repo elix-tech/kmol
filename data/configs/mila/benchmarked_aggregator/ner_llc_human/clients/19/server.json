@@ -1,0 +1,14 @@
+{
+    "task_configuration_file": "data/configs/model/adme/ner_llc_human.json",
+    "aggregator_type": "mila.aggregators.BenchmarkedTorchAggregator",
+    "aggregator_options": {"config_type": "lib.core.config.Config", "config_path": "data/configs/model/adme/ner_llc_human.json", "executor_type": "run.Executor", "target_metric": "roc_auc"},
+    "config_type": "lib.core.config.Config",
+    "executor_type": "run.Executor",
+
+    "rounds_count": 50,
+    "workers": 4,
+    "minimum_clients": 19,
+    "maximum_clients": 19,
+
+    "client_wait_time": 300
+}
