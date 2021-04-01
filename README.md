@@ -1,4 +1,4 @@
-# Federated Learning Library
+# Federated Learning Library (v2.1 nightly)
 
 This file is outdated. Please use the documentation PDF for reference.
 
