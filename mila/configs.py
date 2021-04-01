@@ -28,7 +28,8 @@ class ServerConfiguration(NamedTuple):
     ssl_root_cert: str = "data/certificates/rootCA.pem"
     options: List[Tuple[str, Any]] = [
         ("grpc.max_send_message_length", 1000000000),
-        ("grpc.max_receive_message_length", 1000000000)
+        ("grpc.max_receive_message_length", 1000000000),
+        ("grpc.ssl_target_name_override", "localhost")
     ]
 
     blacklist: List[str] = []
@@ -55,6 +56,12 @@ class ClientConfiguration(NamedTuple):
         "output_path": "data/logs/local/",
         "epochs": 5
     }
+
+    options: List[Tuple[str, Any]] = [
+        ("grpc.max_send_message_length", 1000000000),
+        ("grpc.max_receive_message_length", 1000000000),
+        ("grpc.ssl_target_name_override", "localhost")
+    ]
 
     use_secure_connection: bool = False
     ssl_private_key: str = "data/certificates/client.key"
