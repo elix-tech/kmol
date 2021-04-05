@@ -1,7 +1,4 @@
 from collections import defaultdict
-from copy import copy
-from math import sqrt
-from typing import Optional
 from typing import Union, Dict, Tuple, List
 
 import matplotlib.pyplot as plt
@@ -10,13 +7,11 @@ import numpy as np
 import torch
 import torch_geometric
 from rdkit import Chem
-from torch_geometric.data import Data
-from torch_geometric.nn import MessagePassing
-from torch_geometric.utils import k_hop_subgraph, to_networkx
+from torch_geometric.utils import to_networkx
 
-from lib.data.resources import Data, Batch
+from lib.data.resources import DataPoint, Batch
+from lib.visualization.sketchers import GraphSketcher
 from vendor.captum.attr import IntegratedGradients
-from lib.visualization.sketchers import RdkitSketcher, GraphSketcher
 
 
 class IntegratedGradientsExplainer:
@@ -31,7 +26,7 @@ class IntegratedGradientsExplainer:
 
         self.sketcher = GraphSketcher(output_path=output_path)
 
-    def explain(self, data: Union[Data, Batch], target: int) -> Dict[int, np.ndarray]:
+    def explain(self, data: Union[DataPoint, Batch], target: int) -> Dict[int, np.ndarray]:
         graphs = data.inputs["graph"]
 
         number_nodes = graphs.x.shape[0]
@@ -45,7 +40,7 @@ class IntegratedGradientsExplainer:
         node_mask = np.abs(mask.cpu().detach().numpy()).sum(axis=1)
         return self.per_mol_mask(data, node_mask)
 
-    def per_mol_mask(self, data: Data, node_masks: np.ndarray) -> Dict[int, np.ndarray]:
+    def per_mol_mask(self, data: DataPoint, node_masks: np.ndarray) -> Dict[int, np.ndarray]:
         node_mask_per_mol = defaultdict(list)
         batch_ids = data.inputs["graph"].batch
 
@@ -58,7 +53,7 @@ class IntegratedGradientsExplainer:
 
         return node_mask_per_mol
 
-    def model_forward(self, node_mask: torch.Tensor, data: Union[Data, Batch]) -> torch.Tensor:
+    def model_forward(self, node_mask: torch.Tensor, data: Union[DataPoint, Batch]) -> torch.Tensor:
         data.inputs["graph"].x = node_mask
 
         if not hasattr(data.inputs["graph"], "batch"):
@@ -78,7 +73,7 @@ class IntegratedGradientsExplainer:
 
         return g
 
-    def to_mol_list(self, data: Data) -> Tuple[List, List]:
+    def to_mol_list(self, data: DataPoint) -> Tuple[List, List]:
         if isinstance(data.inputs["graph"], torch_geometric.data.Batch):
             data_list = data.inputs["graph"].to_data_list()
             dataset_sample_ids = data.ids
@@ -88,7 +83,7 @@ class IntegratedGradientsExplainer:
 
         return data_list, dataset_sample_ids
 
-    def visualize(self, data: Union[Data, Batch], target: int, save_path: str) -> None:
+    def visualize(self, data: Union[DataPoint, Batch], target: int, save_path: str) -> None:
         node_mask_per_mol = self.explain(data, target)
         data_list, dataset_sample_ids = self.to_mol_list(data)
 

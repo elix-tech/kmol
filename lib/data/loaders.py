@@ -4,7 +4,7 @@ from typing import Iterator, List, Union, Any
 import pandas as pd
 from torch.utils.data import Dataset as TorchDataset
 
-from lib.data.resources import Data
+from lib.data.resources import DataPoint
 
 
 class AbstractLoader(TorchDataset):
@@ -25,7 +25,7 @@ class AbstractLoader(TorchDataset):
     def get_labels(self) -> List[str]:
         raise NotImplementedError
 
-    def __iter__(self) -> Iterator[Data]:
+    def __iter__(self) -> Iterator[DataPoint]:
         for id_ in self.list_ids():
             yield self[id_]
 
@@ -41,9 +41,9 @@ class CsvLoader(AbstractLoader):
     def __len__(self) -> int:
         return self._dataset.shape[0]
 
-    def __getitem__(self, id_: str) -> Data:
+    def __getitem__(self, id_: str) -> DataPoint:
         entry = self._dataset.loc[id_]
-        return Data(
+        return DataPoint(
             id_=id_,
             labels=self._target_columns,
             inputs={**entry[self._input_columns]},
@@ -90,14 +90,14 @@ class SdfLoader(CsvLoader):
 
 class ListLoader(AbstractLoader):
 
-    def __init__(self, data: List[Data], indices: List[str]):
+    def __init__(self, data: List[DataPoint], indices: List[str]):
         self._dataset = data
         self._indices = indices
 
     def __len__(self):
         return len(self._dataset)
 
-    def __getitem__(self, id_: str) -> Data:
+    def __getitem__(self, id_: str) -> DataPoint:
         return self._dataset[self._indices.index(id_)]
 
     def list_ids(self) -> List[Union[int, str]]:

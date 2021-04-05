@@ -14,7 +14,7 @@ from lib.core.exceptions import FeaturizationError
 from lib.core.helpers import SuperFactory, CacheManager
 from lib.data.featurizers import AbstractFeaturizer
 from lib.data.loaders import AbstractLoader, ListLoader
-from lib.data.resources import Data, Collater, LoadedContent
+from lib.data.resources import DataPoint, Collater, LoadedContent
 from lib.data.splitters import AbstractSplitter
 from lib.data.transformers import AbstractTransformer
 
@@ -67,7 +67,7 @@ class GeneralStreamer(AbstractStreamer):
             }
         )
 
-    def _featurize(self, sample: Data):
+    def _featurize(self, sample: DataPoint):
         for featurizer in self._featurizers:
             try:
                 featurizer.run(sample)
@@ -76,11 +76,11 @@ class GeneralStreamer(AbstractStreamer):
                     featurizer.__class__.__name__, sample.id_, e
                 ))
 
-    def _apply_transformers(self, sample: Data) -> None:
+    def _apply_transformers(self, sample: DataPoint) -> None:
         for transformer in self._transformers:
             transformer.apply(sample)
 
-    def reverse_transformers(self, sample: Data) -> None:
+    def reverse_transformers(self, sample: DataPoint) -> None:
         for transformer in reversed(self._transformers):
             transformer.reverse(sample)
 

@@ -10,7 +10,7 @@ from rdkit import Chem
 from torch_geometric.data import Data as TorchGeometricData
 
 from lib.core.exceptions import FeaturizationError
-from lib.data.resources import Data
+from lib.data.resources import DataPoint
 
 
 class AbstractFeaturizer(metaclass=ABCMeta):
@@ -37,7 +37,7 @@ class AbstractFeaturizer(metaclass=ABCMeta):
         else:
             return self._process(data)
 
-    def run(self, data: Data) -> None:
+    def run(self, data: DataPoint) -> None:
         if len(self._inputs) != len(self._outputs):
             raise FeaturizationError("Inputs and mappings must have the same length.")
 

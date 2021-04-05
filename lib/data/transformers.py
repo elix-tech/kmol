@@ -4,17 +4,17 @@ import logging
 
 import numpy as np
 
-from lib.data.resources import Data
+from lib.data.resources import DataPoint
 
 
 class AbstractTransformer(metaclass=ABCMeta):
 
     @abstractmethod
-    def apply(self, data: Data) -> None:
+    def apply(self, data: DataPoint) -> None:
         raise NotImplementedError
 
     @abstractmethod
-    def reverse(self, data: Data) -> None:
+    def reverse(self, data: DataPoint) -> None:
         raise NotImplementedError
 
 
@@ -24,11 +24,11 @@ class LogNormalizeTransformer(AbstractTransformer):
         self._targets = targets
         self._epsilon = 1e-8
 
-    def apply(self, data: Data) -> None:
+    def apply(self, data: DataPoint) -> None:
         for target in self._targets:
             data.outputs[target] = np.log(data.outputs[target] + self._epsilon)
 
-    def reverse(self, data: Data) -> None:
+    def reverse(self, data: DataPoint) -> None:
         for target in self._targets:
             data.outputs[target] = np.exp(data.outputs[target])
 
@@ -40,10 +40,10 @@ class MinMaxNormalizeTransformer(AbstractTransformer):
         self._minimum = minimum
         self._maximum = maximum
 
-    def apply(self, data: Data) -> None:
+    def apply(self, data: DataPoint) -> None:
         data.outputs[self._target] = (data.outputs[self._target] - self._minimum) / (self._maximum - self._minimum)
 
-    def reverse(self, data: Data) -> None:
+    def reverse(self, data: DataPoint) -> None:
         data.outputs[self._target] = data.outputs[self._target] * (self._maximum - self._minimum) + self._minimum
 
 
@@ -53,11 +53,11 @@ class FixedNormalizeTransformer(AbstractTransformer):
         self._targets = targets
         self._value = value
 
-    def apply(self, data: Data) -> None:
+    def apply(self, data: DataPoint) -> None:
         for target in self._targets:
             data.outputs[target] = round(data.outputs[target] / self._value, 8)
 
-    def reverse(self, data: Data) -> None:
+    def reverse(self, data: DataPoint) -> None:
         for target in self._targets:
             data.outputs[target] = round(data.outputs[target] * self._value, 8)
 
@@ -69,10 +69,10 @@ class StandardizeTransformer(AbstractTransformer):
         self._mean = mean
         self._std = std
 
-    def apply(self, data: Data) -> None:
+    def apply(self, data: DataPoint) -> None:
         data.outputs[self._target] = (data.outputs[self._target] - self._mean) / self._std
 
-    def reverse(self, data: Data) -> None:
+    def reverse(self, data: DataPoint) -> None:
         data.outputs[self._target] = data.outputs[self._target] * self._std + self._mean
 
 
@@ -84,8 +84,8 @@ class CutoffTransformer(AbstractTransformer):
 
         logging.warning("[WARNING] The cutoff transformer is destructive and cannot be reversed.")
 
-    def apply(self, data: Data) -> None:
+    def apply(self, data: DataPoint) -> None:
         data.outputs[self._target] = np.where(data.outputs[self._target] <= self._cutoff, 0, 1)
 
-    def reverse(self, data: Data) -> None:
+    def reverse(self, data: DataPoint) -> None:
         pass

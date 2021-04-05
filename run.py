@@ -10,7 +10,7 @@ from tqdm import tqdm
 from lib.core.config import Config
 from lib.core.helpers import Namespace, ConfidenceInterval
 from lib.core.tuning import OptunaTemplateParser
-from lib.data.resources import Data
+from lib.data.resources import DataPoint
 from lib.data.streamers import GeneralStreamer, SubsetStreamer, CrossValidationStreamer
 from lib.model.executors import Predictor, ThresholdFinder, LearningRareFinder, Pipeliner
 from lib.model.metrics import PredictionProcessor, CsvLogger
@@ -48,7 +48,7 @@ class Executor:
                 logging.debug("[Notice] Cannot compute statistics. Some metrics could not be computed for all targets.")
 
     def __revert_transformations(self, predictions: np.ndarray, streamer: GeneralStreamer):
-        data = Data(outputs=predictions.transpose())
+        data = DataPoint(outputs=predictions.transpose())
         streamer.reverse_transformers(data)
 
         return data.outputs.transpose()
