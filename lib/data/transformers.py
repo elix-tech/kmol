@@ -85,7 +85,7 @@ class CutoffTransformer(AbstractTransformer):
         logging.warning("[WARNING] The cutoff transformer is destructive and cannot be reversed.")
 
     def apply(self, data: DataPoint) -> None:
-        data.outputs[self._target] = np.where(data.outputs[self._target] <= self._cutoff, 0, 1)
+        data.outputs[self._target] = np.where(data.outputs[self._target] < self._cutoff, 0, 1)
 
     def reverse(self, data: DataPoint) -> None:
         pass

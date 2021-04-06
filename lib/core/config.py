@@ -29,7 +29,7 @@ class Config:
 
     is_stepwise_scheduler: Optional[bool] = True
     is_finetuning: Optional[bool] = False
-    threshold: Optional[float] = 0.5
+    threshold: Optional[float] = None
     cross_validation_folds: int = 5
 
     train_split: str = "train"
