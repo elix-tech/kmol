@@ -1,7 +1,7 @@
 from abc import ABCMeta, abstractmethod
 from typing import List
 import logging
-
+from lib.core.exceptions import TransformerError
 import numpy as np
 
 from lib.data.resources import DataPoint
@@ -89,3 +89,21 @@ class CutoffTransformer(AbstractTransformer):
 
     def reverse(self, data: DataPoint) -> None:
         pass
+
+
+class OneHotTransformer(AbstractTransformer):
+
+    def __init__(self, target: int, classes: List[str]):
+        self._target = target
+        self._classes = classes
+
+    def apply(self, data: DataPoint) -> None:
+        try:
+            data.outputs[self._target] = self._classes.index(data.outputs[self._target])
+        except ValueError:
+            raise TransformerError(
+                "One-Hot Transformer Failed: '{}' is not a valid class".format(data.outputs[self._target])
+            )
+
+    def reverse(self, data: DataPoint) -> None:
+        data.outputs[self._target] = self._classes[data.outputs[self._target]]

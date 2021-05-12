@@ -6,6 +6,7 @@ import joblib
 import numpy as np
 import optuna
 from tqdm import tqdm
+from functools import partial
 
 from lib.core.config import Config
 from lib.core.helpers import Namespace, ConfidenceInterval
@@ -47,11 +48,11 @@ class Executor:
             except TypeError:
                 logging.debug("[Notice] Cannot compute statistics. Some metrics could not be computed for all targets.")
 
-    def __revert_transformations(self, predictions: np.ndarray, streamer: GeneralStreamer):
-        data = DataPoint(outputs=predictions.transpose())
+    def __revert_transformers(self, predictions: np.ndarray, streamer: GeneralStreamer):
+        data = DataPoint(outputs=predictions.tolist())
         streamer.reverse_transformers(data)
 
-        return data.outputs.transpose()
+        return data.outputs
 
     def __run_trial(self, config: Config) -> float:
         try:
@@ -260,6 +261,8 @@ class Executor:
         )
 
         predictor = Predictor(config=self._config)
+        transformer_reverter = partial(self.__revert_transformers, streamer=streamer)
+
         print(",".join(streamer.labels))
 
         results = []
@@ -267,7 +270,7 @@ class Executor:
             logits = predictor.run(batch)
 
             predictions = PredictionProcessor.apply_threshold(logits, self._config.threshold)
-            predictions = self.__revert_transformations(predictions, streamer)
+            predictions = np.apply_along_axis(transformer_reverter, axis=1, arr=predictions)
             results.extend(predictions)
 
             predictions = predictions.astype("str").tolist()
