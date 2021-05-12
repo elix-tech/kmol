@@ -1,12 +1,12 @@
 import logging
 from argparse import ArgumentParser
+from functools import partial
 from typing import List, Tuple, Callable, Optional, Dict, Union
 
 import joblib
 import numpy as np
 import optuna
 from tqdm import tqdm
-from functools import partial
 
 from lib.core.config import Config
 from lib.core.helpers import Namespace, ConfidenceInterval
@@ -283,14 +283,13 @@ class Executor:
         if not self._config_path:
             raise AttributeError("Cannot optimize. No configuration path specified.")
 
-        template_parser = OptunaTemplateParser(
-            template_path=self._config_path,
-            evaluator=self.__run_trial,
-            delete_checkpoints=True
-        )
+        with OptunaTemplateParser(
+            template_path=self._config_path, evaluator=self.__run_trial, delete_checkpoints=True,
+            log_path="{}summary.csv".format(self._config.output_path)
+        ) as template_parser:
 
-        study = optuna.create_study(direction='maximize')
-        study.optimize(template_parser.objective, n_trials=self._config.optuna_trials)
+            study = optuna.create_study(direction='maximize')
+            study.optimize(template_parser.objective, n_trials=self._config.optuna_trials)
 
         logging.info("---------------------------- [BEST VALUE] ----------------------------")
         logging.info(study.best_value)

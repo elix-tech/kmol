@@ -7,26 +7,26 @@ import torch
 import torch_geometric
 
 from lib.core.config import Config
-from lib.core.helpers import SuperFactory
+from lib.core.helpers import SuperFactory, Loggable
 from lib.data.resources import DataPoint, Batch
 from lib.visualization.sketchers import AbstractSketcher
 from vendor.captum.attr import IntegratedGradients
 
 
-class IntegratedGradientsExplainer:
+class IntegratedGradientsExplainer(Loggable):
     """
     Implements the Integrated Gradients explainability technique introduced in https://arxiv.org/abs/1703.01365.
     The core implementation relies on captum: https://github.com/pytorch/captum
     """
 
     def __init__(self, model: torch.nn.Module, config: Config):
+        Loggable.__init__(self, config.visualizer["mapping_file_path"])
+        self.log("file_path,smiles\n")
+
         self.model = model
         self.model.eval()
 
         self.sketcher = SuperFactory.create(AbstractSketcher, config.visualizer["sketcher"])
-
-        self._logger = self._create_logger(config.visualizer["mapping_file_path"])
-        self._logger.write("file_path,smiles")
 
     def _create_logger(self, log_file_path: str) -> TextIO:
         if "/" in log_file_path:
@@ -90,13 +90,4 @@ class IntegratedGradientsExplainer:
             sample = data_list[batch_sample_id]
 
             self.sketcher.draw(sample, save_path, node_mask)
-            self._logger.write("{},{}\n".format(save_path, sample.smiles))
-
-    def close(self) -> None:
-        self._logger.close()
-
-    def __enter__(self) -> "IntegratedGradientsExplainer":
-        return self
-
-    def __exit__(self, *args, **kwargs) -> None:
-        self.close()
+            self.log("{},{}\n".format(save_path, sample.smiles))
