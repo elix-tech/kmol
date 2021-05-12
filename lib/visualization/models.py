@@ -1,16 +1,14 @@
 from collections import defaultdict
 from typing import Union, Dict, Tuple, List
 
-import matplotlib.pyplot as plt
-import networkx as nx
 import numpy as np
 import torch
 import torch_geometric
-from rdkit import Chem
-from torch_geometric.utils import to_networkx
 
+from lib.core.config import Config
+from lib.core.helpers import SuperFactory
 from lib.data.resources import DataPoint, Batch
-from lib.visualization.sketchers import GraphSketcher
+from lib.visualization.sketchers import AbstractSketcher
 from vendor.captum.attr import IntegratedGradients
 
 
@@ -20,11 +18,11 @@ class IntegratedGradientsExplainer:
     The core implementation relies on captum: https://github.com/pytorch/captum
     """
 
-    def __init__(self, model: torch.nn.Module, output_path: str):
+    def __init__(self, model: torch.nn.Module, config: Config):
         self.model = model
         self.model.eval()
 
-        self.sketcher = GraphSketcher(output_path=output_path)
+        self.sketcher = SuperFactory.create(AbstractSketcher, config.visualizer["sketcher"])
 
     def explain(self, data: Union[DataPoint, Batch], target: int) -> Dict[int, np.ndarray]:
         graphs = data.inputs["graph"]
@@ -63,16 +61,6 @@ class IntegratedGradientsExplainer:
 
         return self.model(data.inputs)
 
-    def to_molecule(self, data: torch_geometric.data.Data) -> nx.Graph:
-        mol = Chem.MolFromSmiles(data.smiles)
-        g = to_networkx(data, node_attrs=["x"])
-
-        for (u, data), atom in zip(g.nodes(data=True), mol.GetAtoms()):
-            data["name"] = atom.GetSymbol()
-            del data["x"]
-
-        return g
-
     def to_mol_list(self, data: DataPoint) -> Tuple[List, List]:
         if isinstance(data.inputs["graph"], torch_geometric.data.Batch):
             data_list = data.inputs["graph"].to_data_list()
@@ -88,10 +76,5 @@ class IntegratedGradientsExplainer:
         data_list, dataset_sample_ids = self.to_mol_list(data)
 
         for (batch_sample_id, node_mask), dataset_sample_id in zip(node_mask_per_mol.items(), dataset_sample_ids):
-            data = data_list[batch_sample_id]
-            mol = self.to_molecule(data)
-
-            plt.figure(figsize=(10, 5))
-            plt.title(f"Integrated Gradients {data.smiles}")
-
-            self.sketcher.draw(graph=mol, save_path=save_path, node_mask=node_mask)
+            sample = data_list[batch_sample_id]
+            self.sketcher.draw(sample, save_path, node_mask)

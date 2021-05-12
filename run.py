@@ -340,10 +340,10 @@ class Executor:
         from lib.visualization.models import IntegratedGradientsExplainer
 
         streamer = GeneralStreamer(config=self._config)
-        data_loader = streamer.get(split_name=self._config.test_split, batch_size=1, shuffle=True)
+        data_loader = streamer.get(split_name=self._config.test_split, batch_size=1, shuffle=False)
 
         network = Pipeliner(config=self._config).get_network()
-        visualizer = IntegratedGradientsExplainer(network, self._config.visualizer["output_path"])
+        visualizer = IntegratedGradientsExplainer(network, self._config)
 
         for sample_id, batch in enumerate(tqdm(data_loader.dataset)):
             for target_id in self._config.visualizer["targets"]:

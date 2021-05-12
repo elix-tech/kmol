@@ -71,7 +71,7 @@ class GeneralStreamer(AbstractStreamer):
         for featurizer in self._featurizers:
             try:
                 featurizer.run(sample)
-            except (FeaturizationError, ValueError, IndexError, AttributeError) as e:
+            except (FeaturizationError, ValueError, IndexError, AttributeError, TypeError) as e:
                 raise FeaturizationError("[WARNING] Could not run featurizer '{}' on '{}' --- {}".format(
                     featurizer.__class__.__name__, sample.id_, e
                 ))
