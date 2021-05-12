@@ -1,5 +1,6 @@
+import os
 from collections import defaultdict
-from typing import Union, Dict, Tuple, List
+from typing import Union, Dict, Tuple, List, TextIO
 
 import numpy as np
 import torch
@@ -23,6 +24,16 @@ class IntegratedGradientsExplainer:
         self.model.eval()
 
         self.sketcher = SuperFactory.create(AbstractSketcher, config.visualizer["sketcher"])
+
+        self._logger = self._create_logger(config.visualizer["mapping_file_path"])
+        self._logger.write("file_path,smiles")
+
+    def _create_logger(self, log_file_path: str) -> TextIO:
+        if "/" in log_file_path:
+            mapping_file_location = log_file_path.rsplit("/", 1)[0]
+            os.makedirs(mapping_file_location, exist_ok=True)
+
+        return open(log_file_path, "w")
 
     def explain(self, data: Union[DataPoint, Batch], target: int) -> Dict[int, np.ndarray]:
         graphs = data.inputs["graph"]
@@ -77,4 +88,15 @@ class IntegratedGradientsExplainer:
 
         for (batch_sample_id, node_mask), dataset_sample_id in zip(node_mask_per_mol.items(), dataset_sample_ids):
             sample = data_list[batch_sample_id]
+
             self.sketcher.draw(sample, save_path, node_mask)
+            self._logger.write("{},{}\n".format(save_path, sample.smiles))
+
+    def close(self) -> None:
+        self._logger.close()
+
+    def __enter__(self) -> "IntegratedGradientsExplainer":
+        return self
+
+    def __exit__(self, *args, **kwargs) -> None:
+        self.close()

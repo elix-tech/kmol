@@ -341,14 +341,13 @@ class Executor:
 
         streamer = GeneralStreamer(config=self._config)
         data_loader = streamer.get(split_name=self._config.test_split, batch_size=1, shuffle=False)
-
         network = Pipeliner(config=self._config).get_network()
-        visualizer = IntegratedGradientsExplainer(network, self._config)
 
-        for sample_id, batch in enumerate(tqdm(data_loader.dataset)):
-            for target_id in self._config.visualizer["targets"]:
-                save_path = "sample_{}_target_{}.png".format(sample_id, target_id)
-                visualizer.visualize(batch, target_id, save_path)
+        with IntegratedGradientsExplainer(network, self._config) as visualizer:
+            for sample_id, batch in enumerate(tqdm(data_loader.dataset)):
+                for target_id in self._config.visualizer["targets"]:
+                    save_path = "sample_{}_target_{}.png".format(sample_id, target_id)
+                    visualizer.visualize(batch, target_id, save_path)
 
     def preload(self) -> None:
         GeneralStreamer(config=self._config)
