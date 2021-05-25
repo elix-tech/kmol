@@ -119,7 +119,7 @@ class Executor:
 
         for fold in range(self._config.cross_validation_folds):
             output_path = "{}/.{}/".format(self._config.output_path, fold)
-            config = Config(**{**vars(self._config), **{"output_path": output_path}})
+            config = self._config.cloned_update(output_path=output_path)
             pipeliner = Pipeliner(config=config)
 
             pipeliner.train(
@@ -165,7 +165,7 @@ class Executor:
 
         for fold in range(self._config.cross_validation_folds):
             output_path = "{}/.{}/".format(self._config.output_path, fold)
-            config = Config(**{**vars(self._config), **{"output_path": output_path}})
+            config = self._config.cloned_update(output_path=output_path)
             pipeliner = Pipeliner(config=config)
 
             pipeliner.train(
@@ -211,7 +211,7 @@ class Executor:
 
         for fold in range(self._config.cross_validation_folds):
             output_path = "{}/.{}/".format(self._config.output_path, fold)
-            config = Config(**{**vars(self._config), **{"output_path": output_path}})
+            config = self._config.cloned_update(output_path=output_path)
             pipeliner = Pipeliner(config=config)
 
             pipeliner.train(

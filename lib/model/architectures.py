@@ -20,7 +20,7 @@ class AbstractNetwork(torch.nn.Module, metaclass=ABCMeta):
         if len(args) != len(requirements):
             raise AttributeError("Cannot map inputs to module")
 
-        return {requirements[index]: args[index] for index in range(len(requirements))}
+        return {requirement: args[index] for index, requirement in enumerate(requirements)}
 
 
 class GraphConvolutionalNetwork(AbstractNetwork):

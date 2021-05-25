@@ -82,6 +82,12 @@ class Config:
         if self.differential_privacy["enabled"]:
             DifferentialPrivacy.setup(**self.differential_privacy["options"])
 
+    def cloned_update(self, **kwargs) -> "Config":
+        options = vars(self)
+        options.update(**kwargs)
+
+        return Config(**options)
+
     @classmethod
     def from_json(cls, file_path: str) -> "Config":
         with open(file_path) as read_handle:

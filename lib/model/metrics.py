@@ -41,9 +41,9 @@ class CustomMetrics:
         clone = array.copy()
         cumulative_sum = -1
 
-        for i in range(len(counts)):
-            cumulative_sum += counts[i]
-            ranks[np.where(clone == i)[0]] = cumulative_sum
+        for index, count in enumerate(counts):
+            cumulative_sum += count
+            ranks[np.where(clone == index)[0]] = cumulative_sum
 
         return ranks
 

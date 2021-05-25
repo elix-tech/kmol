@@ -289,12 +289,12 @@ class TokenFeaturizer(AbstractFeaturizer):
         tokens = data.split(self._separator) if self._separator else [character for character in data]
         features = np.zeros((self._max_length, len(self._vocabulary)))
 
-        for index in range(len(tokens)):
+        for index, token in enumerate(tokens):
             if index == self._max_length:
                 logging.warning("[CAUTION] Input is out of bounds. Features will be trimmed. --- {}".format(data))
                 break
 
-            features[index][self._vocabulary.index(tokens[index])] = 1
+            features[index][self._vocabulary.index(token)] = 1
 
         return torch.FloatTensor(features)
 

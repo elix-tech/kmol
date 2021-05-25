@@ -42,7 +42,7 @@ class SuperFactory:
             descendants[child.__name__] = child
 
             if len(child.__subclasses__()) > 0:
-                descendants = {**descendants, **SuperFactory.find_descendants(child)}
+                descendants.update(SuperFactory.find_descendants(child))
 
         return descendants
 
@@ -274,10 +274,10 @@ class ConfidenceInterval:
 
         return [
             ConfidenceInterval(
-                mean=np.mean(values[i]),
-                deviation=z * np.std(values[i]) / np.sqrt(len(values[i])),
+                mean=np.mean(value),
+                deviation=z * np.std(value) / np.sqrt(len(value)),
                 confidence=z
-            ) for i in range(len(values))
+            ) for value in values
         ]
 
 
