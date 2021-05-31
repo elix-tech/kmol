@@ -13,7 +13,7 @@
     },
     "loader": {
         "type": "excel",
-        "input_path": "data/input/ames/ames.xlsx",
+        "input_path": "data/input/ames/tox_AMES_summary.20201106.xlsx",
         "sheet_index": 0,
         "input_column_names": ["Canonical_SMILES"],
         "target_column_names": ["Label"]
@@ -32,7 +32,7 @@
             "descriptor_calculator": {"type": "rdkit"}
         }
     ],
-    "transformers": [],
+    "transformers": [{"type": "one_hot", "target": 0, "classes": ["Negative", "Positive"]}],
     "optimizer": {
         "type": "lib.model.optimizers.AdaBelief",
         "lr": 0.01,
@@ -49,7 +49,7 @@
         "div_factor": 25,
         "final_div_factor": 1000
     },
-    "output_path": "data/logs/server/",
+    "output_path": "data/logs/ames/",
     "checkpoint_path": null,
     "threshold": 0.4989107847213745,
     "cross_validation_folds": 5,
