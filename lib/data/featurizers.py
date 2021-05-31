@@ -10,16 +10,18 @@ from rdkit import Chem
 from torch_geometric.data import Data as TorchGeometricData
 
 from lib.core.exceptions import FeaturizationError
-from lib.data.resources import Data
+from lib.data.resources import DataPoint
 
 
 class AbstractFeaturizer(metaclass=ABCMeta):
 
-    def __init__(self, inputs: List[str], outputs: List[str], should_cache: bool = False):
+    def __init__(self, inputs: List[str], outputs: List[str], should_cache: bool = False, rewrite: bool = True):
         self._inputs = inputs
         self._outputs = outputs
 
         self._should_cache = should_cache
+        self._rewrite = rewrite
+
         self.__cache = {}
 
     @abstractmethod
@@ -35,13 +37,17 @@ class AbstractFeaturizer(metaclass=ABCMeta):
         else:
             return self._process(data)
 
-    def run(self, data: Data) -> None:
+    def run(self, data: DataPoint) -> None:
         if len(self._inputs) != len(self._outputs):
             raise FeaturizationError("Inputs and mappings must have the same length.")
 
         for index in range(len(self._inputs)):
-            raw_data = data.inputs.pop(self._inputs[index])
+            raw_data = data.inputs[self._inputs[index]]
+            if self._rewrite:
+                data.inputs.pop(self._inputs[index])
+
             data.inputs[self._outputs[index]] = self.__process(raw_data)
+
 
 
 class AbstractTorchGeometricFeaturizer(AbstractFeaturizer):
@@ -60,7 +66,7 @@ class AbstractTorchGeometricFeaturizer(AbstractFeaturizer):
         edge_indices, edge_attributes = self._get_edge_features(mol)
         edge_indices = torch.tensor(edge_indices)
         edge_indices = edge_indices.t().to(torch.long).view(2, -1)
-        edge_attributes = torch.FloatTensor(edge_attributes).view(-1, len(edge_attributes[0]))
+        edge_attributes = torch.FloatTensor(edge_attributes)
 
         if edge_indices.numel() > 0:  # Sort indices
             permutation = (edge_indices[0] * atom_features.size(0) + edge_indices[1]).argsort()
@@ -148,9 +154,9 @@ class GraphFeaturizer(AbstractTorchGeometricFeaturizer):
 
     def __init__(
             self, inputs: List[str], outputs: List[str], descriptor_calculator: AbstractDescriptorComputer,
-            allowed_atom_types: Optional[List[str]] = None, should_cache: bool = False
+            allowed_atom_types: Optional[List[str]] = None, should_cache: bool = False, rewrite: bool = True
     ):
-        super().__init__(inputs, outputs, should_cache)
+        super().__init__(inputs, outputs, should_cache, rewrite)
 
         if allowed_atom_types is None:
             allowed_atom_types = self.DEFAULT_ATOM_TYPES
@@ -222,10 +228,10 @@ class CircularFingerprintFeaturizer(AbstractFingerprintFeaturizer):
     """Morgan fingerprint featurizer"""
 
     def __init__(
-            self, inputs: List[str], outputs: List[str], should_cache: bool = False,
+            self, inputs: List[str], outputs: List[str], should_cache: bool = False, rewrite: bool = True,
             fingerprint_size: int = 2048, radius: int = 2
     ):
-        super().__init__(inputs, outputs, should_cache)
+        super().__init__(inputs, outputs, should_cache, rewrite)
 
         self._fingerprint_size = fingerprint_size
         self._radius = radius
@@ -251,8 +257,11 @@ class CircularFingerprintFeaturizer(AbstractFingerprintFeaturizer):
 class OneHotEncoderFeaturizer(AbstractFeaturizer):
     """One-Hot encode a single string"""
 
-    def __init__(self, inputs: List[str], outputs: List[str], classes: List[str], should_cache: bool = False):
-        super().__init__(inputs, outputs, should_cache)
+    def __init__(
+            self, inputs: List[str], outputs: List[str], classes: List[str],
+            should_cache: bool = False, rewrite: bool = True
+    ):
+        super().__init__(inputs, outputs, should_cache, rewrite)
 
         self._classes = classes
 
@@ -267,10 +276,10 @@ class TokenFeaturizer(AbstractFeaturizer):
     """Similar to the one-hot encoder, but will tokenize a whole sentence."""
 
     def __init__(
-            self, inputs: List[str], outputs: List[str],
-            vocabulary: List[str], max_length: int, separator: str = "", should_cache: bool = False
+            self, inputs: List[str], outputs: List[str], vocabulary: List[str], max_length: int,
+            separator: str = "", should_cache: bool = False, rewrite: bool = True
     ):
-        super().__init__(inputs, outputs, should_cache)
+        super().__init__(inputs, outputs, should_cache, rewrite)
 
         self._vocabulary = vocabulary
         self._separator = separator
@@ -280,12 +289,12 @@ class TokenFeaturizer(AbstractFeaturizer):
         tokens = data.split(self._separator) if self._separator else [character for character in data]
         features = np.zeros((self._max_length, len(self._vocabulary)))
 
-        for index in range(len(tokens)):
+        for index, token in enumerate(tokens):
             if index == self._max_length:
                 logging.warning("[CAUTION] Input is out of bounds. Features will be trimmed. --- {}".format(data))
                 break
 
-            features[index][self._vocabulary.index(tokens[index])] = 1
+            features[index][self._vocabulary.index(token)] = 1
 
         return torch.FloatTensor(features)
 
@@ -293,11 +302,11 @@ class TokenFeaturizer(AbstractFeaturizer):
 class BagOfWordsFeaturizer(AbstractFeaturizer):
 
     def __init__(
-            self, inputs: List[str], outputs: List[str],
-            vocabulary: List[str], max_length: int, should_cache: bool = False
+            self, inputs: List[str], outputs: List[str], vocabulary: List[str], max_length: int,
+            should_cache: bool = False, rewrite: bool = True
     ):
 
-        super().__init__(inputs, outputs, should_cache)
+        super().__init__(inputs, outputs, should_cache, rewrite)
 
         self._vocabulary = self._get_combinations(vocabulary, max_length)
         self._max_length = max_length
@@ -329,9 +338,30 @@ class TransposeFeaturizer(AbstractFeaturizer):
 
 class FixedFeaturizer(AbstractFeaturizer):
 
-    def __init__(self, inputs: List[str], outputs: List[str], value: float, should_cache: bool = False):
-        super().__init__(inputs, outputs, should_cache)
+    def __init__(
+            self, inputs: List[str], outputs: List[str], value: float,
+            should_cache: bool = False, rewrite: bool = True
+    ):
+        super().__init__(inputs, outputs, should_cache, rewrite)
         self._value = value
 
     def _process(self, data: float) -> float:
         return round(data / self._value, 8)
+
+
+class ConverterFeaturizer(AbstractFeaturizer):
+
+    def __init__(
+            self, inputs: List[str], outputs: List[str], source_format: str, target_format: str,
+            should_cache: bool = False, rewrite: bool = True,
+    ):
+        super().__init__(inputs, outputs, should_cache, rewrite)
+
+        self._source_format = source_format
+        self._target_format = target_format
+
+        from openbabel import pybel
+        self._pybel = pybel
+
+    def _process(self, data: str) -> str:
+        return self._pybel.readstring(self._source_format, data).write(self._target_format).strip()

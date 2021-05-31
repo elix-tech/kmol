@@ -8,7 +8,7 @@ from torch_geometric.data.dataloader import Collater as TorchGeometricCollater
 
 
 @dataclass
-class Data:
+class DataPoint:
     id_: Optional[Union[str, int]] = None
     labels: Optional[List[str]] = None
     inputs: Optional[Dict[str, Any]] = None
@@ -37,7 +37,7 @@ class Collater:
         self._device = device
         self._collater = TorchGeometricCollater(follow_batch=[])
 
-    def _unpack(self, batch: List[Data]) -> Batch:
+    def _unpack(self, batch: List[DataPoint]) -> Batch:
         ids = []
         inputs = defaultdict(list)
         outputs = []
@@ -58,9 +58,12 @@ class Collater:
     def _set_device(self, batch: Batch) -> None:
         batch.outputs = batch.outputs.to(self._device)
         for key, values in batch.inputs.items():
-            batch.inputs[key] = values.to(self._device)
+            try:
+                batch.inputs[key] = values.to(self._device)
+            except (AttributeError, ValueError):
+                pass
 
-    def apply(self, batch: List[Data]) -> Batch:
+    def apply(self, batch: List[DataPoint]) -> Batch:
 
         batch = self._unpack(batch)
         for key, values in batch.inputs.items():

@@ -120,6 +120,7 @@ dependencies:
   - numpy=1.19.1
   - numpy-base=1.19.1
   - olefile=0.46
+  - openbabel=3.1.1
   - openssl=1.1.1h
   - optuna=2.4.0
   - outdated=0.2.0

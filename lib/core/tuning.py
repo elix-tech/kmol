@@ -1,13 +1,16 @@
-import optuna
 import json
-from lib.core.config import Config
-from typing import Callable, Dict, Any
-import re
 import os
+import re
 from glob import glob
+from typing import Callable, Dict, Any
+
+import optuna
+
+from lib.core.config import Config
+from lib.core.helpers import Loggable
 
 
-class OptunaTemplateParser:
+class OptunaTemplateParser(Loggable):
     """
     Parser for dynamic configuration file templates.
     Will find placeholders wrapped in triple curly brackets "{{{...}}}" and generate suggestions for an Optuna trial:
@@ -22,7 +25,13 @@ class OptunaTemplateParser:
     - if numeric values do not contain a dot ".", an int value will be suggested ie: {{{layers=2-5-1}}}
     """
 
-    def __init__(self, template_path: str, evaluator: Callable[[Config], float], delete_checkpoints: bool = True):
+    def __init__(
+            self, template_path: str, evaluator: Callable[[Config], float],
+            log_path: str, delete_checkpoints: bool = True
+    ):
+        Loggable.__init__(self, file_path=log_path)
+        self.log("trial_number,performance,configuration_path\n")
+
         with open(template_path) as read_buffer:
             self._template = read_buffer.read()
             self._template = self._template.replace(" ", "").replace("\n", "")
@@ -31,7 +40,7 @@ class OptunaTemplateParser:
         self._should_delete_checkpoints = delete_checkpoints
 
     def _get_trial_save_path(self, save_path: str, trial_id: int) -> str:
-        return "{}/{}/".format(save_path, trial_id)
+        return "{}{}/".format(save_path, trial_id)
 
     def _suggest_configuration(self, trial: optuna.Trial) -> Dict[str, Any]:
         replacements = {}
@@ -68,7 +77,9 @@ class OptunaTemplateParser:
 
     def objective(self, trial: optuna.Trial) -> float:
         settings = self._suggest_configuration(trial)
-        settings["output_path"] = self._get_trial_save_path(save_path=settings["output_path"], trial_id=trial.number)
+
+        main_output_path = settings["output_path"]
+        settings["output_path"] = self._get_trial_save_path(save_path=main_output_path, trial_id=trial.number)
 
         config = Config(**settings)
         self._store_trial_configuration(settings)
@@ -77,4 +88,5 @@ class OptunaTemplateParser:
         if self._should_delete_checkpoints:
             self._delete_checkpoints(settings["output_path"])
 
+        self.log("{},{},{}.config.json\n".format(trial.number, result, settings["output_path"]))
         return result

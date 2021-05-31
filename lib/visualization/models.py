@@ -1,37 +1,41 @@
+import os
 from collections import defaultdict
-from copy import copy
-from math import sqrt
-from typing import Optional
-from typing import Union, Dict, Tuple, List
+from typing import Union, Dict, Tuple, List, TextIO
 
-import matplotlib.pyplot as plt
-import networkx as nx
 import numpy as np
 import torch
 import torch_geometric
-from rdkit import Chem
-from torch_geometric.data import Data
-from torch_geometric.nn import MessagePassing
-from torch_geometric.utils import k_hop_subgraph, to_networkx
 
-from lib.data.resources import Data, Batch
+from lib.core.config import Config
+from lib.core.helpers import SuperFactory, Loggable
+from lib.data.resources import DataPoint, Batch
+from lib.visualization.sketchers import AbstractSketcher
 from vendor.captum.attr import IntegratedGradients
-from lib.visualization.sketchers import RdkitSketcher, GraphSketcher
 
 
-class IntegratedGradientsExplainer:
+class IntegratedGradientsExplainer(Loggable):
     """
     Implements the Integrated Gradients explainability technique introduced in https://arxiv.org/abs/1703.01365.
     The core implementation relies on captum: https://github.com/pytorch/captum
     """
 
-    def __init__(self, model: torch.nn.Module, output_path: str):
+    def __init__(self, model: torch.nn.Module, config: Config):
+        Loggable.__init__(self, config.visualizer["mapping_file_path"])
+        self.log("file_path,smiles\n")
+
         self.model = model
         self.model.eval()
 
-        self.sketcher = GraphSketcher(output_path=output_path)
+        self.sketcher = SuperFactory.create(AbstractSketcher, config.visualizer["sketcher"])
 
-    def explain(self, data: Union[Data, Batch], target: int) -> Dict[int, np.ndarray]:
+    def _create_logger(self, log_file_path: str) -> TextIO:
+        if "/" in log_file_path:
+            mapping_file_location = log_file_path.rsplit("/", 1)[0]
+            os.makedirs(mapping_file_location, exist_ok=True)
+
+        return open(log_file_path, "w")
+
+    def explain(self, data: Union[DataPoint, Batch], target: int) -> Dict[int, np.ndarray]:
         graphs = data.inputs["graph"]
 
         number_nodes = graphs.x.shape[0]
@@ -45,7 +49,7 @@ class IntegratedGradientsExplainer:
         node_mask = np.abs(mask.cpu().detach().numpy()).sum(axis=1)
         return self.per_mol_mask(data, node_mask)
 
-    def per_mol_mask(self, data: Data, node_masks: np.ndarray) -> Dict[int, np.ndarray]:
+    def per_mol_mask(self, data: DataPoint, node_masks: np.ndarray) -> Dict[int, np.ndarray]:
         node_mask_per_mol = defaultdict(list)
         batch_ids = data.inputs["graph"].batch
 
@@ -58,7 +62,7 @@ class IntegratedGradientsExplainer:
 
         return node_mask_per_mol
 
-    def model_forward(self, node_mask: torch.Tensor, data: Union[Data, Batch]) -> torch.Tensor:
+    def model_forward(self, node_mask: torch.Tensor, data: Union[DataPoint, Batch]) -> torch.Tensor:
         data.inputs["graph"].x = node_mask
 
         if not hasattr(data.inputs["graph"], "batch"):
@@ -68,17 +72,7 @@ class IntegratedGradientsExplainer:
 
         return self.model(data.inputs)
 
-    def to_molecule(self, data: torch_geometric.data.Data) -> nx.Graph:
-        mol = Chem.MolFromSmiles(data.smiles)
-        g = to_networkx(data, node_attrs=["x"])
-
-        for (u, data), atom in zip(g.nodes(data=True), mol.GetAtoms()):
-            data["name"] = atom.GetSymbol()
-            del data["x"]
-
-        return g
-
-    def to_mol_list(self, data: Data) -> Tuple[List, List]:
+    def to_mol_list(self, data: DataPoint) -> Tuple[List, List]:
         if isinstance(data.inputs["graph"], torch_geometric.data.Batch):
             data_list = data.inputs["graph"].to_data_list()
             dataset_sample_ids = data.ids
@@ -88,15 +82,12 @@ class IntegratedGradientsExplainer:
 
         return data_list, dataset_sample_ids
 
-    def visualize(self, data: Union[Data, Batch], target: int, save_path: str) -> None:
+    def visualize(self, data: Union[DataPoint, Batch], target: int, save_path: str) -> None:
         node_mask_per_mol = self.explain(data, target)
         data_list, dataset_sample_ids = self.to_mol_list(data)
 
         for (batch_sample_id, node_mask), dataset_sample_id in zip(node_mask_per_mol.items(), dataset_sample_ids):
-            data = data_list[batch_sample_id]
-            mol = self.to_molecule(data)
+            sample = data_list[batch_sample_id]
 
-            plt.figure(figsize=(10, 5))
-            plt.title(f"Integrated Gradients {data.smiles}")
-
-            self.sketcher.draw(graph=mol, save_path=save_path, node_mask=node_mask)
+            self.sketcher.draw(sample, save_path, node_mask)
+            self.log("{},{}\n".format(save_path, sample.smiles))

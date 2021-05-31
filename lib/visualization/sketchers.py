@@ -5,15 +5,14 @@ from typing import List, Dict
 
 import matplotlib.pyplot as plt
 import networkx as nx
-import numpy as np
 import torch
 from PIL import Image
 from cairosvg import svg2png
 from rdkit import Chem
 from rdkit.Chem import AllChem
 from rdkit.Chem.Draw import rdMolDraw2D
-
-from lib.data.resources import Batch
+from torch_geometric.data import Data
+from torch_geometric.utils import to_networkx
 
 
 class AbstractSketcher(metaclass=ABCMeta):
@@ -37,14 +36,14 @@ class RdkitSketcher(AbstractSketcher):
             return {}
 
         colors = {}
-        for highlight_ind, highlight_intensity in enumerate(highlight_intensities):
+        for highlight_index, highlight_intensity in enumerate(highlight_intensities):
             if highlight_intensity >= color_switch_threshold:
                 colors.update({
-                    highlight_ind: (1, round(1.1 - highlight_intensity, 3), round(1.1 - highlight_intensity, 3))
+                    highlight_index: (1, round(1.1 - highlight_intensity, 3), round(1.1 - highlight_intensity, 3))
                 })
             else:
                 colors.update({
-                    highlight_ind: (round(highlight_intensity, 3) + 0.4, round(highlight_intensity, 3) + 0.4, 1)
+                    highlight_index: (round(highlight_intensity, 3) + 0.4, round(highlight_intensity, 3) + 0.4, 1)
                 })
 
         return colors
@@ -78,35 +77,27 @@ class RdkitSketcher(AbstractSketcher):
 
         drawer.FinishDrawing()
         svg = drawer.GetDrawingText().replace("svg:", "")
-
         Image.open(io.BytesIO(svg2png(svg))).save(save_path, "png")
 
-    def draw(self, batch: Batch, save_path: str, mask: torch.Tensor) -> None:
-        smiles = batch.inputs["graph"].smiles[0]
-        source_edge_index = batch.inputs["graph"].edge_index[0]
-        target_edge_index = batch.inputs["graph"].edge_index[1]
-
-        highlights = []
-        for bond in Chem.MolFromSmiles(smiles).GetBonds():
-            value = []
-
-            for i in range(len(source_edge_index)):
-                if (
-                        bond.GetBeginAtomIdx() == source_edge_index[i] and bond.GetEndAtomIdx() == target_edge_index[i]
-                ) or (
-                        bond.GetBeginAtomIdx() == target_edge_index[i] and bond.GetEndAtomIdx() == source_edge_index[i]
-                ):
-                    value.append(mask[i])
-
-            highlights.append(float(np.mean(value)))
-
+    def draw(self, sample: Data, save_path: str, mask: torch.Tensor) -> None:
         save_path = "{}/{}".format(self._output_path, save_path)
-        self._draw(smiles=smiles, save_path=save_path, x=1000, y=800, highlight_bonds=highlights)
+        self._draw(smiles=sample.smiles, save_path=save_path, x=1000, y=800, highlight_atoms=mask)
 
 
 class GraphSketcher(AbstractSketcher):
 
-    def draw(self, graph: nx.Graph, save_path: str, node_mask: torch.Tensor = None) -> None:
+    def get_graph(self, sample: Data) -> nx.Graph:
+        mol = Chem.MolFromSmiles(sample.smiles)
+        graph = to_networkx(sample, node_attrs=["x"])
+
+        for (_, data), atom in zip(graph.nodes(data=True), mol.GetAtoms()):
+            data["name"] = atom.GetSymbol()
+            del data["x"]
+
+        return graph
+
+    def draw(self, sample: Data, save_path: str, mask: torch.Tensor) -> None:
+        graph = self.get_graph(sample=sample)
         graph = graph.copy().to_undirected()
         node_labels = {}
 
@@ -116,8 +107,8 @@ class GraphSketcher(AbstractSketcher):
         pos = nx.planar_layout(graph)
         pos = nx.spring_layout(graph, pos=pos)
 
-        node_color = "azure" if node_mask is None else node_mask
-        nx.draw(graph, pos=pos, labels=node_labels, edge_color="black", cmap=plt.cm.Blues, node_color=node_color)
+        plt.figure(figsize=(10, 5))
+        nx.draw(graph, pos=pos, labels=node_labels, edge_color="black", cmap=plt.cm.Blues, node_color=mask)
 
         plt.savefig("{}/{}".format(self._output_path, save_path), dpi=120)
         plt.close()

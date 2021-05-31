@@ -5,13 +5,14 @@ import json
 import logging
 import os
 import timeit
+from dataclasses import dataclass
 from functools import partial, total_ordering
-from typing import Type, Any, Dict, Union, T, Optional, List, Callable
+from typing import Type, Any, Dict, Union, T, Optional, List, Callable, TextIO
 
 import humps
 import numpy as np
 import torch
-from dataclasses import dataclass
+
 from lib.core.exceptions import ReflectionError
 
 
@@ -41,7 +42,7 @@ class SuperFactory:
             descendants[child.__name__] = child
 
             if len(child.__subclasses__()) > 0:
-                descendants = {**descendants, **SuperFactory.find_descendants(child)}
+                descendants.update(SuperFactory.find_descendants(child))
 
         return descendants
 
@@ -273,8 +274,32 @@ class ConfidenceInterval:
 
         return [
             ConfidenceInterval(
-                mean=np.mean(values[i]),
-                deviation=z * np.std(values[i]) / np.sqrt(len(values[i])),
+                mean=np.mean(value),
+                deviation=z * np.std(value) / np.sqrt(len(value)),
                 confidence=z
-            ) for i in range(len(values))
+            ) for value in values
         ]
+
+
+class Loggable:
+
+    def __init__(self, file_path: str):
+        self._logger = self._create_logger(file_path)
+
+    def _create_logger(self, file_path: str) -> TextIO:
+        if "/" in file_path:
+            os.makedirs(file_path.rsplit("/", 1)[0], exist_ok=True)
+
+        return open(file_path, "w")
+
+    def log(self, message: str) -> None:
+        self._logger.write(message)
+
+    def close(self) -> None:
+        self._logger.close()
+
+    def __enter__(self) -> "Loggable":
+        return self
+
+    def __exit__(self, *args, **kwargs) -> None:
+        self.close()

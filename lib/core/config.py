@@ -27,7 +27,7 @@ class Config(AbstractConfiguration):
     is_stepwise_scheduler: Optional[bool] = True
     is_finetuning: Optional[bool] = False
     checkpoint_path: Optional[str] = None
-    threshold: Optional[float] = 0.5
+    threshold: Optional[float] = None
     cross_validation_folds: int = 5
 
     train_split: str = "train"
@@ -79,3 +79,9 @@ class Config(AbstractConfiguration):
 
         if self.differential_privacy["enabled"]:
             DifferentialPrivacy.setup(**self.differential_privacy["options"])
+
+    def cloned_update(self, **kwargs) -> "Config":
+        options = vars(self)
+        options.update(**kwargs)
+
+        return Config(**options)

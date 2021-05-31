@@ -1,5 +1,6 @@
 import json
 import logging
+import math
 from abc import ABCMeta, abstractmethod
 from collections import defaultdict
 from enum import Enum
@@ -8,6 +9,8 @@ from typing import Callable, Optional, NamedTuple, Tuple, Iterable, Any, Dict, L
 
 import numpy as np
 import torch
+from scipy import stats
+from scipy.spatial import distance
 from sklearn.metrics import (
     roc_auc_score, average_precision_score, accuracy_score, precision_score, recall_score, f1_score,
     r2_score, mean_absolute_error, mean_squared_error, cohen_kappa_score, jaccard_score, roc_curve
@@ -28,11 +31,72 @@ class MetricConfiguration(NamedTuple):
     maximize: bool = True
 
 
+class CustomMetrics:
+
+    @staticmethod
+    def __get_ranks(array: List[float]) -> np.ndarray:
+        _, ranks, counts = np.unique(array, return_inverse=True, return_counts=True)
+
+        clone = array.copy()
+        cumulative_sum = -1
+
+        for index, count in enumerate(counts):
+            cumulative_sum += count
+            ranks[np.where(clone == index)[0]] = cumulative_sum
+
+        return ranks
+
+    @staticmethod
+    def pearson_correlation_coefficient(ground_truth: List[float], predictions: List[float]) -> float:
+        return stats.pearsonr(ground_truth, predictions)[0]
+
+    @staticmethod
+    def spearman_correlation_coefficient(ground_truth: List[float], predictions: List[float]) -> float:
+        return stats.spearmanr(ground_truth, predictions).correlation
+
+    @staticmethod
+    def kullback_leibler_divergence(ground_truth: List[float], predictions: List[float]) -> float:
+        return stats.entropy(ground_truth, predictions)
+
+    @staticmethod
+    def jensen_shannon_divergence(ground_truth: List[float], predictions: List[float]) -> float:
+        return math.exp(distance.jensenshannon(ground_truth, predictions))
+
+    @staticmethod
+    def rank_quality(ground_truth: List[float], predictions: List[float]) -> float:
+        """
+        For this metric, values don't matter, only the order.
+        This helps if you plan to use a regression model for ranking, the exact values are not important.
+        The best values is 1, the worst is 0.
+        """
+        if len(ground_truth) == 1:
+            return 1.
+
+        ground_truth = CustomMetrics.__get_ranks(ground_truth)
+        predictions = CustomMetrics.__get_ranks(predictions)
+
+        if len(ground_truth) == 2:
+            return float(ground_truth[0] == predictions[0])
+
+        samples_count = ground_truth.shape[0]
+        worst_possible_outcome = np.arange(int(samples_count % 2 == 0), samples_count, step=2).sum() * 2
+
+        return 1 - np.sum(np.abs(ground_truth - predictions)) / worst_possible_outcome
+
+
 class AvailableMetrics:
     MAE = MetricConfiguration(type=MetricType.REGRESSION, calculator=mean_absolute_error, maximize=False)
     MSE = MetricConfiguration(type=MetricType.REGRESSION, calculator=mean_squared_error, maximize=False)
     RMSE = MetricConfiguration(type=MetricType.REGRESSION, calculator=partial(mean_squared_error, squared=False), maximize=False)
     R2 = MetricConfiguration(type=MetricType.REGRESSION, calculator=r2_score)
+    PEARSON = MetricConfiguration(type=MetricType.REGRESSION, calculator=CustomMetrics.pearson_correlation_coefficient)
+    SPEARMAN = MetricConfiguration(type=MetricType.REGRESSION, calculator=CustomMetrics.spearman_correlation_coefficient)
+    KL_DIV = MetricConfiguration(type=MetricType.REGRESSION, calculator=CustomMetrics.kullback_leibler_divergence, maximize=False)
+    JS_DIV = MetricConfiguration(type=MetricType.REGRESSION, calculator=CustomMetrics.jensen_shannon_divergence, maximize=False)
+    CHEBYSHEV = MetricConfiguration(type=MetricType.REGRESSION, calculator=distance.chebyshev, maximize=False)
+    MANHATTAN = MetricConfiguration(type=MetricType.REGRESSION, calculator=distance.cityblock, maximize=False)
+    RANK_QUALITY = MetricConfiguration(type=MetricType.REGRESSION, calculator=CustomMetrics.rank_quality)
+
     ROC_AUC = MetricConfiguration(type=MetricType.CLASSIFICATION, calculator=roc_auc_score)
     PR_AUC = MetricConfiguration(type=MetricType.CLASSIFICATION, calculator=average_precision_score)
     ACCURACY = MetricConfiguration(type=MetricType.CLASSIFICATION, calculator=accuracy_score, uses_threshold=True)

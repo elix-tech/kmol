@@ -14,7 +14,7 @@ from lib.core.exceptions import FeaturizationError
 from lib.core.helpers import SuperFactory, CacheManager
 from lib.data.featurizers import AbstractFeaturizer
 from lib.data.loaders import AbstractLoader, ListLoader
-from lib.data.resources import Data, Collater, LoadedContent
+from lib.data.resources import DataPoint, Collater, LoadedContent
 from lib.data.splitters import AbstractSplitter
 from lib.data.transformers import AbstractTransformer
 
@@ -52,7 +52,7 @@ class GeneralStreamer(AbstractStreamer):
         ]
 
         self._dataset = self._load_dataset()
-        self._splits = self._generate_splits()
+        self.splits = self._generate_splits()
 
     def _generate_splits(self) -> Dict[str, List[Union[int, str]]]:
         splitter = SuperFactory.create(AbstractSplitter, self._config.splitter)
@@ -67,20 +67,20 @@ class GeneralStreamer(AbstractStreamer):
             }
         )
 
-    def _featurize(self, sample: Data):
+    def _featurize(self, sample: DataPoint):
         for featurizer in self._featurizers:
             try:
                 featurizer.run(sample)
-            except (FeaturizationError, ValueError, IndexError, AttributeError) as e:
+            except (FeaturizationError, ValueError, IndexError, AttributeError, TypeError) as e:
                 raise FeaturizationError("[WARNING] Could not run featurizer '{}' on '{}' --- {}".format(
                     featurizer.__class__.__name__, sample.id_, e
                 ))
 
-    def _apply_transformers(self, sample: Data) -> None:
+    def _apply_transformers(self, sample: DataPoint) -> None:
         for transformer in self._transformers:
             transformer.apply(sample)
 
-    def reverse_transformers(self, sample: Data) -> None:
+    def reverse_transformers(self, sample: DataPoint) -> None:
         for transformer in reversed(self._transformers):
             transformer.reverse(sample)
 
@@ -110,7 +110,7 @@ class GeneralStreamer(AbstractStreamer):
         return dataset
 
     def _get_subset(self, split_name: str, **kwargs) -> Subset:
-        return Subset(dataset=self._dataset, indices=self._splits[split_name])
+        return Subset(dataset=self._dataset, indices=self.splits[split_name])
 
     def get(self, split_name: str, batch_size: int, shuffle: bool, **kwargs) -> LoadedContent:
         collater = Collater(device=self._config.get_device())
@@ -128,7 +128,7 @@ class GeneralStreamer(AbstractStreamer):
 class SubsetStreamer(GeneralStreamer):
 
     def _get_subset(self, split_name: str, subset_id: int, subset_distributions: List[float]) -> Subset:
-        indices = self._splits[split_name]
+        indices = self.splits[split_name]
 
         remaining_entries_count = len(indices)
         start_index = int(remaining_entries_count * sum(subset_distributions[:subset_id]))
@@ -155,9 +155,9 @@ class CrossValidationStreamer(GeneralStreamer):
 
     def _get_subset(self, split_name: str, mode: Mode) -> Subset:
         if mode == self.Mode.TEST:
-            indices = self._splits[split_name]
+            indices = self.splits[split_name]
         else:
-            indices = copy(self._splits)
+            indices = copy(self.splits)
             indices.pop(split_name)
             indices = reduce(operator.iconcat, indices.values(), [])  # flatten
 

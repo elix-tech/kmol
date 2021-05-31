@@ -1,6 +1,7 @@
 import logging
 from argparse import ArgumentParser
-from typing import List, Tuple, Callable, Optional
+from functools import partial
+from typing import List, Tuple, Callable, Optional, Dict, Union
 
 import joblib
 import numpy as np
@@ -10,7 +11,7 @@ from tqdm import tqdm
 from lib.core.config import Config
 from lib.core.helpers import Namespace, ConfidenceInterval
 from lib.core.tuning import OptunaTemplateParser
-from lib.data.resources import Data
+from lib.data.resources import DataPoint
 from lib.data.streamers import GeneralStreamer, SubsetStreamer, CrossValidationStreamer
 from lib.model.executors import Predictor, ThresholdFinder, LearningRareFinder, Pipeliner
 from lib.model.metrics import PredictionProcessor, CsvLogger
@@ -42,11 +43,11 @@ class Executor(AbstractExecutor):
             except TypeError:
                 logging.debug("[Notice] Cannot compute statistics. Some metrics could not be computed for all targets.")
 
-    def __revert_transformations(self, predictions: np.ndarray, streamer: GeneralStreamer):
-        data = Data(outputs=predictions.transpose())
+    def __revert_transformers(self, predictions: np.ndarray, streamer: GeneralStreamer):
+        data = DataPoint(outputs=predictions.tolist())
         streamer.reverse_transformers(data)
 
-        return data.outputs.transpose()
+        return data.outputs
 
     def __run_trial(self, config: Config) -> float:
         try:
@@ -113,7 +114,7 @@ class Executor(AbstractExecutor):
 
         for fold in range(self._config.cross_validation_folds):
             output_path = "{}/.{}/".format(self._config.output_path, fold)
-            config = Config(**{**vars(self._config), **{"output_path": output_path}})
+            config = self._config.cloned_update(output_path=output_path)
             pipeliner = Pipeliner(config=config)
 
             pipeliner.train(
@@ -159,7 +160,7 @@ class Executor(AbstractExecutor):
 
         for fold in range(self._config.cross_validation_folds):
             output_path = "{}/.{}/".format(self._config.output_path, fold)
-            config = Config(**{**vars(self._config), **{"output_path": output_path}})
+            config = self._config.cloned_update(output_path=output_path)
             pipeliner = Pipeliner(config=config)
 
             pipeliner.train(
@@ -205,7 +206,7 @@ class Executor(AbstractExecutor):
 
         for fold in range(self._config.cross_validation_folds):
             output_path = "{}/.{}/".format(self._config.output_path, fold)
-            config = Config(**{**vars(self._config), **{"output_path": output_path}})
+            config = self._config.cloned_update(output_path=output_path)
             pipeliner = Pipeliner(config=config)
 
             pipeliner.train(
@@ -255,6 +256,8 @@ class Executor(AbstractExecutor):
         )
 
         predictor = Predictor(config=self._config)
+        transformer_reverter = partial(self.__revert_transformers, streamer=streamer)
+
         print(",".join(streamer.labels))
 
         results = []
@@ -262,7 +265,7 @@ class Executor(AbstractExecutor):
             logits = predictor.run(batch)
 
             predictions = PredictionProcessor.apply_threshold(logits, self._config.threshold)
-            predictions = self.__revert_transformations(predictions, streamer)
+            predictions = np.apply_along_axis(transformer_reverter, axis=1, arr=predictions)
             results.extend(predictions)
 
             predictions = predictions.astype("str").tolist()
@@ -275,14 +278,13 @@ class Executor(AbstractExecutor):
         if not self._config_path:
             raise AttributeError("Cannot optimize. No configuration path specified.")
 
-        template_parser = OptunaTemplateParser(
-            template_path=self._config_path,
-            evaluator=self.__run_trial,
-            delete_checkpoints=True
-        )
+        with OptunaTemplateParser(
+            template_path=self._config_path, evaluator=self.__run_trial, delete_checkpoints=True,
+            log_path="{}summary.csv".format(self._config.output_path)
+        ) as template_parser:
 
-        study = optuna.create_study(direction='maximize')
-        study.optimize(template_parser.objective, n_trials=self._config.optuna_trials)
+            study = optuna.create_study(direction='maximize')
+            study.optimize(template_parser.objective, n_trials=self._config.optuna_trials)
 
         logging.info("---------------------------- [BEST VALUE] ----------------------------")
         logging.info(study.best_value)
@@ -335,15 +337,28 @@ class Executor(AbstractExecutor):
         from lib.visualization.models import IntegratedGradientsExplainer
 
         streamer = GeneralStreamer(config=self._config)
-        data_loader = streamer.get(split_name=self._config.test_split, batch_size=1, shuffle=True)
-
+        data_loader = streamer.get(split_name=self._config.test_split, batch_size=1, shuffle=False)
         network = Pipeliner(config=self._config).get_network()
-        visualizer = IntegratedGradientsExplainer(network, self._config.visualizer["output_path"])
 
-        for sample_id, batch in enumerate(tqdm(data_loader.dataset)):
-            for target_id in self._config.visualizer["targets"]:
-                save_path = "sample_{}_target_{}.png".format(sample_id, target_id)
-                visualizer.visualize(batch, target_id, save_path)
+        with IntegratedGradientsExplainer(network, self._config) as visualizer:
+            for sample_id, batch in enumerate(tqdm(data_loader.dataset)):
+                for target_id in self._config.visualizer["targets"]:
+                    save_path = "sample_{}_target_{}.png".format(sample_id, target_id)
+                    visualizer.visualize(batch, target_id, save_path)
+
+    def preload(self) -> None:
+        GeneralStreamer(config=self._config)
+
+    def splits(self) -> Dict[str, List[Union[int, str]]]:
+        streamer = GeneralStreamer(config=self._config)
+
+        for split_name, split_values in streamer.splits.items():
+            print(split_name)
+            print("-------------------------------------")
+            print(split_values)
+            print("")
+
+        return streamer.splits
 
 
 if __name__ == "__main__":
