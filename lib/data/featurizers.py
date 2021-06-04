@@ -216,6 +216,24 @@ class GraphFeaturizer(AbstractTorchGeometricFeaturizer):
         ]
 
 
+class ChiralGraphFeaturizer(GraphFeaturizer):
+
+    def _list_atom_featurizers(self) -> List[Callable]:
+        from vendor.dgllife.utils.featurizers import (
+            atom_chiral_tag_one_hot, atom_chirality_type_one_hot, atom_is_chiral_center
+        )
+
+        featurizers = super()._list_atom_featurizers()
+
+        featurizers.extend([
+            atom_chiral_tag_one_hot,
+            atom_chirality_type_one_hot,
+            atom_is_chiral_center
+        ])
+
+        return featurizers
+
+
 class AbstractFingerprintFeaturizer(AbstractFeaturizer):
     """Abstract featurizer for fingerprints"""
 
@@ -229,12 +247,13 @@ class CircularFingerprintFeaturizer(AbstractFingerprintFeaturizer):
 
     def __init__(
             self, inputs: List[str], outputs: List[str], should_cache: bool = False, rewrite: bool = True,
-            fingerprint_size: int = 2048, radius: int = 2
+            fingerprint_size: int = 2048, radius: int = 2, use_chirality: bool = False
     ):
         super().__init__(inputs, outputs, should_cache, rewrite)
 
         self._fingerprint_size = fingerprint_size
         self._radius = radius
+        self._use_chirality = use_chirality
 
     def _process(self, data: str) -> torch.FloatTensor:
         mol = Chem.MolFromSmiles(data)
@@ -246,7 +265,9 @@ class CircularFingerprintFeaturizer(AbstractFingerprintFeaturizer):
     def _generate_fingerprint(self, mol: Chem.Mol) -> np.ndarray:
         from rdkit.Chem import AllChem
 
-        fingerprint = AllChem.GetMorganFingerprintAsBitVect(mol, radius=self._radius, nBits=self._fingerprint_size)
+        fingerprint = AllChem.GetMorganFingerprintAsBitVect(
+            mol, radius=self._radius, nBits=self._fingerprint_size, useChirality=self._use_chirality
+        )
 
         features = np.zeros(self._fingerprint_size, dtype=np.uint8)
         features[fingerprint.GetOnBits()] = 1
