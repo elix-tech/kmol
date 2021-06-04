@@ -37,7 +37,7 @@ class CustomMetrics:
     def __get_ranks(array: List[float]) -> np.ndarray:
         _, ranks, counts = np.unique(array, return_inverse=True, return_counts=True)
 
-        clone = array.copy()
+        clone = ranks.copy()
         cumulative_sum = -1
 
         for index, count in enumerate(counts):
