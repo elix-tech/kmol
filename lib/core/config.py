@@ -1,6 +1,7 @@
 import logging
 import os
 from collections import defaultdict
+from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Literal, Optional, List, Dict, Any, DefaultDict
 
@@ -81,7 +82,7 @@ class Config(AbstractConfiguration):
             DifferentialPrivacy.setup(**self.differential_privacy["options"])
 
     def cloned_update(self, **kwargs) -> "Config":
-        options = vars(self)
+        options = deepcopy(vars(self))
         options.update(**kwargs)
 
         return Config(**options)
