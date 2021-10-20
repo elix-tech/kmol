@@ -5,8 +5,8 @@ from typing import Union, Dict, Tuple, List, TextIO
 import numpy as np
 import torch
 import torch_geometric
+from captum.attr import IntegratedGradients
 
-from vendor.captum.attr import IntegratedGradients
 from .sketchers import AbstractSketcher
 from ..core.config import Config
 from ..core.helpers import SuperFactory, Loggable

@@ -1,7 +1,6 @@
 __pycache__
 *.pyc
 *.test
-*.egg-info/
 
 /data/*
 !/data/configs
@@ -9,3 +8,7 @@ __pycache__
 sandbox/
 scripts/
 projects/
+
+build/
+dist/
+*.egg-info/

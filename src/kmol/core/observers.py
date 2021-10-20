@@ -6,6 +6,7 @@ import torch
 from torch.nn.modules.batchnorm import _BatchNorm as BatchNormLayer
 
 from .helpers import Namespace
+from ..vendor.opacus.custom.privacy_engine import PrivacyEngine
 
 
 class AbstractEventHandler(metaclass=ABCMeta):
@@ -102,8 +103,6 @@ class DifferentialPrivacy:
                 self._options["alphas"] = [1 + i / 10.0 for i in range(1, 100)] + list(range(12, 64))
 
         def run(self, payload: Namespace) -> None:
-            from vendor.opacus.custom.privacy_engine import PrivacyEngine
-
             trainer = payload.trainer
             network = trainer.network
 

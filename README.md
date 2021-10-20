@@ -4,32 +4,32 @@ This file is outdated. Please use the documentation PDF for reference.
 
 ## Installation
 
-Use the provided conda snapshot:
+Dependencies can be installed with conda:
 ```bash
-conda env create -f environment.yml  # first time only
-conda activate federated
-bash install_additional_dependencies.sh  # first time only
+conda env create -f environment.yml
+conda activate kmol
+bash install.sh
 ```
 
 ## Commands
 
 Training:
 ```bash
-python run.py train data/configs/gcn.json
+kmol train data/configs/gcn.json
 ```
 
 Validate (a single checkpoint):
 ```bash
-python run.py eval data/configs/gcn.json
+kmol eval data/configs/gcn.json
 ```
 
 Validate (all checkpoint):
 ```bash
-python run.py analyze data/configs/gcn.json
+kmol analyze data/configs/gcn.json
 ```
 
 Inference:
 ```bash
-python run.py predict data/configs/gcn.json
+kmol predict data/configs/gcn.json
 ```
 
