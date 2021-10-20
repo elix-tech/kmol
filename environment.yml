@@ -1,4 +1,4 @@
-name: federated
+name: kmol
 channels:
   - pytorch
   - zeroae
@@ -135,7 +135,7 @@ dependencies:
   - pexpect=4.8.0
   - pickleshare=0.7.5
   - pillow=7.2.0
-  - pip=20.2.3
+  - pip=21.3
   - pixman=0.38.0
   - prettytable=2.0.0
   - prometheus_client=0.8.0
@@ -233,5 +233,3 @@ dependencies:
     - rdflib==5.0.0
     - toml==0.10.2
     - tqdm==4.50.1
-prefix: /home/elix/anaconda3/envs/federated
-

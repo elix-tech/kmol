@@ -6,11 +6,11 @@ import numpy as np
 import torch
 import torch_geometric
 
+from vendor.captum.attr import IntegratedGradients
 from .sketchers import AbstractSketcher
 from ..core.config import Config
 from ..core.helpers import SuperFactory, Loggable
 from ..data.resources import DataPoint, Batch
-from ...vendor.captum.attr import IntegratedGradients
 
 
 class IntegratedGradientsExplainer(Loggable):

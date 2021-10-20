@@ -6,10 +6,10 @@ from dataclasses import dataclass, field
 from typing import Literal, Optional, List, Dict, Any, DefaultDict
 
 import torch
+from mila.factories import AbstractConfiguration
 
 from .helpers import SuperFactory
 from .observers import AbstractEventHandler, EventManager, DifferentialPrivacy
-from ...mila.factories import AbstractConfiguration
 
 
 @dataclass

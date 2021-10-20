@@ -8,6 +8,7 @@ import numpy as np
 import optuna
 from tqdm import tqdm
 
+from mila.factories import AbstractExecutor
 from .core.config import Config
 from .core.helpers import Namespace, ConfidenceInterval
 from .core.tuning import OptunaTemplateParser
@@ -15,7 +16,7 @@ from .data.resources import DataPoint
 from .data.streamers import GeneralStreamer, SubsetStreamer, CrossValidationStreamer
 from .model.executors import Predictor, ThresholdFinder, LearningRareFinder, Pipeliner
 from .model.metrics import PredictionProcessor, CsvLogger
-from ..mila.factories import AbstractExecutor
+from .visualization.models import IntegratedGradientsExplainer
 
 
 class Executor(AbstractExecutor):
@@ -334,7 +335,6 @@ class Executor(AbstractExecutor):
         trainer.run(data_loader=data_loader)
 
     def visualize(self):
-        from kmol.visualization.models import IntegratedGradientsExplainer
 
         streamer = GeneralStreamer(config=self._config)
         data_loader = streamer.get(split_name=self._config.test_split, batch_size=1, shuffle=False)
@@ -361,10 +361,14 @@ class Executor(AbstractExecutor):
         return streamer.splits
 
 
-if __name__ == "__main__":
+def main():
     parser = ArgumentParser()
     parser.add_argument("job")
     parser.add_argument("config")
     args = parser.parse_args()
 
     Executor(config=Config.from_json(args.config), config_path=args.config).run(args.job)
+
+
+if __name__ == "__main__":
+    main()

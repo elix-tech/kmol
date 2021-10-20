@@ -33,10 +33,14 @@ class Executor:
         client.run()
 
 
-if __name__ == "__main__":
+def main():
     parser = ArgumentParser()
     parser.add_argument("job")
     parser.add_argument("config")
     args = parser.parse_args()
 
     Executor(args.config).run(args.job)
+
+
+if __name__ == "__main__":
+    main()

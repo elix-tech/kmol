@@ -1,6 +1,7 @@
 __pycache__
 *.pyc
 *.test
+*.egg-info/
 
 /data/*
 !/data/configs
