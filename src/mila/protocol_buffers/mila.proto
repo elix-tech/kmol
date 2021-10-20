@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package mila;
+
+import "google/protobuf/empty.proto";
+
+
+message Client {
+    string name = 1;
+}
+
+message Token {
+    string token = 1;
+}
+
+message Checkpoint {
+    string token = 1;
+    bytes content = 2;
+}
+
+message Model {
+    bytes json_configuration = 1;
+    bytes latest_checkpoint = 2;
+}
+
+
+service Mila {
+    rpc Authenticate(Client) returns (Token) {}
+    rpc Heartbeat(Token) returns (google.protobuf.Empty) {}
+    rpc Close(Token) returns (google.protobuf.Empty) {}
+
+    rpc RequestModel(Token) returns (Model) {}
+    rpc SendCheckpoint(Checkpoint) returns (google.protobuf.Empty) {}
+}
