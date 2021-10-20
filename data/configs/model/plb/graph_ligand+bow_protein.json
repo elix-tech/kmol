@@ -17,7 +17,7 @@
             "layers_count": 5,
             "molecule_features": 17,
             "is_residual": 0,
-            "norm_layer": "lib.model.layers.BatchNorm"
+            "norm_layer": "kmol.model.layers.BatchNorm"
         },
         "hidden_features": 32,
         "out_features": 3

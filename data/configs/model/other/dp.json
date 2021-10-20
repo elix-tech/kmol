@@ -9,7 +9,7 @@
         "layers_count": 7,
         "molecule_features": 17,
         "is_residual": 1,
-        "norm_layer": "lib.model.layers.BatchNorm"
+        "norm_layer": "kmol.model.layers.BatchNorm"
     },
     "loader": {
         "type": "csv",
@@ -36,7 +36,7 @@
         "weight_decay": 0.00056
     },
     "criterion": {
-        "type": "lib.model.criterions.MaskedLoss",
+        "type": "kmol.model.criterions.MaskedLoss",
         "loss": {"type": "torch.nn.BCEWithLogitsLoss"}
     },
     "scheduler": {

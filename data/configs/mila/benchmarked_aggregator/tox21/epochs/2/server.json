@@ -1,8 +1,8 @@
 {
     "task_configuration_file": "data/configs/model/tox21.json",
     "aggregator_type": "mila.aggregators.BenchmarkedTorchAggregator",
-    "aggregator_options": {"config_type": "lib.core.config.Config", "config_path": "data/configs/model/tox21.json", "executor_type": "run.Executor", "target_metric": "roc_auc"},
-    "config_type": "lib.core.config.Config",
+    "aggregator_options": {"config_type": "kmol.core.config.Config", "config_path": "data/configs/model/tox21.json", "executor_type": "run.Executor", "target_metric": "roc_auc"},
+    "config_type": "kmol.core.config.Config",
     "executor_type": "run.Executor",
 
     "rounds_count": 200,

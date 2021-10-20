@@ -2,7 +2,7 @@
     "task_configuration_file": "data/configs/model/adme/fe_human.json",
     "aggregator_type": "mila.aggregators.WeightedTorchAggregator",
     "aggregator_options": {"weights": {"tester1": 0.4, "tester2": 0.3, "tester3": 0.3}},
-    "config_type": "lib.core.config.Config",
+    "config_type": "kmol.core.config.Config",
     "executor_type": "run.Executor",
 
     "rounds_count": 50,

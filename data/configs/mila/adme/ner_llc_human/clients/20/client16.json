@@ -1,6 +1,6 @@
 {
     "name": "tester16",
-    "config_type": "lib.core.config.Config",
+    "config_type": "kmol.core.config.Config",
     "save_path": "data/logs/client/tester16/",
     "executor_type": "run.Executor",
     "model_overwrites": {

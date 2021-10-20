@@ -5,11 +5,11 @@
         "out_features": 1,
         "hidden_features": 128,
         "dropout": 0.1,
-        "layer_type": "lib.model.layers.GINConvolution",
+        "layer_type": "kmol.model.layers.GINConvolution",
         "layers_count": 2,
         "molecule_features": 17,
         "is_residual": 1,
-        "norm_layer": "lib.model.layers.BatchNorm"
+        "norm_layer": "kmol.model.layers.BatchNorm"
     },
     "loader": {
         "type": "csv",

@@ -5,11 +5,11 @@
         "out_features": 1,
         "hidden_features": "{{{hidden=32-256-16}}}",
         "dropout": "{{{dropout=0.0-0.7-0.1}}}",
-        "layer_type": "{{{layer_type=torch_geometric.nn.GCNConv|torch_geometric.nn.GraphConv|torch_geometric.nn.GENConv|torch_geometric.nn.LEConv|torch_geometric.nn.SAGEConv|lib.model.layers.GINConvolution}}}",
+        "layer_type": "{{{layer_type=torch_geometric.nn.GCNConv|torch_geometric.nn.GraphConv|torch_geometric.nn.GENConv|torch_geometric.nn.LEConv|torch_geometric.nn.SAGEConv|kmol.model.layers.GINConvolution}}}",
         "layers_count": "{{{layers_count=2-8-1}}}",
         "molecule_features": 17,
         "is_residual": "{{{is_residual=0-1-1}}}",
-        "norm_layer": "lib.model.layers.BatchNorm"
+        "norm_layer": "kmol.model.layers.BatchNorm"
     },
     "loader": {
         "type": "csv",
@@ -34,7 +34,7 @@
     ],
     "transformers": [{"type": "standardize", "target": 0, "mean": 923.9705340453937, "std": 6727.055672658252}],
     "optimizer": {
-        "type": "{{{optimizer=torch.optim.SGD|torch.optim.Adam|torch.optim.AdamW|lib.model.optimizers.AdaBelief}}}",
+        "type": "{{{optimizer=torch.optim.SGD|torch.optim.Adam|torch.optim.AdamW|kmol.model.optimizers.AdaBelief}}}",
         "lr": "{{{lr=0.0001-0.01-0.0001}}}",
         "weight_decay": "{{{weight_decay=0.00001-0.001-0.00001}}}"
     },

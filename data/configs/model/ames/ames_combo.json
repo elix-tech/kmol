@@ -9,7 +9,7 @@
         "layers_count": 3,
         "molecule_features": 17,
         "is_residual": 1,
-        "norm_layer": "lib.model.layers.BatchNorm"
+        "norm_layer": "kmol.model.layers.BatchNorm"
     },
     "loader": {
         "type": "csv",
@@ -33,7 +33,7 @@
     ],
     "transformers": [],
     "optimizer": {
-        "type": "lib.model.optimizers.AdaBelief",
+        "type": "kmol.model.optimizers.AdaBelief",
         "lr": 0.01,
         "weight_decay": 0.00036
     },

@@ -10,7 +10,7 @@
         "layers_count": 3,
         "molecule_features": 17,
         "is_residual": true,
-        "norm_layer": "lib.model.layers.BatchNorm"
+        "norm_layer": "kmol.model.layers.BatchNorm"
     },
     "loader": {
         "type": "csv",

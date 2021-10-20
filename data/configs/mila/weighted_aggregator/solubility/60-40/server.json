@@ -2,7 +2,7 @@
     "task_configuration_file": "data/configs/model/adme/solubility.json",
     "aggregator_type": "mila.aggregators.WeightedTorchAggregator",
     "aggregator_options": {"weights": {"tester1": 0.6, "tester2": 0.4}},
-    "config_type": "lib.core.config.Config",
+    "config_type": "kmol.core.config.Config",
     "executor_type": "run.Executor",
 
     "rounds_count": 50,

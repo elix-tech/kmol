@@ -7,11 +7,11 @@
         "out_features": 1,
         "hidden_features": 64,
         "dropout": 0.2,
-        "layer_type": "lib.model.layers.TrimConvolution",
+        "layer_type": "kmol.model.layers.TrimConvolution",
         "layers_count": 3,
         "molecule_features": 17,
         "is_residual": true,
-        "norm_layer": "lib.model.layers.BatchNorm"
+        "norm_layer": "kmol.model.layers.BatchNorm"
     },
     "loader": {
         "type": "csv",

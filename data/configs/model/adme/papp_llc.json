@@ -9,7 +9,7 @@
         "layers_count": 2,
         "molecule_features": 17,
         "is_residual": true,
-        "norm_layer": "lib.model.layers.BatchNorm"
+        "norm_layer": "kmol.model.layers.BatchNorm"
     },
     "loader": {
         "type": "csv",
@@ -69,8 +69,8 @@
     "log_frequency": 5,
 
     "observers": {
-        "before_criterion": ["lib.core.observers.AddSigmoidHandler"],
-        "after_predict": ["lib.core.observers.AddSigmoidHandler"]
+        "before_criterion": ["kmol.core.observers.AddSigmoidHandler"],
+        "after_predict": ["kmol.core.observers.AddSigmoidHandler"]
     },
     "target_metric": "r2",
     "optuna_trials": 100
