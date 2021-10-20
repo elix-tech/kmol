@@ -3,7 +3,7 @@
     "aggregator_type": "mila.aggregators.WeightedTorchAggregator",
     "aggregator_options": {"weights": {"tester1": 0.6, "tester2": 0.2, "tester3": 0.2}},
     "config_type": "kmol.core.config.Config",
-    "executor_type": "run.Executor",
+    "executor_type": "kmol.run.Executor",
 
     "rounds_count": 50,
     "workers": 4,

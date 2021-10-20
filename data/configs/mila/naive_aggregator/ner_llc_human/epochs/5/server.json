@@ -2,7 +2,7 @@
     "task_configuration_file": "data/configs/model/adme/ner_llc_human.json",
     "aggregator_type": "mila.aggregators.PlainTorchAggregator",
     "config_type": "kmol.core.config.Config",
-    "executor_type": "run.Executor",
+    "executor_type": "kmol.run.Executor",
 
     "rounds_count": 100,
     "workers": 4,

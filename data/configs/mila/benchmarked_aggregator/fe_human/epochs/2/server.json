@@ -1,9 +1,9 @@
 {
     "task_configuration_file": "data/configs/model/adme/fe_human.json",
     "aggregator_type": "mila.aggregators.BenchmarkedTorchAggregator",
-    "aggregator_options": {"config_type": "kmol.core.config.Config", "config_path": "data/configs/model/adme/fe_human.json", "executor_type": "run.Executor", "target_metric": "roc_auc"},
+    "aggregator_options": {"config_type": "kmol.core.config.Config", "config_path": "data/configs/model/adme/fe_human.json", "executor_type": "kmol.run.Executor", "target_metric": "roc_auc"},
     "config_type": "kmol.core.config.Config",
-    "executor_type": "run.Executor",
+    "executor_type": "kmol.run.Executor",
 
     "rounds_count": 200,
     "workers": 4,

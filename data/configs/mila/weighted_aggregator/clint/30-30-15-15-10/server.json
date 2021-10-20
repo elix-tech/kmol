@@ -4,7 +4,7 @@
     "aggregator_options": {"weights": {"tester1": 0.3, "tester2": 0.3, "tester3": 0.15, "tester4": 0.15, "tester5": 0.1}},
 
     "config_type": "kmol.core.config.Config",
-    "executor_type": "run.Executor",
+    "executor_type": "kmol.run.Executor",
 
     "rounds_count": 50,
     "workers": 4,

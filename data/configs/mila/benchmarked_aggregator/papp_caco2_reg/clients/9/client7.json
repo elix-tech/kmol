@@ -2,7 +2,7 @@
     "name": "tester7",
     "config_type": "kmol.core.config.Config",
     "save_path": "data/logs/client/tester7/",
-    "executor_type": "run.Executor",
+    "executor_type": "kmol.run.Executor",
     "model_overwrites": {
         "output_path": "data/logs/local/tester7/",
         "epochs": 10,
