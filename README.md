@@ -17,11 +17,11 @@ conda activate kmol
 bash install.sh
 ```
 
-## Examples
+## Local Examples
 
 All experiments are performed using configuration files (JSON).
 
-A detailed documentation can be found under `docs/documentation.*.pdf`.
+A detailed documentation on how to write configuration files can be found under section 3.4 of `docs/documentation.*.pdf`.
 Sample configurations can be found under `data/configs/`.
 
 Each experiment starts with a dataset.
@@ -56,4 +56,30 @@ This is performed on the test split by default.
 
 ```bash
 kmol predict data/configs/model/tox21.json
+```
+
+## Federated Learning Examples
+
+Similar to local training, a JSON configuration is needed to specify the training options.
+
+In addition, a configuration file is needed for the server and each individual client to establish proper communication.
+A detailed documentation on how to configure the server and clients can be found under section 3.5.1 and 3.5.2 of `docs/documentation.*.pdf` respectively.  
+
+### Starting the server
+The server should start before clients start connecting.
+
+```bash
+mila server data/configs/mila/naive_aggregator/tox21/clients/2/server.json
+```
+
+### Starting a client
+Once the server is up, clients can join the federated learning process.
+```bash
+mila client data/configs/mila/naive_aggregator/tox21/clients/2/client1.json
+```
+
+Servers can be configured to wait for a specific number of clients.
+Another client can be simulated from a new terminal:
+```bash
+mila client data/configs/mila/naive_aggregator/tox21/clients/2/client2.json
 ```
