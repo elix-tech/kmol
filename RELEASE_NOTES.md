@@ -11,8 +11,8 @@
 - [FL-53] Stratified splitters can now split by input columns as well
 - Multiple featurizers can target the same input/column multiple times now.
 - 2 new commands added:
-    - `python run.py preload config.json` - will load/featurize/transform the dataset and cache it
-    - `python run.py splits config.json` - will print the indices included in each generated split
+    - `kmol preload config.json` - will load/featurize/transform the dataset and cache it
+    - `kmol splits config.json` - will print the indices included in each generated split
 - [FL-61] Added a converter featurizer which can convert between all OpenBabel supported molecular formats (https://openbabel.org/wiki/Babel#File_Formats)
     - Example usage: `"featurizers": [{"type": "converter", "inputs": ["column_name_in_file", "can_be_more_than_one"], "outputs": ["desired_name_1", "desired_name_2"], "source_format": "inchi", "target_format": "smi"}]`
 - 5 new splitters have been added:
