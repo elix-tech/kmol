@@ -22,10 +22,10 @@ bash install.sh
 All experiments are performed using configuration files (JSON).
 
 A detailed documentation on how to write configuration files can be found under section 3.4 of `docs/documentation.*.pdf`.
-Sample configurations can be found under `data/configs/`.
+Sample configurations can be found under `data/configs/model/`.
 
 Each experiment starts with a dataset.
-In these examples we focus on the [https://tripod.nih.gov/tox21/challenge/data.jsp](Tox21 Dataset) for which we define the experimental settings in `data/configs/model/tox21.json`.
+In these examples we focus on the [Tox21 Dataset](https://tripod.nih.gov/tox21/challenge/data.jsp) for which we define the experimental settings in `data/configs/model/tox21.json`.
 After downloading the dataset to a suitable location, point to dataset with the "input_path" option in this JSON file.
 
 ### Training
@@ -63,7 +63,8 @@ kmol predict data/configs/model/tox21.json
 Similar to local training, a JSON configuration is needed to specify the training options.
 
 In addition, a configuration file is needed for the server and each individual client to establish proper communication.
-A detailed documentation on how to configure the server and clients can be found under section 3.5.1 and 3.5.2 of `docs/documentation.*.pdf` respectively.  
+A detailed documentation on how to configure the server and clients can be found under section 3.5.1 and 3.5.2 of `docs/documentation.*.pdf` respectively.
+Sample configurations can be found under `data/configs/mila/`.  
 
 ### Starting the server
 The server should start before clients start connecting.
