@@ -1,6 +1,4 @@
 #!/bin/bash --login
 
-source activate federated
+source activate kmol
 python -c "import torch;print(torch.__version__)"
-
-

@@ -15,14 +15,9 @@ RUN wget \
     && rm -f Miniconda3-latest-Linux-x86_64.sh 
 RUN conda --version
 
-# It may be better to download these files via github after release
+# Adding conda environemnt
 RUN mkdir -p /kmol
 COPY ./environment.yml /kmol/
-COPY ./setup.py /kmol/
-COPY ./setup.cfg /kmol/
-COPY ./pyproject.toml /kmol/
-COPY ./src /kmol/
-
 
 # Setting miniconda environment
 WORKDIR /kmol
@@ -40,6 +35,12 @@ RUN pip install torch-sparse==latest+cu102 -f https://pytorch-geometric.com/whl/
 RUN pip install torch-cluster==latest+cu102 -f https://pytorch-geometric.com/whl/torch-1.6.0.html --use-deprecated=legacy-resolver
 RUN pip install torch-spline-conv==latest+cu102 -f https://pytorch-geometric.com/whl/torch-1.6.0.html --use-deprecated=legacy-resolver
 RUN pip install torch-geometric==1.6.0
+
+# Adding content
+COPY ./setup.py /kmol/
+COPY ./setup.cfg /kmol/
+COPY ./pyproject.toml /kmol/
+COPY ./src /kmol/src
 RUN pip install -e .
 
 COPY ./docker/*.sh /kmol/
