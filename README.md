@@ -3,10 +3,11 @@
 
 # kMoL (v2.3 nightly)
 
-kMoL is a federated learning library for life sciences.
-It supports various graph architectures, small molecule and protein featurization, explainable AI functionality, and differential privacy.
-
-Models are built using PyTorch and PyTorch Geometric.   
+kMoL is a machine learning library for drug discovery and life sciences, with federated learning capabilities.
+It includes state-of-the-art graph-based predictive models that can treat molecular structures as graphs, and can predict ADME properties (Absorption, Distribution, Metabolism, Excretion), toxicity, and binding affinities.
+We also provide explainable AI components, and differential privacy for data protection.
+ 
+Models are built using PyTorch and PyTorch Geometric.
 
 ## Installation
 
