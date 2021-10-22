@@ -2,8 +2,8 @@
 --------------------------------------------------------------------------------
 
 kMoL is a machine learning library for drug discovery and life sciences, with federated learning capabilities.
-It includes state-of-the-art graph-based predictive models that can treat molecular structures as graphs, and can predict ADME properties (Absorption, Distribution, Metabolism, Excretion), toxicity, and binding affinities.
-We also provide explainable AI components, and differential privacy for data protection.
+Some of its features include state-of-the-art graph-based predictive models, explainable AI components, and differential privacy for data protection.
+The library was benchmarked on datasets containing ADME properties (Absorption, Distribution, Metabolism, Excretion), toxicity, and binding affinities values.
  
 Models are built using PyTorch and PyTorch Geometric.
 
