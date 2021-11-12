@@ -3,6 +3,7 @@ __pycache__
 *.test
 
 /data/*
+!/data/datasets.zip
 !/data/configs
 !/data/sessions
 sandbox/

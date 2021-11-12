@@ -14,7 +14,7 @@
     },
     "loader": {
         "type": "csv",
-        "input_path": "data/input/adme/ready/rb_rat.csv",
+        "input_path": "data/datasets/rb_rat.csv",
         "input_column_names": ["smiles"],
         "target_column_names": ["value"]
     },

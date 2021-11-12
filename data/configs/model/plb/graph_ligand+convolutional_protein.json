@@ -24,7 +24,7 @@
     },
     "loader": {
         "type": "csv",
-        "input_path": "data/input/chembl/assay_v2_ready.csv",
+        "input_path": "data/datasets/chembl.csv",
         "input_column_names": ["smiles", "target_sequence"],
         "target_column_names": ["t_100n", "t_1u", "t_10u"]
     },

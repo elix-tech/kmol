@@ -13,7 +13,7 @@
     },
     "loader": {
         "type": "excel",
-        "input_path": "data/input/ames/ames.xlsx",
+        "input_path": "data/datasets/ames.xlsx",
         "sheet_index": 2,
         "input_column_names": ["Canonical_SMILES"],
         "target_column_names": ["Label"]

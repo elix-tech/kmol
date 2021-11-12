@@ -11,7 +11,7 @@
     },
     "loader": {
         "type": "csv",
-        "input_path": "data/input/tox21/raw/tox21.csv",
+        "input_path": "data/datasets/tox21.csv",
         "input_column_names": ["smiles"],
         "target_column_names": ["NR-AR", "NR-AR-LBD", "NR-AhR", "NR-Aromatase", "NR-ER", "NR-ER-LBD", "NR-PPAR-gamma", "SR-ARE", "SR-ATAD5", "SR-HSE", "SR-MMP", "SR-p53"]
     },

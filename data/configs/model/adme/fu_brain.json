@@ -15,7 +15,7 @@
     },
     "loader": {
         "type": "csv",
-        "input_path": "data/input/adme/ready/fu_brain.csv",
+        "input_path": "data/datasets/fu_brain.csv",
         "input_column_names": ["smiles"],
         "target_column_names": ["value"]
     },

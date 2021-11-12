@@ -13,7 +13,7 @@
     },
     "loader": {
         "type": "csv",
-        "input_path": "data/input/ames/ames.csv",
+        "input_path": "data/datasets/ames.csv",
         "input_column_names": ["smiles"],
         "target_column_names": ["label"]
     },
