@@ -114,9 +114,7 @@ class ServerManager(IOManager):
 
     def save_checkpoint(self, token: str, content: bytes) -> None:
         client = self._registry[token]
-        save_path = "{}/{}.{}.{}.remote".format(
-            self._config.save_path, client.name, client.ip_address.replace(".", "_"), self._current_round
-        )
+        save_path = self.get_client_filename_for_current_round(client)
 
         with open(save_path, "wb") as write_buffer:
             write_buffer.write(content)
@@ -174,7 +172,7 @@ class ServerManager(IOManager):
     def aggregate(self) -> None:
         logging.info("Start aggregation (round={})".format(self._current_round))
 
-        checkpoint_paths = glob("{}/*.*.{}.remote".format(self._config.save_path, self._current_round))
+        checkpoint_paths = self.get_clients_model_path_for_current_round()
         save_path = "{}/{}.aggregate".format(self._config.save_path, self._current_round)
 
         aggregator: Type[AbstractAggregator] = self._reflect(self._config.aggregator_type)
@@ -190,6 +188,20 @@ class ServerManager(IOManager):
 
     def get_clients_count(self) -> int:
         return sum(1 for client in self._registry.values() if client.is_alive(self._config.heartbeat_timeout))
+
+    def get_clients_model_path_for_current_round(self):
+        return [
+            self.get_client_filename_for_current_round(client)
+            for client in self._registry.values()
+        ]
+
+    def get_client_filename_for_current_round(self, client: Participant):
+        return "{}/{}.{}.{}.remote".format(
+            self._config.save_path,
+            client.name,
+            client.ip_address.replace(".", "_"),
+            self._current_round
+        )
 
 
 class DefaultServicer(ServerManager, mila_pb2_grpc.MilaServicer):

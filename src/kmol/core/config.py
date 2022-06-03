@@ -28,7 +28,11 @@ class Config(AbstractConfiguration):
     is_finetuning: Optional[bool] = False
     checkpoint_path: Optional[str] = None
     threshold: Optional[float] = None
+    inference_mode: Optional[str] = None
     cross_validation_folds: int = 5
+    mc_dropout_iterations: int = 5
+    mc_dropout_probability: Optional[float] = None
+    probe_layer: Optional[str] = None
 
     train_split: str = "train"
     train_metrics: List[str] = field(default_factory=lambda: [])
@@ -53,6 +57,7 @@ class Config(AbstractConfiguration):
 
     target_metric: str = "roc_auc"
     optuna_trials: int = 1000
+    optuna_init: Optional[Dict[str, Any]] = None
     subset: Optional[Dict[str, Any]] = None
     visualizer: Optional[Dict[str, Any]] = None
 

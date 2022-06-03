@@ -66,3 +66,29 @@ class MultiTaskLoss(torch.nn.Module):
         )
 
         return regression_loss * self._regression_weight + classification_loss * self._classification_weight
+
+class MultiHeadMaskedLoss(torch.nn.Module):
+
+    def __init__(
+            self, loss: torch.nn.Module,
+            weights: List[int],
+    ):
+        super().__init__()
+        self._loss = loss
+        self._weights = weights
+
+    def forward(self, outputs: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
+        _, heads = outputs.shape
+        if len(self._weights) != heads:
+            raise ValueError("Number of weights must be equal to number of heads")
+
+        # mask the loss
+        mask = labels == labels
+        labels[~mask] = 0 # set nans to 0
+        mask = mask.float()
+
+        loss = 0
+        for i in range(heads):
+            head_loss =  torch.mul(self._loss(outputs[:, i], labels[:, i]), mask[:, i]) + 1e-8
+            loss += self._weights[i] *  torch.sum(head_loss) / (torch.sum(mask[:, i]) + 1e-8)
+        return loss

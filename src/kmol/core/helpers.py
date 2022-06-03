@@ -303,3 +303,35 @@ class Loggable:
 
     def __exit__(self, *args, **kwargs) -> None:
         self.close()
+
+
+class HookProbe:
+
+    def __init__(self, model: torch.nn.Module, module_name: Optional[str] = None):
+        self.module_name = (
+            module_name
+            if module_name != "last_hidden"
+            else getattr(model, "last_hidden_layer_name", None)
+        )
+
+        self._cache = []
+        self.hook = None
+
+        def get_hidden_layer_output(model, input, output):
+            if isinstance(output, torch.Tensor):
+                self._cache.append(output.detach())
+
+        for name, module in model.named_modules():
+            if name == self.module_name:
+                self.hook = module.register_forward_hook(get_hidden_layer_output)
+                break
+
+        if self.hook is None and self.module_name is not None:
+            raise ValueError("Error when selecting layer to probe:"
+                f" could not find '{self.module_name}' in the network modules."
+                " Please check the 'probe_layer' parameter in the configuration."
+                " This parameter should match one of the network module name"
+                " or can be set to 'last_hidden'.")
+
+    def get_probe(self):
+        return torch.stack(self._cache).mean(dim=0)
