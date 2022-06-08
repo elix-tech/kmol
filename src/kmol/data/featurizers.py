@@ -374,7 +374,7 @@ class FASTAFeaturizer(BagOfWordsFeaturizer):
 
     def _process(self, data: str, entry: DataPoint) -> torch.FloatTensor:
         data = data.split("\n")[-1]
-        return super()._process(data)
+        return super()._process(data, entry)
 
 
 class TransposeFeaturizer(AbstractFeaturizer):
