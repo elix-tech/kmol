@@ -11,12 +11,6 @@ from torch_geometric.data import Data as TorchGeometricData
 
 from .resources import DataPoint
 from ..core.exceptions import FeaturizationError
-from ..vendor.dgllife.utils.featurizers import (
-    atom_type_one_hot, atom_degree_one_hot, atom_implicit_valence_one_hot, atom_formal_charge,
-    atom_num_radical_electrons, atom_hybridization_one_hot, atom_is_aromatic, atom_total_num_H_one_hot,
-    bond_type_one_hot, bond_is_conjugated, bond_is_in_ring, bond_stereo_one_hot, atom_chiral_tag_one_hot,
-    atom_chirality_type_one_hot, atom_is_chiral_center
-)
 
 
 class AbstractFeaturizer(metaclass=ABCMeta):
@@ -192,6 +186,11 @@ class GraphFeaturizer(AbstractTorchGeometricFeaturizer):
 
     def _list_atom_featurizers(self) -> List[Callable]:
         # 45 features by default
+        from ..vendor.dgllife.utils.featurizers import (
+            atom_type_one_hot, atom_degree_one_hot, atom_implicit_valence_one_hot, atom_formal_charge,
+            atom_num_radical_electrons, atom_hybridization_one_hot, atom_is_aromatic, atom_total_num_H_one_hot
+        )
+
         return [
             partial(atom_type_one_hot, allowable_set=self._allowed_atom_types, encode_unknown=True),
             atom_degree_one_hot,
@@ -205,6 +204,10 @@ class GraphFeaturizer(AbstractTorchGeometricFeaturizer):
 
     def _list_bond_featurizers(self) -> List[Callable]:
         # 12 features
+        from ..vendor.dgllife.utils.featurizers import (
+            bond_type_one_hot, bond_is_conjugated, bond_is_in_ring, bond_stereo_one_hot
+        )
+
         return [
             bond_type_one_hot,
             bond_is_conjugated,
@@ -216,6 +219,10 @@ class GraphFeaturizer(AbstractTorchGeometricFeaturizer):
 class ChiralGraphFeaturizer(GraphFeaturizer):
 
     def _list_atom_featurizers(self) -> List[Callable]:
+        from ..vendor.dgllife.utils.featurizers import (
+            atom_chiral_tag_one_hot, atom_chirality_type_one_hot, atom_is_chiral_center
+        )
+
         featurizers = super()._list_atom_featurizers()
 
         featurizers.extend([
@@ -342,6 +349,13 @@ class BagOfWordsFeaturizer(AbstractFeaturizer):
                 sample[data[start_index:start_index + length]] += 1
 
         return torch.FloatTensor(list(sample.values()))
+
+
+class FASTAFeaturizer(BagOfWordsFeaturizer):
+
+    def _process(self, data:str) -> torch.FloatTensor:
+        data = data.split("\n")[-1]
+        return super()._process(data)
 
 
 class TransposeFeaturizer(AbstractFeaturizer):

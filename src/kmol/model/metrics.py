@@ -109,7 +109,7 @@ class AvailableMetrics:
 
 class PredictionProcessor:
 
-    def __init__(self, metrics: List[str], threshold: Optional[float] = None, error_value: Any = None):
+    def __init__(self, metrics: List[str], threshold: Optional[float] = None, error_value: Any = np.nan):
         self._metrics = self._map_metrics(metrics)
         self._threshold = threshold
         self._error_value = error_value

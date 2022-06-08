@@ -9,11 +9,18 @@ from ..core.helpers import SuperFactory
 
 
 class GraphConvolutionWrapper(torch.nn.Module):
-
     def __init__(
-            self, in_features: int, out_features: int, dropout: float, layer_type: str = "torch_geometric.nn.GCNConv",
-            is_residual: bool = True, norm_layer: Optional[str] = None, activation: str = "torch.nn.ReLU",
-            edge_features: int = 0, propagate_edge_features: bool = False, **kwargs
+            self,
+            in_features: int,
+            out_features: int,
+            dropout: float,
+            layer_type: str = "torch_geometric.nn.GCNConv",
+            is_residual: bool = True,
+            norm_layer: Optional[str] = None,
+            activation: str = "torch.nn.ReLU",
+            edge_features: int = 0,
+            propagate_edge_features: bool = False,
+            **kwargs
     ):
         super().__init__()
         base_features = in_features + in_features // 2 if edge_features else in_features
@@ -30,7 +37,7 @@ class GraphConvolutionWrapper(torch.nn.Module):
         self.dropout = torch.nn.Dropout(p=dropout)
 
     def _get_layer_arguments(
-            self, x: torch.Tensor, edge_index: torch.Tensor, edge_attr: torch.Tensor
+        self, x: torch.Tensor, edge_index: torch.Tensor, edge_attr: torch.Tensor
     ) -> Dict[str, torch.Tensor]:
 
         arguments = {"x": x, "edge_index": edge_index}
@@ -39,20 +46,27 @@ class GraphConvolutionWrapper(torch.nn.Module):
 
         return arguments
 
-    def _add_edge_features(
-            self, x: torch.Tensor, edge_index: torch.Tensor, edge_attr: torch.Tensor
-    ) -> torch.Tensor:
+    def _add_edge_features(self, x: torch.Tensor, edge_index: torch.Tensor, edge_attr: torch.Tensor) -> torch.Tensor:
 
         if self._edge_features and not self._propagate_edge_features:
             last_atom_index = x.size(0) - 1
 
             if last_atom_index not in torch.unique(edge_index[0]):  # fix issue when last node has no bond
                 edge_index = torch.cat(
-                    (edge_index, torch.LongTensor([[last_atom_index], [last_atom_index]]).to(edge_index.device)),
-                    dim=1
+                    (
+                        edge_index,
+                        torch.LongTensor([[last_atom_index], [last_atom_index]]).to(edge_index.device),
+                    ),
+                    dim=1,
                 )
 
-                edge_attr = torch.cat((edge_attr, torch.zeros((1, edge_attr.size(1))).to(edge_attr.device)), dim=0)
+                edge_attr = torch.cat(
+                    (
+                        edge_attr,
+                        torch.zeros((1, edge_attr.size(1))).to(edge_attr.device),
+                    ),
+                    dim=0,
+                )
 
             per_node_edge_features = scatter(edge_attr, edge_index[0], dim=0, reduce="sum")
             per_node_edge_features = leaky_relu(self.edge_projection(per_node_edge_features))
@@ -62,7 +76,11 @@ class GraphConvolutionWrapper(torch.nn.Module):
         return x
 
     def forward(
-            self, x: torch.Tensor, edge_index: torch.Tensor, edge_attr: torch.Tensor, batch: torch.Tensor
+            self,
+            x: torch.Tensor,
+            edge_index: torch.Tensor,
+            edge_attr: torch.Tensor,
+            batch: torch.Tensor,
     ) -> torch.Tensor:
 
         x = self._add_edge_features(x, edge_index, edge_attr)
@@ -84,10 +102,12 @@ class GraphConvolutionWrapper(torch.nn.Module):
 
 
 class LinearBlock(torch.nn.Module):
-
     def __init__(
-            self, in_features: int, hidden_features: int,
-            out_features: int, activation: str = "torch.nn.ReLU"
+            self,
+            in_features: int,
+            hidden_features: int,
+            out_features: int,
+            activation: str = "torch.nn.ReLU",
     ):
         super().__init__()
         self.block = torch.nn.Sequential(
@@ -95,18 +115,22 @@ class LinearBlock(torch.nn.Module):
             SuperFactory.reflect(activation)(),
             torch.nn.Linear(hidden_features, out_features),
         )
+        self.last_hidden_layer = 'block.1'
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.block(x)
 
 
 class GINConvolution(torch.nn.Module):
-
     def __init__(self, in_features: int, out_features: int):
         super().__init__()
 
         self.convolution = torch_geometric.nn.GINConv(
-            LinearBlock(in_features=in_features, hidden_features=out_features, out_features=out_features)
+            LinearBlock(
+                in_features=in_features,
+                hidden_features=out_features,
+                out_features=out_features,
+            )
         )
 
     def forward(self, x: torch.Tensor, edge_index: torch.Tensor) -> torch.Tensor:
@@ -120,7 +144,7 @@ class TrimConvolution(torch_geometric.nn.MessagePassing):
     """
 
     def __init__(self, in_features, out_features, in_edge_features, heads=4, negative_slope=0.2, **kwargs):
-        super().__init__(aggr='add', node_dim=0, **kwargs)
+        super().__init__(aggr="add", node_dim=0, **kwargs)
 
         # node_dim = 0 for multi-head aggr support
         self.in_features = in_features
@@ -140,7 +164,13 @@ class TrimConvolution(torch_geometric.nn.MessagePassing):
         torch.nn.init.kaiming_uniform_(self.weight_scale)
         torch.nn.init.zeros_(self.bias)
 
-    def forward(self, x: torch.Tensor, edge_index: torch.Tensor, edge_attr: torch.Tensor, size=None) -> torch.Tensor:
+    def forward(
+        self,
+        x: torch.Tensor,
+        edge_index: torch.Tensor,
+        edge_attr: torch.Tensor,
+        size=None,
+    ) -> torch.Tensor:
         x = torch.matmul(x, self.weight_node)
         edge_attr = torch.matmul(edge_attr, self.weight_edge)
         edge_attr = edge_attr.unsqueeze(-1) if edge_attr.dim() == 1 else edge_attr
@@ -169,7 +199,7 @@ class TrimConvolution(torch_geometric.nn.MessagePassing):
         return aggr_out
 
     def extra_repr(self):
-        return '{node_channels}, {node_channels}, heads={heads}'.format(**self.__dict__)
+        return "{node_channels}, {node_channels}, heads={heads}".format(**self.__dict__)
 
 
 class TripletMessagePassingLayer(torch.nn.Module):
@@ -234,6 +264,5 @@ class GraphNorm(torch.nn.Module):
 
 
 class BatchNorm(torch_geometric.nn.BatchNorm):
-
     def forward(self, x: torch.Tensor, *args, **kwargs) -> torch.Tensor:
         return super().forward(x)

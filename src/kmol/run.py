@@ -1,11 +1,15 @@
 import logging
 from argparse import ArgumentParser
+from collections import defaultdict
 from functools import partial
+import json
+from pathlib import Path
 from typing import List, Tuple, Callable, Optional, Dict, Union
 
 import joblib
 import numpy as np
 import optuna
+import pandas as pd
 from tqdm import tqdm
 
 from mila.factories import AbstractExecutor
@@ -250,28 +254,81 @@ class Executor(AbstractExecutor):
 
         return results
 
-    def predict(self) -> List[List[float]]:
+    def _collect_predictions(self):
         streamer = GeneralStreamer(config=self._config)
         data_loader = streamer.get(
             split_name=self._config.test_split, batch_size=self._config.batch_size, shuffle=False
         )
-
         predictor = Predictor(config=self._config)
         transformer_reverter = partial(self.__revert_transformers, streamer=streamer)
 
-        print(",".join(streamer.labels))
-
-        results = []
+        results = defaultdict(list)
+        outputs_to_save = defaultdict(list)
         for batch in data_loader.dataset:
-            logits = predictor.run(batch)
+            outputs = predictor.run(batch)
+            logits = outputs.logits
+            variances = getattr(outputs, "logits_var", None)
+            hidden_layer_output = getattr(outputs, "hidden_layer", None)
 
-            predictions = PredictionProcessor.apply_threshold(logits, self._config.threshold)
-            predictions = np.apply_along_axis(transformer_reverter, axis=1, arr=predictions)
-            results.extend(predictions)
+            if hidden_layer_output is not None:
+                outputs_to_save["hidden_layer"].extend(
+                    hidden_layer_output.cpu().numpy()
+                )
 
-            predictions = predictions.astype("str").tolist()
-            for prediction in predictions:
-                print(",".join(prediction))
+            predictions = PredictionProcessor.apply_threshold(
+                logits, self._config.threshold
+            )
+            predictions = np.apply_along_axis(
+                transformer_reverter, axis=1, arr=predictions
+            )
+            results["predictions"].extend(predictions)
+            results["id"].extend(batch.ids)
+            outputs_to_save["id"].extend(batch.ids)
+
+            if variances is not None:
+                results["variances"].extend(variances.cpu().numpy())
+
+        results["predictions"] = np.vstack(results["predictions"])
+        if "variances" in results:
+            results["variances"] = np.vstack(results["variances"])
+        if "hidden_layer" in outputs_to_save:
+            outputs_to_save["hidden_layer"] = np.vstack(outputs_to_save["hidden_layer"]).tolist()
+
+        return results, outputs_to_save, streamer.labels
+
+    def predict(self) -> List[List[float]]:
+        results, outputs_to_save, labels = self._collect_predictions()
+
+        columns = ["id"]
+        n_outputs = results["predictions"].shape[1]
+        labels = labels if len(labels) == n_outputs else []
+
+        for i in range(n_outputs):
+            label = labels[i] if len(labels) else i
+            results[label] = results["predictions"][:, i]
+            columns.append(label)
+
+            if len(labels):
+                results[f"{label}_ground_truth"] = results["labels"][:, i]
+                columns.append(f"{label}_ground_truth")
+
+            if "variance" in results:
+                results[f"{label}_logits_var"] = results["variance"][:, i]
+                columns.append(f"{label}_logits_var")
+
+        results = pd.DataFrame.from_dict({c: results[c] for c in columns})
+
+        predictions_dir =  Path(self._config.output_path)
+        output_file = predictions_dir / "predictions.csv"
+        results.to_csv(output_file, index=False)
+
+        logging.info(f"Predictions saved to {str(output_file)}")
+
+        if len(outputs_to_save) > 1:
+            output_file = predictions_dir / "saved_outputs.json"
+            with output_file.open("w") as f:
+                json.dump(outputs_to_save, f)
+            logging.info(f"Additional outputs saved to {str(output_file)}")
 
         return results
 
@@ -279,21 +336,30 @@ class Executor(AbstractExecutor):
         if not self._config_path:
             raise AttributeError("Cannot optimize. No configuration path specified.")
 
+
+        def log_summary(study):
+            logging.info("---------------------------- [BEST VALUE] ----------------------------")
+            logging.info(study.best_value)
+            logging.info("---------------------------- [BEST TRIAL] ---------------------------- ")
+            logging.info(study.best_trial)
+            logging.info("---------------------------- [BEST PARAMS] ----------------------------")
+            logging.info(study.best_params)
+
         with OptunaTemplateParser(
             template_path=self._config_path, evaluator=self.__run_trial, delete_checkpoints=True,
             log_path="{}summary.csv".format(self._config.output_path)
         ) as template_parser:
 
             study = optuna.create_study(direction='maximize')
-            study.optimize(template_parser.objective, n_trials=self._config.optuna_trials)
+            if self._config.optuna_init:
+                study.enqueue_trial(self._config.optuna_init)
+            try:
+                study.optimize(template_parser.objective, n_trials=self._config.optuna_trials)
+            except KeyboardInterrupt:
+                log_summary(study)
+                exit(0)
 
-        logging.info("---------------------------- [BEST VALUE] ----------------------------")
-        logging.info(study.best_value)
-        logging.info("---------------------------- [BEST TRIAL] ---------------------------- ")
-        logging.info(study.best_trial)
-        logging.info("---------------------------- [BEST PARAMS] ----------------------------")
-        logging.info(study.best_params)
-
+            log_summary(study)
         return study
 
     def find_best_checkpoint(self) -> str:

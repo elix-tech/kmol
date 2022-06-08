@@ -40,3 +40,19 @@ Notes:
 - This release has new dependencies. Please recreate your conda environment.
 - Please delete your cache folder after updating.
 - Older checkpoints might not be compatible with this release.
+
+
+# Realease v2.2
+
+- Added a `smiles_field` in splitters to allow dataset with smiles columns having a name different from `smiles`
+    - Example usage: `"splitter": {"type": "scaffold_balancer", "splits": {"train": 0.8, "test": 0.2}, "seed": 42, "smiles_field": "column_name"}`
+
+- FedProx Aggregation support
+    - Fed prox paper: `https://arxiv.org/abs/1812.06127`
+    - Example usage: `"observers": { "after_criterion": [{"type": "add_fedprox_regularization", "mu": 1}]}`
+- Support for MC Dropout
+- FASTAFeaturizer support
+
+Notes:
+- This release has new dependencies. Please recreate your conda environment.
+- Please delete your cache folder after updating.

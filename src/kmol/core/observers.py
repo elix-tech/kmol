@@ -1,12 +1,11 @@
 from abc import ABCMeta, abstractmethod
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
 from typing import DefaultDict, List
 
 import torch
 from torch.nn.modules.batchnorm import _BatchNorm as BatchNormLayer
 
 from .helpers import Namespace
-from ..vendor.opacus.custom.privacy_engine import PrivacyEngine
 
 
 class AbstractEventHandler(metaclass=ABCMeta):
@@ -38,6 +37,12 @@ class AddSigmoidEventHandler(AbstractEventHandler):
 
     def run(self, payload: Namespace):
         payload.logits = torch.sigmoid(payload.logits)
+
+class AddReluEventHandler(AbstractEventHandler):
+    """event: before_criterion|before_predict"""
+
+    def run(self, payload: Namespace):
+        payload.logits = torch.nn.functional.relu(payload.logits)
 
 
 class AddSoftmaxEventHandler(AbstractEventHandler):
@@ -91,6 +96,42 @@ class ReplaceBatchNormLayersEventHandler(AbstractEventHandler):
         replace_all_modules(payload.executor.network, BatchNormLayer, self.converter)
 
 
+class AddFedproxRegularizationEventHandler(AbstractEventHandler):
+    """event: after_criterion"""
+
+    def __init__(self, mu: float):
+        self.mu = mu
+        self.weights = None
+
+    def get_weights(self, config) -> OrderedDict:
+        if self.weights is None:
+            info = torch.load(config.checkpoint_path, map_location=config.get_device())
+
+            weights = OrderedDict()
+            for key, value in info["model"].items():
+                name = key.replace(".module.", ".")
+                weights[name] = value
+
+            self.weights = weights
+
+        return self.weights
+
+    def run(self, payload: Namespace) -> None:
+        if payload.executor.config.checkpoint_path is None:
+            logging.info("Skipping FedProx regularization (no checkpoint found). This is normal for the first round.")
+            return
+
+        local_weights = payload.executor.network.state_dict()
+        global_weights = self.get_weights(payload.executor.config)
+
+        regularization = 0.0
+        for name, parameter in local_weights.items():
+            if not name.endswith(".num_batches_tracked"):
+                regularization += ((self.mu / 2) * torch.norm((parameter - global_weights[name])) ** 2)
+
+        payload.loss += regularization
+
+
 class DifferentialPrivacy:
 
     class AttachPrivacyEngineEventHandler(AbstractEventHandler):
@@ -103,6 +144,8 @@ class DifferentialPrivacy:
                 self._options["alphas"] = [1 + i / 10.0 for i in range(1, 100)] + list(range(12, 64))
 
         def run(self, payload: Namespace) -> None:
+            from ..vendor.opacus.custom.privacy_engine import PrivacyEngine
+
             trainer = payload.trainer
             network = trainer.network
 

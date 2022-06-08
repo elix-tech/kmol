@@ -1,5 +1,6 @@
 import logging
 import operator
+import os
 from abc import ABCMeta, abstractmethod
 from copy import copy
 from enum import Enum
@@ -63,7 +64,8 @@ class GeneralStreamer(AbstractStreamer):
             processor=self._prepare_dataset, clear_cache=self._config.clear_cache, arguments={}, cache_key={
                 "loader": self._config.loader,
                 "featurizers": self._config.featurizers,
-                "transformers": self._config.transformers
+                "transformers": self._config.transformers,
+                "last_modified": os.path.getmtime(self._config.loader["input_path"])
             }
         )
 

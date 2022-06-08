@@ -237,6 +237,7 @@ dependencies:
   - pip:
     - ase==3.20.1
     - future==0.18.2
+    - cycler==0.10.0
     - googledrivedownloader==0.4
     - h5py==2.10.0
     - iniconfig==1.1.1

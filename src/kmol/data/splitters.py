@@ -137,15 +137,16 @@ class StratifiedSplitter(AbstractSplitter):
 
 class ScaffoldBalancerSplitter(AbstractSplitter):
 
-    def __init__(self, splits: Dict[str, float], seed: int):
+    def __init__(self, splits: Dict[str, float], seed: int, smiles_field: str = "smiles"):
         super().__init__(splits=splits)
         self._seed = seed
+        self.smiles_field = smiles_field
 
     def _load_groups(self, data_loader: AbstractLoader) -> Dict[Union[int, str], str]:
         from rdkit.Chem.Scaffolds.MurckoScaffold import MurckoScaffoldSmiles
 
         logging.info("[SPLITTER] Extracting Scaffolds...")
-        return {entry.id_: MurckoScaffoldSmiles(entry.inputs["smiles"]) for entry in tqdm(data_loader)}
+        return {entry.id_: MurckoScaffoldSmiles(entry.inputs[self.smiles_field]) for entry in tqdm(data_loader)}
 
     def apply(self, data_loader: AbstractLoader) -> Dict[str, List[Union[int, str]]]:
         from sklearn.model_selection import train_test_split
@@ -193,9 +194,10 @@ class ScaffoldBalancerSplitter(AbstractSplitter):
 
 class ScaffoldDividerSplitter(AbstractSplitter):
 
-    def __init__(self, splits: Dict[str, float], seed: int):
+    def __init__(self, splits: Dict[str, float], seed: int, smiles_field: str = "smiles"):
         super().__init__(splits=splits)
         self._seed = seed
+        self.smiles_field = smiles_field
 
     def _load_groups(self, data_loader: AbstractLoader) -> Dict[str, List[Union[int, str]]]:
         from rdkit.Chem.Scaffolds.MurckoScaffold import MurckoScaffoldSmiles
@@ -204,7 +206,7 @@ class ScaffoldDividerSplitter(AbstractSplitter):
         sorted_scaffolds = defaultdict(list)
 
         for entry in tqdm(data_loader):
-            scaffold = MurckoScaffoldSmiles(entry.inputs["smiles"])
+            scaffold = MurckoScaffoldSmiles(entry.inputs[self.smiles_field])
             sorted_scaffolds[scaffold].append(entry.id_)
 
         return sorted_scaffolds
@@ -224,7 +226,7 @@ class ScaffoldDividerSplitter(AbstractSplitter):
                 mixer.shuffle(scaffolds)
 
                 current_split_ids = []
-                required_entries = int(len(data_loader) * current_ratio)
+                required_entries = int(len(data_loader) * split_ratio)
 
                 for scaffold in scaffolds:
                     if len(current_split_ids) + len(leftover_data[scaffold]) <= required_entries:
@@ -248,10 +250,14 @@ class ScaffoldDividerSplitter(AbstractSplitter):
 
 class ButinaClusterer:
 
-    def __init__(self, butina_cutoff: float = 0.5, fingerprint_size: int = 1024, radius: int = 2):
+    def __init__(
+            self, butina_cutoff: float = 0.5, fingerprint_size: int = 1024,
+            radius: int = 2, smiles_field: str = "smiles"
+    ):
         self._butina_cutoff = butina_cutoff
         self._fingerprint_size = fingerprint_size
         self._radius = radius
+        self.smiles_field = smiles_field
 
     def _generate_clusters(self, data_loader: AbstractLoader) -> Tuple[List[Union[str, int]], Tuple[Tuple[int, ...]]]:
 
@@ -267,7 +273,7 @@ class ButinaClusterer:
             ids.append(entry.id_)
             fingerprints.append(
                 AllChem.GetMorganFingerprintAsBitVect(
-                    Chem.MolFromSmiles(entry.inputs["smiles"]), self._radius, self._fingerprint_size
+                    Chem.MolFromSmiles(entry.inputs[self.smiles_field]), self._radius, self._fingerprint_size
                 )
             )
 
@@ -288,11 +294,14 @@ class ButinaClusterer:
 class ButinaBalancerSplitter(ScaffoldBalancerSplitter, ButinaClusterer):
 
     def __init__(
-            self, splits: Dict[str, float], seed: int, butina_cutoff: float = 0.5,
+            self, splits: Dict[str, float], seed: int, butina_cutoff: float = 0.5, smiles_field: str = "smiles",
             fingerprint_size: int = 1024, radius: int = 2
     ):
-        ScaffoldBalancerSplitter.__init__(self, splits=splits, seed=seed)
-        ButinaClusterer.__init__(self, butina_cutoff=butina_cutoff, fingerprint_size=fingerprint_size, radius=radius)
+        ScaffoldBalancerSplitter.__init__(self, splits=splits, seed=seed, smiles_field=smiles_field)
+        ButinaClusterer.__init__(
+            self, butina_cutoff=butina_cutoff, fingerprint_size=fingerprint_size,
+            radius=radius, smiles_field=smiles_field
+        )
 
     def _load_groups(self, data_loader: AbstractLoader) -> Dict[Union[int, str], float]:
         ids, clusters = self._generate_clusters(data_loader=data_loader)
@@ -308,11 +317,14 @@ class ButinaBalancerSplitter(ScaffoldBalancerSplitter, ButinaClusterer):
 class ButinaDividerSplitter(ScaffoldDividerSplitter, ButinaClusterer):
 
     def __init__(
-            self, splits: Dict[str, float], seed: int, butina_cutoff: float = 0.5,
+            self, splits: Dict[str, float], seed: int, butina_cutoff: float = 0.5, smiles_field: str = "smiles",
             fingerprint_size: int = 1024, radius: int = 2
     ):
-        ScaffoldDividerSplitter.__init__(self, splits=splits, seed=seed)
-        ButinaClusterer.__init__(self, butina_cutoff=butina_cutoff, fingerprint_size=fingerprint_size, radius=radius)
+        ScaffoldDividerSplitter.__init__(self, splits=splits, seed=seed, smiles_field=smiles_field)
+        ButinaClusterer.__init__(
+            self, butina_cutoff=butina_cutoff, fingerprint_size=fingerprint_size,
+            radius=radius, smiles_field=smiles_field
+        )
 
     def _load_groups(self, data_loader: AbstractLoader) -> Dict[int, List[Union[int, str]]]:
         ids, clusters = self._generate_clusters(data_loader=data_loader)
