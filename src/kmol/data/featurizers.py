@@ -2,7 +2,8 @@ import itertools
 import logging
 from abc import ABCMeta, abstractmethod
 from functools import partial
-from typing import Any, List, Tuple, Callable, Optional, Union
+from itertools import chain
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -11,6 +12,7 @@ from torch_geometric.data import Data as TorchGeometricData
 
 from .resources import DataPoint
 from ..core.exceptions import FeaturizationError
+from ..core.helpers import SuperFactory
 
 
 class AbstractFeaturizer(metaclass=ABCMeta):
@@ -25,17 +27,17 @@ class AbstractFeaturizer(metaclass=ABCMeta):
         self.__cache = {}
 
     @abstractmethod
-    def _process(self, data: Any) -> Any:
+    def _process(self, data: Any, entry: DataPoint) -> Any:
         raise NotImplementedError
 
-    def __process(self, data: Any) -> Any:
+    def __process(self, data: Any, entry: DataPoint) -> Any:
         if self._should_cache:
             if data not in self.__cache:
-                self.__cache[data] = self._process(data)
+                self.__cache[data] = self._process(data, entry)
 
             return self.__cache[data]
         else:
-            return self._process(data)
+            return self._process(data, entry)
 
     def run(self, data: DataPoint) -> None:
         if len(self._inputs) != len(self._outputs):
@@ -46,8 +48,7 @@ class AbstractFeaturizer(metaclass=ABCMeta):
             if self._rewrite:
                 data.inputs.pop(self._inputs[index])
 
-            data.inputs[self._outputs[index]] = self.__process(raw_data)
-
+            data.inputs[self._outputs[index]] = self.__process(raw_data, data)
 
 
 class AbstractTorchGeometricFeaturizer(AbstractFeaturizer):
@@ -55,7 +56,7 @@ class AbstractTorchGeometricFeaturizer(AbstractFeaturizer):
     Featurizers preparing data for torch geometric should extend this class
     """
 
-    def _process(self, data: str) -> TorchGeometricData:
+    def _process(self, data: str, entry: DataPoint) -> TorchGeometricData:
         mol = Chem.MolFromSmiles(data)
         if mol is None:
             raise FeaturizationError("Could not featurize entry: [{}]".format(data))
@@ -101,7 +102,7 @@ class AbstractTorchGeometricFeaturizer(AbstractFeaturizer):
 class AbstractDescriptorComputer(metaclass=ABCMeta):
 
     @abstractmethod
-    def run(self, mol: Chem.Mol) -> List[float]:
+    def run(self, mol: Chem.Mol, entry: DataPoint) -> List[float]:
         raise NotImplementedError
 
 
@@ -130,7 +131,7 @@ class RdkitDescriptorComputer(AbstractDescriptorComputer):
             QED.qed
         ]
 
-    def run(self, mol: Chem.Mol) -> List[Union[int, float]]:
+    def run(self, mol: Chem.Mol, entry: DataPoint) -> List[Union[int, float]]:
         return [featurizer(mol) for featurizer in self._get_descriptor_calculators()]
 
 
@@ -140,9 +141,27 @@ class MordredDescriptorComputer(AbstractDescriptorComputer):
         from mordred import Calculator, descriptors
         self._calculator = Calculator(descriptors, ignore_3D=True)
 
-    def run(self, mol: Chem.Mol) -> List[Union[int, float]]:
+    def run(self, mol: Chem.Mol, entry: DataPoint) -> List[Union[int, float]]:
         descriptors = self._calculator(mol)
         return list(descriptors.fill_missing(0))
+
+
+class DatasetDescriptorComputer(AbstractDescriptorComputer):
+
+    def __init__(self, targets: List[str]):
+        self.targets = targets
+
+    def run(self, mol: Chem.Mol, entry: DataPoint) -> List[Union[int, float]]:
+        return [entry.inputs[target] for target in self.targets]
+
+
+class CombinedDescriptorComputer(AbstractDescriptorComputer):
+
+    def __init__(self, calculators: List[Dict[str, Any]]):
+        self.calculators = [SuperFactory.create(AbstractDescriptorComputer, options) for options in calculators]
+
+    def run(self, mol: Chem.Mol, entry: DataPoint) -> List[Union[int, float]]:
+        return list(chain.from_iterable(calculator.run(mol, entry) for calculator in self.calculators))
 
 
 class GraphFeaturizer(AbstractTorchGeometricFeaturizer):
@@ -164,11 +183,11 @@ class GraphFeaturizer(AbstractTorchGeometricFeaturizer):
         self._allowed_atom_types = allowed_atom_types
         self._descriptor_calculator = descriptor_calculator
 
-    def _process(self, data: str) -> TorchGeometricData:
+    def _process(self, data: str, entry: DataPoint) -> TorchGeometricData:
         mol = Chem.MolFromSmiles(data)
-        data = super()._process(data=data)
+        data = super()._process(data=data, entry=entry)
 
-        molecule_features = self._descriptor_calculator.run(mol)
+        molecule_features = self._descriptor_calculator.run(mol, entry)
         molecule_features = torch.FloatTensor(molecule_features).view(-1, len(molecule_features))
 
         data.molecule_features = molecule_features
@@ -238,7 +257,7 @@ class AbstractFingerprintFeaturizer(AbstractFeaturizer):
     """Abstract featurizer for fingerprints"""
 
     @abstractmethod
-    def _process(self, data: Any) -> Union[List[int], np.ndarray]:
+    def _process(self, data: Any, entry: DataPoint) -> Union[List[int], np.ndarray]:
         raise NotImplementedError
 
 
@@ -255,7 +274,7 @@ class CircularFingerprintFeaturizer(AbstractFingerprintFeaturizer):
         self._radius = radius
         self._use_chirality = use_chirality
 
-    def _process(self, data: str) -> torch.FloatTensor:
+    def _process(self, data: str, entry: DataPoint) -> torch.FloatTensor:
         mol = Chem.MolFromSmiles(data)
         if mol is None:
             raise FeaturizationError("Could not featurize entry: [{}]".format(data))
@@ -286,7 +305,7 @@ class OneHotEncoderFeaturizer(AbstractFeaturizer):
 
         self._classes = classes
 
-    def _process(self, data: str) -> torch.FloatTensor:
+    def _process(self, data: str, entry: DataPoint) -> torch.FloatTensor:
         features = np.zeros(len(self._classes))
         features[self._classes.index(data)] = 1
 
@@ -306,7 +325,7 @@ class TokenFeaturizer(AbstractFeaturizer):
         self._separator = separator
         self._max_length = max_length
 
-    def _process(self, data: str) -> torch.FloatTensor:
+    def _process(self, data: str, entry: DataPoint) -> torch.FloatTensor:
         tokens = data.split(self._separator) if self._separator else [character for character in data]
         features = np.zeros((self._max_length, len(self._vocabulary)))
 
@@ -341,7 +360,7 @@ class BagOfWordsFeaturizer(AbstractFeaturizer):
 
         return combinations
 
-    def _process(self, data: str) -> torch.FloatTensor:
+    def _process(self, data: str, entry: DataPoint) -> torch.FloatTensor:
         sample = dict.fromkeys(self._vocabulary, 0)
 
         for length in range(1, self._max_length + 1):
@@ -353,14 +372,14 @@ class BagOfWordsFeaturizer(AbstractFeaturizer):
 
 class FASTAFeaturizer(BagOfWordsFeaturizer):
 
-    def _process(self, data:str) -> torch.FloatTensor:
+    def _process(self, data: str, entry: DataPoint) -> torch.FloatTensor:
         data = data.split("\n")[-1]
         return super()._process(data)
 
 
 class TransposeFeaturizer(AbstractFeaturizer):
 
-    def _process(self, data: torch.Tensor) -> torch.Tensor:
+    def _process(self, data: torch.Tensor, entry: DataPoint) -> torch.Tensor:
         return data.transpose(-1, -2)
 
 
@@ -373,7 +392,7 @@ class FixedFeaturizer(AbstractFeaturizer):
         super().__init__(inputs, outputs, should_cache, rewrite)
         self._value = value
 
-    def _process(self, data: float) -> float:
+    def _process(self, data: float, entry: DataPoint) -> float:
         return round(data / self._value, 8)
 
 
@@ -391,5 +410,5 @@ class ConverterFeaturizer(AbstractFeaturizer):
         from openbabel import pybel
         self._pybel = pybel
 
-    def _process(self, data: str) -> str:
+    def _process(self, data: str, entry: DataPoint) -> str:
         return self._pybel.readstring(self._source_format, data).write(self._target_format).strip()
