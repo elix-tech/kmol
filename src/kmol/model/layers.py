@@ -108,14 +108,22 @@ class LinearBlock(torch.nn.Module):
             hidden_features: int,
             out_features: int,
             activation: str = "torch.nn.ReLU",
+            dropout: float = 0.,
+            use_batch_norm: bool = False,
     ):
         super().__init__()
-        self.block = torch.nn.Sequential(
+        self.out_features = out_features
+        layers = [
             torch.nn.Linear(in_features, hidden_features),
-            SuperFactory.reflect(activation)(),
-            torch.nn.Linear(hidden_features, out_features),
-        )
-        self.last_hidden_layer = 'block.1'
+        ]
+        if use_batch_norm:
+            layers.append(torch.nn.BatchNorm1d(hidden_features))
+        layers.append(SuperFactory.reflect(activation)())
+        if dropout:
+            layers.append(torch.nn.Dropout(p=dropout))
+        layers.append(torch.nn.Linear(hidden_features, out_features))
+        self.block = torch.nn.Sequential(*layers)
+        self.last_hidden_layer = f'block.{len(layers)-1}'
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.block(x)
@@ -266,3 +274,23 @@ class GraphNorm(torch.nn.Module):
 class BatchNorm(torch_geometric.nn.BatchNorm):
     def forward(self, x: torch.Tensor, *args, **kwargs) -> torch.Tensor:
         return super().forward(x)
+
+
+class MultiplicativeInteractionLayer(torch.nn.Module):
+    def __init__(self, input_dim: int, context_dim: int, output_dim: int):
+        super().__init__()
+
+        self.input_dim = input_dim
+        self.context_dim = context_dim
+        self.output_dim = output_dim
+
+        self.mi_lin1 = torch.nn.Linear(context_dim, output_dim * input_dim)
+        self.mi_lin2 = torch.nn.Linear(context_dim, output_dim)
+
+    def forward(self, x: torch.Tensor, z: torch.Tensor) -> torch.Tensor:
+        weights = self.mi_lin1(z)
+        bias = self.mi_lin2(z)
+
+        weights = weights.view(-1, self.input_dim, self.output_dim)
+        out = torch.bmm(x.unsqueeze(1), weights).squeeze(1) + bias
+        return out

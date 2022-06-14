@@ -36,14 +36,18 @@ class Config(AbstractConfiguration):
 
     train_split: str = "train"
     train_metrics: List[str] = field(default_factory=lambda: [])
+    validation_split: str = "validation"
     test_split: str = "test"
     test_metrics: List[str] = field(default_factory=lambda: [])
 
     epochs: int = 100
     batch_size: int = 32
+    drop_last_batch: bool = False
 
     use_cuda: bool = True
     enabled_gpus: List[int] = field(default_factory=lambda: [0])
+    num_workers: int = 0
+    featurization_jobs: int = 4
 
     cache_location: str = "/tmp/federated/"
     clear_cache: bool = False
@@ -51,6 +55,7 @@ class Config(AbstractConfiguration):
     log_level: Literal["debug", "info", "warn", "error", "critical"] = "info"
     log_format: str = ""
     log_frequency: int = 20
+    overwrite_checkpoint: bool = False
 
     observers: DefaultDict[str, List[Dict]] = field(default_factory=lambda: defaultdict(list))
     differential_privacy: Dict[str, Any] = field(default_factory=lambda: {"enabled": False})

@@ -1,5 +1,6 @@
 from abc import abstractmethod
 from typing import Iterator, List, Union, Any
+import ast
 
 import pandas as pd
 from torch.utils.data import Dataset as TorchDataset
@@ -55,6 +56,45 @@ class CsvLoader(AbstractLoader):
 
     def get_labels(self) -> List[str]:
         return self._target_columns
+
+
+class MultitaskLoader(CsvLoader):
+
+    def __init__(self, input_path: str, task_column_name: str, max_num_tasks: int, input_column_names: List[str], target_column_names: List[str]):
+        self._input_columns = input_column_names
+        self._target_columns = target_column_names
+        self._task_column_name = task_column_name
+        self._max_num_tasks = max_num_tasks
+
+        converter_dict = {
+            target: ast.literal_eval for target in target_column_names
+        }
+        converter_dict.update({
+            task: ast.literal_eval for task in [task_column_name]
+        })
+        self._dataset = pd.read_csv(
+            filepath_or_buffer=input_path,
+            converters=converter_dict,
+        )
+
+    def __getitem__(self, id_: str) -> DataPoint:
+        entry = self._dataset.loc[id_]
+
+        tasks = entry[self._task_column_name]
+        labels = entry[self._target_columns].to_list()[0]
+
+        task_outputs = [float('nan')]*self._max_num_tasks
+
+        for idx in range(len(tasks)):
+            task = tasks[idx]
+            task_outputs[task] = labels[idx]
+
+        return DataPoint(
+            id_=id_,
+            labels=self._target_columns,
+            inputs={**entry[self._input_columns]},
+            outputs=task_outputs,
+        )
 
 
 class ExcelLoader(CsvLoader):

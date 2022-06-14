@@ -1,15 +1,15 @@
 import logging
 from abc import ABCMeta, abstractmethod
-from math import floor
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Union
 
 import torch
 import torch_geometric as geometric
 
-from .layers import GraphConvolutionWrapper, TripletMessagePassingLayer, LinearBlock
+from .layers import GraphConvolutionWrapper, TripletMessagePassingLayer, LinearBlock, MultiplicativeInteractionLayer
 from ..core.helpers import Namespace, SuperFactory
 from ..core.observers import EventManager
 from ..core.exceptions import CheckpointNotFound
+from ..model.read_out import get_read_out
 
 
 class AbstractNetwork(torch.nn.Module, metaclass=ABCMeta):
@@ -26,7 +26,7 @@ class AbstractNetwork(torch.nn.Module, metaclass=ABCMeta):
 
         return {requirement: args[index] for index, requirement in enumerate(requirements)}
 
-    def load_checkpoint(self, checkpoint_path: str, device: Optional[torch.device]=None):
+    def load_checkpoint(self, checkpoint_path: str, device: Optional[torch.device] = None):
         if checkpoint_path is None:
             raise CheckpointNotFound
 
@@ -39,7 +39,7 @@ class AbstractNetwork(torch.nn.Module, metaclass=ABCMeta):
         payload = Namespace(network=self, info=info)
         EventManager.dispatch_event(event_name="before_checkpoint_load", payload=payload)
 
-        self.load_state_dict(info["model"])
+        self.load_state_dict(info["model"], strict=False)
 
     @staticmethod
     def dropout_layer_switch(m, dropout_prob):
@@ -66,7 +66,7 @@ class EnsembleNetwork(AbstractNetwork):
         super().__init__()
         self.models = torch.nn.ModuleList([SuperFactory.create(AbstractNetwork, config) for config in model_configs])
 
-    def load_checkpoint(self, checkpoint_paths: List[str], device: Optional[torch.device]=None):
+    def load_checkpoint(self, checkpoint_paths: List[str], device: Optional[torch.device] = None):
         n_models = len(self.models)
         n_checkpoints = len(checkpoint_paths)
         if n_models != n_checkpoints:
@@ -80,11 +80,11 @@ class EnsembleNetwork(AbstractNetwork):
         return list(set(sum([model.get_requirements() for model in self.models], [])))
 
     def forward(self, data: Dict[str, Any]) -> Dict[str, torch.Tensor]:
-            outputs = torch.stack([model.forward(data) for model in self.models], dim=0)
-            return {
-                "logits": torch.mean(outputs, dim=0),
-                "logits_var": torch.var(outputs, dim=0)
-            }
+        outputs = torch.stack([model.forward(data) for model in self.models], dim=0)
+        return {
+            "logits": torch.mean(outputs, dim=0),
+            "logits_var": torch.var(outputs, dim=0)
+        }
 
     def mc_dropout(
             self,
@@ -112,14 +112,19 @@ class GraphConvolutionalNetwork(AbstractNetwork):
             dropout: float,
             layer_type: str = "torch_geometric.nn.GCNConv",
             layers_count: int = 2,
+            concat_layers: bool = False,
             is_residual: bool = True,
             norm_layer: Optional[str] = None,
             activation: str = "torch.nn.ReLU",
+            molecule_hidden: Optional[int] = None,
+            read_out: Union[str, List[str]] = ("max", "sum"),
+            read_out_kwargs: Optional[Dict[str, Any]] = None,
             final_activation: Optional[str] = None,
             **kwargs
     ):
         super().__init__()
-
+        self.out_features = out_features
+        self.concat_layers = concat_layers
         self.convolutions = torch.nn.ModuleList()
         self.convolutions.append(
             GraphConvolutionWrapper(
@@ -147,18 +152,21 @@ class GraphConvolutionalNetwork(AbstractNetwork):
                     **kwargs
                 )
             )
-
+        if read_out_kwargs is None:
+            read_out_kwargs = {}
+        read_out_kwargs.update({"in_channels": hidden_features})
+        self.read_out = get_read_out(read_out, read_out_kwargs)
         self.molecular_head = lambda x: torch.Tensor().to(x.device)
+        molecule_hidden = hidden_features // 4 if molecule_hidden is None else molecule_hidden
         if molecule_features:
             self.molecular_head = torch.nn.Sequential(
-                torch.nn.Linear(molecule_features, hidden_features // 4),
+                torch.nn.Linear(molecule_features, molecule_hidden),
                 torch.nn.Dropout(p=min(hidden_features / in_features, 0.7)),
-                torch.nn.BatchNorm1d(hidden_features // 4),
+                torch.nn.BatchNorm1d(molecule_hidden),
                 torch.nn.ReLU(),
             )
-
-        mlp_features = 2 + 0.25 * bool(molecule_features)
-        mlp_features = floor(mlp_features * hidden_features)
+        readout_out_dim = self.read_out.out_dim * layers_count if self.concat_layers else self.read_out.out_dim
+        mlp_features = readout_out_dim + bool(molecule_features) * molecule_hidden
 
         self.mlp = torch.nn.Sequential(
             torch.nn.Linear(mlp_features, hidden_features),
@@ -168,8 +176,7 @@ class GraphConvolutionalNetwork(AbstractNetwork):
         )
 
         if final_activation is not None:
-            self.mlp.add_module("final_activation",
-                SuperFactory.reflect(final_activation)())
+            self.mlp.add_module("final_activation", SuperFactory.reflect(final_activation)())
 
         self.last_hidden_layer_name = 'mlp.1'
 
@@ -180,14 +187,18 @@ class GraphConvolutionalNetwork(AbstractNetwork):
         data = data[self.get_requirements()[0]]
         x = data.x.float()
 
+        layers_outputs = []
         for convolution in self.convolutions:
             x = convolution(x, data.edge_index, data.edge_attr, data.batch)
+            layers_outputs.append(x)
 
-        max_pool_output = geometric.nn.global_max_pool(x, batch=data.batch)
-        add_pool_output = geometric.nn.global_add_pool(x, batch=data.batch)
+        if self.concat_layers:
+            read_out = torch.cat([self.read_out(e, batch=data.batch) for e in layers_outputs], dim=1)
+        else:
+            read_out = self.read_out(x, batch=data.batch)
         molecule_features = self.molecular_head(data.molecule_features)
 
-        x = torch.cat((max_pool_output, add_pool_output, molecule_features), dim=1)
+        x = torch.cat((read_out, molecule_features), dim=1)
         x = self.mlp(x)
 
         return x
@@ -208,7 +219,7 @@ class MessagePassingNetwork(AbstractNetwork):
             set2set_steps: int = 6,
     ):
         super().__init__()
-
+        self.out_features = out_features
         self.projection = torch.nn.Linear(in_features, hidden_features)
 
         edge_network = torch.nn.Sequential(
@@ -266,6 +277,7 @@ class TripletMessagePassingNetwork(AbstractNetwork):
             set2set_steps: int = 6,
     ):
         super().__init__()
+        self.out_features = out_features
         self.dropout = dropout
         self.projection = torch.nn.Linear(in_features, hidden_features)
 
@@ -320,7 +332,7 @@ class LinearNetwork(AbstractNetwork, LinearBlock):
 class ConvolutionalNetwork(AbstractNetwork):
     def __init__(self, in_features: int, hidden_features: int, out_features: int):
         super().__init__()
-
+        self.out_features = out_features
         self.convolutional_block = torch.nn.Sequential(
             torch.nn.Conv1d(in_channels=in_features, out_channels=10, kernel_size=3, stride=1),
             torch.nn.ReLU(),
@@ -350,18 +362,33 @@ class ProteinLigandNetwork(AbstractNetwork):
             ligand_module: AbstractNetwork,
             hidden_features: int = 0,
             out_features: int = 0,
+            use_mi: bool = False,
+            xavier_init: bool = True,
     ):
         super().__init__()
 
         self.protein_module = protein_module
         self.ligand_module = ligand_module
-        self.output_module = LinearBlock(hidden_features, 16, out_features)
+        self.output_module = LinearBlock(
+            ligand_module.out_features + protein_module.out_features, hidden_features, out_features)
 
-        self.protein_module.apply(self._init_weights)
-        self.ligand_module.apply(self._init_weights)
-        self.output_module.apply(self._init_weights)
+        if xavier_init:
+            self.protein_module.apply(self._init_weights)
+            self.ligand_module.apply(self._init_weights)
+            self.output_module.apply(self._init_weights)
         self.last_hidden_layer_name = 'output_module.block.1'
         self.activation = torch.nn.ReLU()
+
+        self.use_mi = use_mi
+
+        if use_mi:
+            self.mi_layer = MultiplicativeInteractionLayer(
+                input_dim=ligand_module.out_features,
+                context_dim=protein_module.out_features,
+                output_dim=protein_module.out_features + ligand_module.out_features,
+            )
+            if xavier_init:
+                self.mi_layer.apply(self._init_weights)
 
     def _init_weights(self, layer: torch.nn) -> None:
         if type(layer) == torch.nn.Linear:
@@ -379,7 +406,11 @@ class ProteinLigandNetwork(AbstractNetwork):
         protein_features = self.activation(self.protein_module(protein_features))
         ligand_features = self.activation(self.ligand_module(ligand_features))
 
-        combined_features = torch.cat((protein_features, ligand_features), dim=-1)
+        if not self.use_mi:
+            combined_features = torch.cat((protein_features, ligand_features), dim=-1)
+        else:
+            combined_features = self.mi_layer(ligand_features, protein_features)
+
         output = self.output_module(combined_features)
 
         return output

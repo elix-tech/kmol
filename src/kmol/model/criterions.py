@@ -1,6 +1,5 @@
-from typing import List
-
 import torch
+from typing import List
 
 
 class WeightedLoss(torch.nn.Module):
@@ -29,11 +28,10 @@ class MaskedLoss(torch.nn.Module):
         self._loss = WeightedLoss(loss=loss)
 
     def forward(self, logits: torch.Tensor, ground_truth: torch.Tensor) -> torch.Tensor:
-
         mask = ground_truth == ground_truth
-        ground_truth[~mask] = 0
-
-        return self._loss(logits, ground_truth, mask)
+        ground_truth_copy = ground_truth.clone()  # Avoid side-effect from next line!
+        ground_truth_copy[~mask] = 0
+        return self._loss(logits, ground_truth_copy, mask)
 
 
 class MultiTaskLoss(torch.nn.Module):
@@ -92,3 +90,12 @@ class MultiHeadMaskedLoss(torch.nn.Module):
             head_loss =  torch.mul(self._loss(outputs[:, i], labels[:, i]), mask[:, i]) + 1e-8
             loss += self._weights[i] *  torch.sum(head_loss) / (torch.sum(mask[:, i]) + 1e-8)
         return loss
+
+class CrossEntropyLoss(torch.nn.CrossEntropyLoss):
+    def forward(self, logits: torch.Tensor, ground_truth: torch.Tensor) -> torch.Tensor:
+        return super().forward(logits, ground_truth.view(-1).long())
+
+
+class MultitaskCrossEntropyLoss(torch.nn.CrossEntropyLoss):
+    def forward(self, logits: torch.Tensor, ground_truth: torch.Tensor) -> torch.Tensor:
+        return super().forward(logits, ground_truth.long())

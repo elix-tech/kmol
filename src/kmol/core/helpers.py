@@ -17,7 +17,6 @@ from .exceptions import ReflectionError
 
 
 class Timer:
-
     def __init__(self):
         self.start_time = None
         self.reset()
@@ -33,7 +32,6 @@ class Timer:
 
 
 class SuperFactory:
-
     @staticmethod
     def find_descendants(parent: Type[T]) -> Dict[str, Type[T]]:
         descendants = {}
@@ -48,9 +46,9 @@ class SuperFactory:
 
     @staticmethod
     def create(
-            instantiator: Optional[Type[Any]],
-            dynamic_parameters: Dict[str, Any],
-            loaded_parameters: Optional[Dict[str, Any]] = None
+        instantiator: Optional[Type[Any]],
+        dynamic_parameters: Dict[str, Any],
+        loaded_parameters: Optional[Dict[str, Any]] = None
     ) -> Any:
         """
         The super factory is a mix between an abstract factory and a dependency injector.
@@ -83,7 +81,10 @@ class SuperFactory:
             if "." in dependency_type:
                 instantiator = SuperFactory.reflect(dependency_type)
             else:
-                if type(instantiator) is type(Union) and type(None) in instantiator.__args__:
+                if (
+                    type(instantiator) is type(Union)
+                    and type(None) in instantiator.__args__
+                ):
                     # Fix for Optional arguments
                     instantiator = instantiator.__args__[0]
 
@@ -93,8 +94,10 @@ class SuperFactory:
 
                 subclasses = SuperFactory.find_descendants(instantiator)
                 if dependency_name not in subclasses:
-                    raise ReflectionError("Dependency not found: {}. Available options are: {}".format(
-                        dependency_name, subclasses.keys())
+                    raise ReflectionError(
+                        "Dependency not found: {}. Available options are: {}".format(
+                            dependency_name, subclasses.keys()
+                        )
                     )
 
                 instantiator = subclasses.get(dependency_name)
@@ -102,31 +105,38 @@ class SuperFactory:
         if not dynamic_parameters and not loaded_parameters:
             return instantiator()
 
-        parameters = instantiator.__init__.__code__.co_varnames
-        if len(dynamic_parameters) > 0:
-            attributes = instantiator.__init__.__annotations__
+        try:
+            parameters = instantiator.__init__.__code__.co_varnames
+            if len(dynamic_parameters) > 0:
+                attributes = instantiator.__init__.__annotations__
 
-            for option_name, option_value in dynamic_parameters.items():
-                if option_name not in parameters and "kwargs" not in parameters:
-                    raise ReflectionError("Unknown option for [{}] ---> [{}]".format(
-                        instantiator.__name__, option_name)
-                    )
+                for option_name, option_value in dynamic_parameters.items():
+                    if option_name not in parameters and "kwargs" not in parameters:
+                        raise ReflectionError(
+                            "Unknown option for [{}] ---> [{}]".format(
+                                instantiator.__name__, option_name
+                            )
+                        )
 
-                if option_name not in attributes:
-                    continue  # for 3rd party libraries that don't use type hints...
+                    if option_name not in attributes:
+                        continue  # for 3rd party libraries that don't use type hints...
 
-                if (
-                        type(option_value) is dict
-                        and not (hasattr(attributes[option_name], "_name") and attributes[option_name]._name == "Dict")
-                ):
-                    # if the option is a dictionary, and the argument is not expected to be one
-                    # we consider it an additional object which we instantiate/inject recursively
-                    dynamic_parameters[option_name] = SuperFactory.create(attributes[option_name], option_value)
+                    if type(option_value) is dict and not (
+                        hasattr(attributes[option_name], "_name")
+                        and attributes[option_name]._name == "Dict"
+                    ):
+                        # if the option is a dictionary, and the argument is not expected to be one
+                        # we consider it an additional object which we instantiate/inject recursively
+                        dynamic_parameters[option_name] = SuperFactory.create(
+                            attributes[option_name], option_value
+                        )
 
-        options = dynamic_parameters
-        for key, value in loaded_parameters.items():
-            if key in parameters:
-                options[key] = value
+            options = dynamic_parameters
+            for key, value in loaded_parameters.items():
+                if key in parameters:
+                    options[key] = value
+        except Exception:
+            options = dynamic_parameters
 
         return instantiator(**options)
 
@@ -142,12 +152,11 @@ class SuperFactory:
 
 
 class CacheManager:
-
     def __init__(self, cache_location: str):
         self._cache_location = cache_location
 
         if not os.path.exists(self._cache_location):
-            os.makedirs(self._cache_location)
+            os.makedirs(self._cache_location, exist_ok=True)
 
     def _sort(self, dictionary: Dict[str, Any]) -> Dict[str, Any]:
         for key, value in dictionary.items():
@@ -178,10 +187,17 @@ class CacheManager:
             pass
 
     def execute_cached_operation(
-            self, processor: Callable, arguments: Dict[str, Any], cache_key: Dict[str, Any], clear_cache: bool = False
+        self,
+        processor: Callable,
+        arguments: Dict[str, Any],
+        cache_key: Dict[str, Any],
+        clear_cache: bool = False,
     ) -> Any:
+        if cache_key["loader"]["input_path"]:
+            cache_key["timestamp"] = os.path.getmtime(cache_key["loader"]["input_path"])
 
         cache_key = self.key(**cache_key)
+        print(f"[INFO] Dataset Cache Key: {cache_key}")
 
         if clear_cache:
             self.delete(cache_key)
@@ -217,7 +233,9 @@ class Namespace:
     def reduce(namespaces: List["Namespace"], operation: Callable) -> "Namespace":
         options = {}
         for key in vars(namespaces[0]).keys():
-            options[key] = operation([getattr(namespace, key) for namespace in namespaces])
+            options[key] = operation(
+                [getattr(namespace, key) for namespace in namespaces]
+            )
 
         return Namespace(**options)
 
@@ -252,7 +270,11 @@ class ConfidenceInterval:
         return self.mean < other.mean
 
     def __eq__(self, other: "ConfidenceInterval") -> bool:
-        return self.mean == other.mean and self.deviation == other.deviation and self.confidence == other.confidence
+        return (
+            self.mean == other.mean
+            and self.deviation == other.deviation
+            and self.confidence == other.confidence
+        )
 
     def __add__(self, other: "ConfidenceInterval") -> "ConfidenceInterval":
         return ConfidenceInterval(
@@ -269,7 +291,9 @@ class ConfidenceInterval:
         )
 
     @staticmethod
-    def compute(values: Union[List[List[float]], np.ndarray], z: float = 1.96) -> List["ConfidenceInterval"]:
+    def compute(
+        values: Union[List[List[float]], np.ndarray], z: float = 1.96
+    ) -> List["ConfidenceInterval"]:
         values = np.array(values).transpose()
 
         return [
@@ -277,12 +301,12 @@ class ConfidenceInterval:
                 mean=np.mean(value),
                 deviation=z * np.std(value) / np.sqrt(len(value)),
                 confidence=z
-            ) for value in values
+            )
+            for value in values
         ]
 
 
 class Loggable:
-
     def __init__(self, file_path: str):
         self._logger = self._create_logger(file_path)
 
@@ -306,7 +330,6 @@ class Loggable:
 
 
 class HookProbe:
-
     def __init__(self, model: torch.nn.Module, module_name: Optional[str] = None):
         self.module_name = (
             module_name
@@ -327,11 +350,13 @@ class HookProbe:
                 break
 
         if self.hook is None and self.module_name is not None:
-            raise ValueError("Error when selecting layer to probe:"
+            raise ValueError(
+                "Error when selecting layer to probe:"
                 f" could not find '{self.module_name}' in the network modules."
                 " Please check the 'probe_layer' parameter in the configuration."
                 " This parameter should match one of the network module name"
-                " or can be set to 'last_hidden'.")
+                " or can be set to 'last_hidden'."
+            )
 
     def get_probe(self):
         return torch.stack(self._cache).mean(dim=0)

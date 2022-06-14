@@ -1,6 +1,7 @@
 import logging
 import math
 import random
+import json
 from abc import ABCMeta, abstractmethod
 from collections import Counter, defaultdict
 from typing import Dict, List, Union, Tuple
@@ -46,6 +47,15 @@ class IndexSplitter(AbstractSplitter):
             start_index = end_index
 
         return splits
+
+
+class PrecomputedSplitter(AbstractSplitter):
+    def __init__(self, splits: Dict[str, float], split_path: str):
+        super().__init__(splits)
+        self.splits = json.load(open(split_path))
+
+    def apply(self, data_loader: AbstractLoader) -> Dict[str, List[Union[int, str]]]:
+        return self.splits
 
 
 class RandomSplitter(AbstractSplitter):
