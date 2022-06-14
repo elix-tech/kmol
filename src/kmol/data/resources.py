@@ -33,8 +33,7 @@ class LoadedContent:
 
 class Collater:
 
-    def __init__(self, device: torch.device):
-        self._device = device
+    def __init__(self):
         self._collater = TorchGeometricCollater(follow_batch=[])
 
     def _unpack(self, batch: List[DataPoint]) -> Batch:
@@ -55,19 +54,10 @@ class Collater:
 
         return Batch(ids=ids, labels=batch[0].labels, inputs=inputs, outputs=outputs)
 
-    def _set_device(self, batch: Batch) -> None:
-        batch.outputs = batch.outputs.to(self._device)
-        for key, values in batch.inputs.items():
-            try:
-                batch.inputs[key] = values.to(self._device)
-            except (AttributeError, ValueError):
-                pass
-
     def apply(self, batch: List[DataPoint]) -> Batch:
 
         batch = self._unpack(batch)
         for key, values in batch.inputs.items():
             batch.inputs[key] = self._collater.collate(values)
 
-        self._set_device(batch)
         return batch

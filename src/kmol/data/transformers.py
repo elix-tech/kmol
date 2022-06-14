@@ -1,7 +1,6 @@
 import logging
 from abc import ABCMeta, abstractmethod
-from typing import List
-
+from typing import List, Tuple
 import numpy as np
 
 from ..core.exceptions import TransformerError
@@ -92,6 +91,26 @@ class CutoffTransformer(AbstractTransformer):
         pass
 
 
+class MultitaskCutoffTransformer(AbstractTransformer):
+
+    def __init__(self, cutoff: float):
+        self._cutoff = cutoff
+
+        logging.warning("[WARNING] The cutoff transformer is destructive and cannot be reversed.")
+
+    def apply(self, data: DataPoint) -> None:
+        data.outputs = list(map(self.apply_itemwise, data.outputs))
+
+    def reverse(self, data: DataPoint) -> None:
+        pass
+
+    def apply_itemwise(self, x):
+        if np.isnan(x):
+            return x
+        else:
+            return np.asscalar(np.where(x < self._cutoff, 0, 1))
+
+
 class OneHotTransformer(AbstractTransformer):
 
     def __init__(self, target: int, classes: List[str]):
@@ -108,3 +127,64 @@ class OneHotTransformer(AbstractTransformer):
 
     def reverse(self, data: DataPoint) -> None:
         data.outputs[self._target] = self._classes[data.outputs[self._target]]
+
+
+class TernaryTransformer(AbstractTransformer):
+    """
+    From raw continuous values, creates ternary classification labels:
+    - 0 if value < mean - width (negative)
+    - 1 if mean - width <= value <= mean + width (intermediate)
+    - 2 if value > mean + width (positive)
+    """
+
+    def __init__(self, target: int, mean: float, width: float):
+        self._target = target
+        self._mean = mean
+        self._width = width
+        self._labels = [0, 1, 2]
+
+    def apply(self, data: DataPoint) -> None:
+        data.outputs[self._target] = np.select(self.get_conditions(data.outputs[self._target]), self._labels)
+
+    def reverse(self, data: DataPoint) -> None:
+        pass
+
+    def get_conditions(self, query: float) -> List[Tuple]:
+        return [
+            (query < (self._mean - self._width)),
+            (query >= (self._mean - self._width)) & (query <= (self._mean + self._width)),
+            (query > self._mean + self._width)
+        ]
+
+
+class MultitaskTernaryTransformer(AbstractTransformer):
+    """
+    From raw continuous values, creates ternary classification labels:
+    - 0 if value < mean - width (negative)
+    - 1 if mean - width <= value <= mean + width (intermediate)
+    - 2 if value > mean + width (positive)
+    """
+
+    def __init__(self, mean: float, width: float):
+        self._mean = mean
+        self._width = width
+        self._labels = [0, 1, 2]
+
+    def apply(self, data: DataPoint) -> None:
+        data.outputs = list(map(self.apply_itemwise, data.outputs))
+
+    def reverse(self, data: DataPoint) -> None:
+        pass
+
+    def apply_itemwise(self, x):
+        if np.isnan(x):
+            return x
+        else:
+            return np.asscalar(np.select(self.get_conditions(x), self._labels))
+
+    def get_conditions(self, query: float) -> List[Tuple]:
+        return [
+            (query < (self._mean - self._width)),
+            (query >= (self._mean - self._width)) & (query <= (self._mean + self._width)),
+            (query > self._mean + self._width)
+        ]

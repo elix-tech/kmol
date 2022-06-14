@@ -173,7 +173,7 @@ class ServerManager(IOManager):
         logging.info("Start aggregation (round={})".format(self._current_round))
 
         checkpoint_paths = self.get_clients_model_path_for_current_round()
-        save_path = "{}/{}.aggregate".format(self._config.save_path, self._current_round)
+        save_path = "{}/{}.aggregate.pt".format(self._config.save_path, self._current_round)
 
         aggregator: Type[AbstractAggregator] = self._reflect(self._config.aggregator_type)
         aggregator(**self._config.aggregator_options).run(checkpoint_paths=checkpoint_paths, save_path=save_path)
@@ -372,7 +372,7 @@ class Client(IOManager):
         return configuration_path
 
     def _retrieve_latest_file(self, folder_path: str) -> str:
-        files = glob("{}/*".format(folder_path))
+        files = glob("{}/*.pt".format(folder_path))
         return max(files, key=os.path.getctime)
 
     def _train(self, configuration_path: str) -> str:

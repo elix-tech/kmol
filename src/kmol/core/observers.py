@@ -9,7 +9,6 @@ from .helpers import Namespace
 
 
 class AbstractEventHandler(metaclass=ABCMeta):
-
     @abstractmethod
     def run(self, payload: Namespace):
         raise NotImplementedError
@@ -38,6 +37,7 @@ class AddSigmoidEventHandler(AbstractEventHandler):
     def run(self, payload: Namespace):
         payload.logits = torch.sigmoid(payload.logits)
 
+
 class AddReluEventHandler(AbstractEventHandler):
     """event: before_criterion|before_predict"""
 
@@ -52,6 +52,19 @@ class AddSoftmaxEventHandler(AbstractEventHandler):
         payload.logits = torch.softmax(payload.logits, dim=-1)
 
 
+class AddArgmaxEventHandler(AbstractEventHandler):
+    """event: before_predict"""
+
+    def __init__(self, dim: int = -1, keepdim: bool = True):
+        self._dim = dim
+        self._keepdim = keepdim
+
+    def run(self, payload: Namespace):
+        payload.logits = torch.argmax(
+            payload.logits, dim=self._dim, keepdim=self._keepdim
+        )
+
+
 class InjectLossWeightsEventHandler(AbstractEventHandler):
     """event: before_criterion"""
 
@@ -61,6 +74,32 @@ class InjectLossWeightsEventHandler(AbstractEventHandler):
     def run(self, payload: Namespace):
         for mapper in self._mappers:
             payload.extras.append(payload.features.inputs[mapper].reshape(-1, 1))
+
+
+class RemoveNansEventHandler(AbstractEventHandler):
+    """event: before_metric"""
+
+    def run(self, payload: Namespace) -> None:
+        mask = payload.ground_truth == payload.ground_truth
+        payload.ground_truth = torch.unsqueeze(
+            torch.masked_select(payload.ground_truth, mask),
+            dim=-1,
+        )
+        payload.logits = torch.unsqueeze(
+            torch.masked_select(payload.logits, mask),
+            dim=-1,
+        )
+
+
+class ReshapeMulticlassTensorEventHandler(AbstractEventHandler):
+    """event: before_criterion"""
+
+    def __init__(self, num_classes: int, num_tasks: int):
+        self._num_classes = num_classes
+        self._num_tasks = num_tasks
+
+    def run(self, payload: Namespace) -> None:
+        payload.logits = payload.logits.view(-1, self._num_classes, self._num_tasks)
 
 
 class DropParametersEventHandler(AbstractEventHandler):
@@ -82,6 +121,7 @@ class DropBatchNormLayersEventHandler(AbstractEventHandler):
 
     def run(self, payload: Namespace) -> None:
         from opacus.utils.module_modification import nullify_batchnorm_modules
+
         nullify_batchnorm_modules(payload.executor.network)
 
 
@@ -93,6 +133,7 @@ class ReplaceBatchNormLayersEventHandler(AbstractEventHandler):
 
     def run(self, payload: Namespace) -> None:
         from opacus.utils.module_modification import replace_all_modules
+
         replace_all_modules(payload.executor.network, BatchNormLayer, self.converter)
 
 
@@ -133,7 +174,6 @@ class AddFedproxRegularizationEventHandler(AbstractEventHandler):
 
 
 class DifferentialPrivacy:
-
     class AttachPrivacyEngineEventHandler(AbstractEventHandler):
         """event: before_train_start"""
 
@@ -141,16 +181,20 @@ class DifferentialPrivacy:
             self._options = kwargs
 
             if "alphas" not in self._options:
-                self._options["alphas"] = [1 + i / 10.0 for i in range(1, 100)] + list(range(12, 64))
+                self._options["alphas"] = [1 + i / 10.0 for i in range(1, 100)] + list(
+                    range(12, 64)
+                )
 
         def run(self, payload: Namespace) -> None:
-            from ..vendor.opacus.custom.privacy_engine import PrivacyEngine
+            from vendor.opacus.custom.privacy_engine import PrivacyEngine
 
             trainer = payload.trainer
             network = trainer.network
 
             if not isinstance(self._options["max_grad_norm"], list):
-                self._options["max_grad_norm"] = [self._options["max_grad_norm"]] * len(list(network.parameters()))
+                self._options["max_grad_norm"] = [self._options["max_grad_norm"]] * len(
+                    list(network.parameters())
+                )
 
             privacy_engine = PrivacyEngine(
                 module=network,
@@ -171,9 +215,13 @@ class DifferentialPrivacy:
             optimizer = payload.trainer.optimizer
 
             try:
-                epsilon, best_alpha = optimizer.privacy_engine.get_privacy_spent(self._delta)
-                payload.message += " - privacy_cost: (ε = {:.2f}, δ = {}, α = {})".format(
-                    epsilon, self._delta, best_alpha
+                epsilon, best_alpha = optimizer.privacy_engine.get_privacy_spent(
+                    self._delta
+                )
+                payload.message += (
+                    " - privacy_cost: (ε = {:.2f}, δ = {}, α = {})".format(
+                        epsilon, self._delta, best_alpha
+                    )
                 )
             except AttributeError:
                 pass
@@ -181,9 +229,11 @@ class DifferentialPrivacy:
     @staticmethod
     def setup(delta: float = 1e-5, **kwargs):
         EventManager.add_event_listener(
-            "before_train_start", DifferentialPrivacy.AttachPrivacyEngineEventHandler(**kwargs)
+            "before_train_start",
+            DifferentialPrivacy.AttachPrivacyEngineEventHandler(**kwargs),
         )
 
         EventManager.add_event_listener(
-            "before_train_progress_log", DifferentialPrivacy.LogPrivacyCostEventHandler(delta)
+            "before_train_progress_log",
+            DifferentialPrivacy.LogPrivacyCostEventHandler(delta),
         )

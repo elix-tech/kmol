@@ -146,6 +146,21 @@ class MordredDescriptorComputer(AbstractDescriptorComputer):
         return list(descriptors.fill_missing(0))
 
 
+class DescriptorFeaturizer(AbstractFeaturizer):
+    def __init__(
+            self, inputs: List[str], outputs: List[str], descriptor_calculator: AbstractDescriptorComputer,
+            should_cache: bool = False, rewrite: bool = True
+    ):
+        super().__init__(inputs, outputs, should_cache, rewrite)
+        self._descriptor_calculator = descriptor_calculator
+
+
+    def _process(self, data: str):
+         mol = Chem.MolFromSmiles(data)
+         molecule_features = self._descriptor_calculator.run(mol)
+         return  torch.FloatTensor(molecule_features)
+
+
 class DatasetDescriptorComputer(AbstractDescriptorComputer):
 
     def __init__(self, targets: List[str]):
