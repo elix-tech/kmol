@@ -1,8 +1,10 @@
+import json
 import logging
 import os
 from collections import defaultdict
 from copy import deepcopy
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Literal, Optional, List, Dict, Any, DefaultDict
 
 import torch
@@ -78,7 +80,10 @@ class Config(AbstractConfiguration):
     def __post_init__(self):
         if not os.path.exists(self.output_path):
             os.makedirs(self.output_path)
-
+        
+        with open(Path(self.output_path) / "config.json", 'w') as file:
+            json.dump(self.__dict__, file, indent = 2)
+        
         logging.basicConfig(format=self.log_format, level=self.log_level.upper())
 
         EventManager.flush()
