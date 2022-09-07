@@ -41,7 +41,10 @@ class AbstractConfiguration(metaclass=ABCMeta):
         output = deepcopy(current)
         for k, v in update.items():
             if type(v) == dict:
-                if type(current.get(k, None)) == dict:
+                # In case the type is not define or is the same the config is updated
+                # otherwise it is overwritten.
+                if type(current.get(k, None)) == dict \
+                and current.get('type') == v.get('type', current.get('type')):
                     output.update({
                         k: cls.update_recursive_dict(current.get(k, {}), v)
                     })
