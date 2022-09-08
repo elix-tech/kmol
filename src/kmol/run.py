@@ -1,3 +1,4 @@
+import json
 import logging
 import pickle
 from argparse import ArgumentParser
@@ -508,6 +509,9 @@ class Executor(AbstractExecutor):
             print("")
 
         return streamer.splits
+
+    def print_cfg(self) -> None:
+        print(json.dumps(self._config.__dict__, indent=2))
 
 
 def main():

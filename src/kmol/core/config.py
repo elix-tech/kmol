@@ -1,4 +1,5 @@
 import json
+import yaml
 import logging
 import os
 from collections import defaultdict
@@ -80,10 +81,12 @@ class Config(AbstractConfiguration):
     def __post_init__(self):
         if not os.path.exists(self.output_path):
             os.makedirs(self.output_path)
-        
+
         with open(Path(self.output_path) / "config.json", 'w') as file:
             json.dump(self.__dict__, file, indent = 2)
-        
+        with open(Path(self.output_path) / "config.yaml", 'w') as file:
+            yaml.dump(self.__dict__, file, indent = 4)
+
         logging.basicConfig(format=self.log_format, level=self.log_level.upper())
 
         EventManager.flush()
