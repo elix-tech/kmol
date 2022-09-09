@@ -35,7 +35,7 @@ class AbstractConfiguration(metaclass=ABCMeta):
                 elif path[0] == '.':  #is relative to the dir
                     path = dir_path.joinpath(path)
                 tmp_cfg = get_dict_from_file(Path(path).resolve())
-                base_cfg = cls.update_recursive_dict(base_cfg, tmp_cfg)
+                base_cfg = cls._update_recursive_dict(base_cfg, tmp_cfg)
             return base_cfg
 
         def yaml_join(loader, node):
