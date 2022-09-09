@@ -81,7 +81,8 @@ class AbstractConfiguration(metaclass=ABCMeta):
             return cfg
 
         cfg = get_dict_from_file(file_path)
-        del cfg['parameters']
+        if cfg.get('parameters', False):
+            del cfg['parameters']
         return cls(**cfg)
 
     @classmethod
@@ -97,7 +98,7 @@ class AbstractConfiguration(metaclass=ABCMeta):
                 if type(current.get(k, None)) == dict \
                 and current.get('type') == v.get('type', current.get('type')):
                     output.update({
-                        k: cls.update_recursive_dict(current.get(k, {}), v)
+                        k: cls._update_recursive_dict(current.get(k, {}), v)
                     })
                 else: # is None
                     output.update({k: v})
