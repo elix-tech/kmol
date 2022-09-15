@@ -88,6 +88,9 @@ class Config(AbstractConfiguration):
             yaml.dump(self.__dict__, file, indent = 4)
 
         logging.basicConfig(format=self.log_format, level=self.log_level.upper())
+        
+        if getattr(self, "observers") is None:
+            setattr(self, "observers", {})
 
         EventManager.flush()
         for event_name, event_handlers in self.observers.items():
