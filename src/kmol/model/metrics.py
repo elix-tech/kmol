@@ -1,5 +1,4 @@
 import json
-import logging
 import math
 from abc import ABCMeta, abstractmethod
 from collections import defaultdict
@@ -27,6 +26,7 @@ from sklearn.metrics import (
 )
 
 from ..core.helpers import Namespace
+from ..core.logger import LOGGER as logging
 from ..core.observers import EventManager
 class MetricType(Enum):
     REGRESSION = "regression"

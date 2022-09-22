@@ -1,9 +1,9 @@
-import logging
 from abc import ABCMeta, abstractmethod
 from typing import List, Tuple
 import numpy as np
 
 from ..core.exceptions import TransformerError
+from ..core.logger import LOGGER as logging
 from .resources import DataPoint
 
 

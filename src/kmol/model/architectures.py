@@ -1,4 +1,3 @@
-import logging
 from abc import ABCMeta, abstractmethod
 from typing import Dict, Any, Optional, List, Union
 
@@ -7,6 +6,7 @@ import torch_geometric as geometric
 
 from .layers import GraphConvolutionWrapper, TripletMessagePassingLayer, LinearBlock, MultiplicativeInteractionLayer
 from ..core.helpers import Namespace, SuperFactory
+from ..core.logger import LOGGER as logging
 from ..core.observers import EventManager
 from ..core.exceptions import CheckpointNotFound
 from ..model.read_out import get_read_out

@@ -1,5 +1,4 @@
 import itertools
-import logging
 from abc import ABCMeta, abstractmethod
 from functools import partial
 from itertools import chain
@@ -13,6 +12,7 @@ from torch_geometric.data import Data as TorchGeometricData
 from .resources import DataPoint
 from ..core.exceptions import FeaturizationError
 from ..core.helpers import SuperFactory
+from ..core.logger import LOGGER as logging
 
 
 class AbstractFeaturizer(metaclass=ABCMeta):

@@ -1,6 +1,5 @@
 import importlib
 import json
-import logging
 import os
 import re
 import uuid
@@ -13,6 +12,7 @@ from typing import Dict, Callable, Any, Type, Optional
 
 import grpc
 from google.protobuf.empty_pb2 import Empty as EmptyResponse
+from kmol.core.logger import LOGGER as logging
 
 from .configs import ServerConfiguration, ClientConfiguration
 from .exceptions import InvalidNameError, ClientAuthenticationError

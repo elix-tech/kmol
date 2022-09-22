@@ -1,4 +1,3 @@
-import logging
 import math
 from abc import ABCMeta
 from copy import copy
@@ -19,6 +18,7 @@ from .trackers import ExponentialAverageMeter
 from ..core.config import Config
 from ..core.exceptions import CheckpointNotFound
 from ..core.helpers import Timer, SuperFactory, Namespace, HookProbe
+from ..core.logger import LOGGER as logging
 from ..core.observers import EventManager
 from ..data.resources import Batch, LoadedContent
 

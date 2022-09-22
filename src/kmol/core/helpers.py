@@ -2,7 +2,6 @@ import datetime
 import hashlib
 import importlib
 import json
-import logging
 import os
 import timeit
 from dataclasses import dataclass
@@ -14,6 +13,7 @@ import numpy as np
 import torch
 
 from .exceptions import ReflectionError
+from .logger import LOGGER as logging
 
 
 class Timer:

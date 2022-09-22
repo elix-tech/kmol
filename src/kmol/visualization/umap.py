@@ -1,11 +1,10 @@
-import logging
 import numpy as np
 import umap
 import matplotlib.pyplot as plt
 from pathlib import Path
 from typing import Optional
 
-
+from ..core.logger import LOGGER as logging
 
 class UMAPVisualizer:
 	def __init__(self, output_path, **kwargs):

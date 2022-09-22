@@ -1,4 +1,3 @@
-import logging
 import operator
 import os
 from abc import ABCMeta, abstractmethod
@@ -19,6 +18,7 @@ from .transformers import AbstractTransformer
 from ..core.config import Config
 from ..core.exceptions import FeaturizationError
 from ..core.helpers import SuperFactory, CacheManager
+from ..core.logger import LOGGER as logging
 
 
 class AbstractStreamer(metaclass=ABCMeta):

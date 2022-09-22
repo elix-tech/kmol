@@ -1,4 +1,3 @@
-import logging
 import pickle
 from argparse import ArgumentParser
 from collections import defaultdict
@@ -15,6 +14,7 @@ from tqdm import tqdm
 from mila.factories import AbstractExecutor
 from .core.config import Config
 from .core.helpers import Namespace, ConfidenceInterval
+from .core.logger import LOGGER as logging
 from .core.tuning import OptunaTemplateParser
 from .data.resources import DataPoint
 from .data.streamers import GeneralStreamer, SubsetStreamer, CrossValidationStreamer

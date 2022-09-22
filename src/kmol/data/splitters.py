@@ -1,4 +1,3 @@
-import logging
 import math
 import random
 import json
@@ -12,6 +11,7 @@ from tqdm import tqdm
 
 from .loaders import AbstractLoader
 from ..core.exceptions import SplitError
+from ..core.logger import LOGGER as logging
 
 
 class AbstractSplitter(metaclass=ABCMeta):

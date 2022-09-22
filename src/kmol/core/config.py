@@ -1,14 +1,17 @@
-import logging
+import json
+import yaml
 import os
 from collections import defaultdict
 from copy import deepcopy
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Literal, Optional, List, Dict, Any, DefaultDict
 
 import torch
 from mila.factories import AbstractConfiguration
 
 from .helpers import SuperFactory
+from .logger import LOGGER as logging
 from .observers import AbstractEventHandler, EventManager, DifferentialPrivacy
 
 
@@ -79,7 +82,16 @@ class Config(AbstractConfiguration):
         if not os.path.exists(self.output_path):
             os.makedirs(self.output_path)
 
-        logging.basicConfig(format=self.log_format, level=self.log_level.upper())
+        with open(Path(self.output_path) / "config.json", 'w') as file:
+            json.dump(self.__dict__, file, indent = 2)
+        with open(Path(self.output_path) / "config.yaml", 'w') as file:
+            yaml.dump(self.__dict__, file, indent = 4)
+
+        logging.add_file_log(Path(self.output_path))
+        logging.stdout_handler.setLevel(self.log_level.upper())
+
+        if getattr(self, "observers") is None:
+            setattr(self, "observers", {})
 
         EventManager.flush()
         for event_name, event_handlers in self.observers.items():

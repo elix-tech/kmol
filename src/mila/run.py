@@ -1,10 +1,7 @@
-import logging
 from argparse import ArgumentParser
 
 from .configs import ServerConfiguration, ClientConfiguration
 from .services import Server, Client, DefaultServicer
-
-logging.basicConfig(format="%(asctime)s %(message)s", level=logging.INFO)
 
 
 class Executor:
