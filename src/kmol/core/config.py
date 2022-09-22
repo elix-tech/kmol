@@ -89,7 +89,6 @@ class Config(AbstractConfiguration):
 
         logging.add_file_log(Path(self.output_path))
         logging.stdout_handler.setLevel(self.log_level.upper())
-
         if getattr(self, "observers") is None:
             setattr(self, "observers", {})
 

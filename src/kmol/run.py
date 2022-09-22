@@ -1,3 +1,4 @@
+import json
 import pickle
 from argparse import ArgumentParser
 from collections import defaultdict
@@ -509,6 +510,9 @@ class Executor(AbstractExecutor):
 
         return streamer.splits
 
+    def print_cfg(self) -> None:
+        print(json.dumps(self._config.__dict__, indent=2))
+
 
 def main():
     parser = ArgumentParser()
@@ -516,7 +520,7 @@ def main():
     parser.add_argument("config")
     args = parser.parse_args()
 
-    Executor(config=Config.from_json(args.config), config_path=args.config).run(args.job)
+    Executor(config=Config.from_file(args.config), config_path=args.config).run(args.job)
 
 
 if __name__ == "__main__":
