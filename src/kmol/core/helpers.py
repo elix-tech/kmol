@@ -159,9 +159,12 @@ class CacheManager:
             os.makedirs(self._cache_location, exist_ok=True)
 
     def _sort(self, dictionary: Dict[str, Any]) -> Dict[str, Any]:
-        for key, value in dictionary.items():
+        for key, value in sorted(dictionary.items()):
             if type(value) is dict:
                 dictionary[key] = self._sort(value)
+            elif type(value) is list and len(value) > 0:
+                if type(value[0]) is dict:
+                    dictionary[key] =  [self._sort(v) for v in value]
 
         return dict(sorted(dictionary.items()))
 
