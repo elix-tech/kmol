@@ -23,9 +23,8 @@ COLORS = {
 
 class CustomFormatter(logging.Formatter):
     """
-    Add custom param to the logging format:
-    - Color to level argument
-    - Elapsed time since first log
+    Format time since first log to measure time of the overall run and add
+    color to stdout
     """
     def __init__(self, *args, use_color=True, **kwargs):
         super().__init__(*args, **kwargs)
@@ -53,19 +52,26 @@ class CustomFormatter(logging.Formatter):
 class __Logger(logging.Logger):
     """
     Main logging class
-    Contain one streamer (stdout) with level set by the config
-    one file handler with level default to DEBUG
+    Contain one streamer (stdout)
+    one file handler
     """
-    _logger = None
+    _logger = logging.getLogger("logger_run")
+
+    def __new__(cls):
+        if not hasattr(cls, 'instance'):
+            cls.instance = super().__new__(cls)
+        return cls.instance
 
     def __init__(self):
-        self._logger = logging.getLogger("logger_run")
         self._logger.setLevel(logging.DEBUG)
         self.now = datetime.datetime.now()
         formatter = self._get_formatter()
-        self.stdout_handler = logging.StreamHandler(sys.stdout)
-        self.stdout_handler.setFormatter(formatter)
-        self._logger.addHandler(self.stdout_handler)
+        if len(self._logger.handlers) != 0:
+            self.stdout_handler = [h for h in self._logger.handlers if h.stream.name == "<stdout>"][0]
+        else:
+            self.stdout_handler = logging.StreamHandler(sys.stdout)
+            self.stdout_handler.setFormatter(formatter)
+            self._logger.addHandler(self.stdout_handler)
 
         sys.excepthook = self.handle_excepthook
 

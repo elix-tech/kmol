@@ -1,3 +1,4 @@
+from datetime import datetime
 import json
 import yaml
 import os
@@ -79,6 +80,7 @@ class Config(AbstractConfiguration):
         return torch.device(device_name)
 
     def __post_init__(self):
+        self.output_path = str(Path(self.output_path) / datetime.now().strftime('%Y-%m-%d_%H-%M'))
         if not os.path.exists(self.output_path):
             os.makedirs(self.output_path)
 

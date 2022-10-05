@@ -17,8 +17,8 @@ from .metrics import PredictionProcessor
 from .trackers import ExponentialAverageMeter
 from ..core.config import Config
 from ..core.exceptions import CheckpointNotFound
-from ..core.helpers import Timer, SuperFactory, Namespace, HookProbe
 from ..core.logger import LOGGER as logging
+from ..core.helpers import Timer, SuperFactory, Namespace, HookProbe
 from ..core.observers import EventManager
 from ..data.resources import Batch, LoadedContent
 
@@ -163,6 +163,7 @@ class Trainer(AbstractExecutor):
             iteration += 1
         if not self.config.is_stepwise_scheduler:
             self.scheduler.step()
+        logging.only_log_file(str(pbar))
 
     @torch.no_grad()
     def _validation(self, val_loader):
