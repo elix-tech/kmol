@@ -1,7 +1,7 @@
 from argparse import ArgumentParser
 
-from .configs import ServerConfiguration, ClientConfiguration
-from .services import Server, Client, DefaultServicer
+from .configs import ServerConfiguration, ClientConfiguration, LocalConfiguration
+from .services import Server, Client, DefaultServicer, Local
 
 
 class Executor:
@@ -28,6 +28,12 @@ class Executor:
 
         client = Client(config=config)
         client.run()
+
+    def local(self) -> None:
+        config: LocalConfiguration = LocalConfiguration.from_json(self._config_path)
+
+        local = Local(config=config)
+        local = local.run()
 
 
 def main():

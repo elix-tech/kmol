@@ -72,3 +72,19 @@ class ClientConfiguration(NamedTuple):
     def from_json(cls, file_path: str) -> "ClientConfiguration":
         with open(file_path) as read_handle:
             return cls(**json.load(read_handle))
+
+
+class LocalConfiguration(NamedTuple):
+    name: str
+    chekpoints_path = str
+    current_round = int
+
+    aggregator_type: str
+    aggregator_options: Dict[str, Any] = {}
+
+    save_path: str = "data/logs/local/"
+
+    @classmethod
+    def from_json(cls, file_path: str) -> "LocalConfiguration":
+        with open(file_path) as read_handle:
+            return cls(**json.load(read_handle))
