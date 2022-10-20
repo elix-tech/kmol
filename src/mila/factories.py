@@ -10,8 +10,6 @@ from typing import Any, List
 @dataclass
 class AbstractConfiguration(metaclass=ABCMeta):
 
-    output_path: str
-
     @classmethod
     def from_file(cls, file_path: str) -> "AbstractConfiguration":
         """
@@ -136,4 +134,9 @@ class AbstractAggregator(metaclass=ABCMeta):
 
     @abstractmethod
     def run(self, checkpoint_paths: List[str], save_path: str) -> None:
+        raise NotImplementedError
+
+class AbstractScript(metaclass=ABCMeta):
+    @abstractmethod
+    def run(self):
         raise NotImplementedError

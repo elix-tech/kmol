@@ -1,0 +1,1 @@
+from .manual_aggregation import ManualAggregationScript

@@ -1,0 +1,43 @@
+
+# Pip requirement for the kmol project
+
+cairosvg == 2.5.1
+networkx == 2.5
+optuna == 2.4.0
+grpcio-tools
+grpcio == 1.31.0
+rdkit
+pyhumps == 1.6.1
+openpyxl
+scikit-learn == 0.23.2
+
+
+
+--find-links https://download.pytorch.org/whl/cu111/torch/
+torch == 1.8.1
+--find-links https://download.pytorch.org/whl/cu111/torchvision/
+torchvision == 0.9.1
+# torchaudio == 0.8.1
+# torch == 1.6.0
+# torchvision == 0.7.0
+
+# --find-links https://pytorch-geometric.com/whl/torch-1.6.0+cu102.html
+--find-links https://pytorch-geometric.com/whl/torch-1.8.1+cu111.html
+torch-scatter == 2.0.6
+torch-sparse == 0.6.10
+torch-cluster == 1.5.9
+torch-spline-conv == 1.2.1
+
+torch-geometric == 2.0.2
+
+torch_lr_finder == 0.2.1
+
+-e .
+
+# cd /home/vincent/kmol-internal/env-kmol/lib/python3.8/site-packages/torch/lib
+# ls -la
+# => la libnvrtc-builtins.so est bien la mais pas la .so.11.1
+# creer un symlink
+# => ln -sf libnvrtc-builtins.so libnvrtc-builtins.so.11.1
+# will fix the open issue
+# https://github.com/pytorch/pytorch/issues/68980

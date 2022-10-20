@@ -4,7 +4,7 @@ from typing import Any, Dict, Union, List, Optional, Iterable
 
 import numpy as np
 import torch
-from torch_geometric.data.dataloader import Collater as TorchGeometricCollater
+from torch_geometric.loader.dataloader import Collater as TorchGeometricCollater
 
 
 @dataclass
@@ -34,7 +34,7 @@ class LoadedContent:
 class Collater:
 
     def __init__(self):
-        self._collater = TorchGeometricCollater(follow_batch=[])
+        self._collater = TorchGeometricCollater(follow_batch=[], exclude_keys=[])
 
     def _unpack(self, batch: List[DataPoint]) -> Batch:
         ids = []

@@ -14,7 +14,7 @@ import grpc
 from google.protobuf.empty_pb2 import Empty as EmptyResponse
 from kmol.core.logger import LOGGER as logging
 
-from .configs import ServerConfiguration, ClientConfiguration, LocalConfiguration
+from .configs import ServerConfiguration, ClientConfiguration
 from .exceptions import InvalidNameError, ClientAuthenticationError
 from .factories import AbstractConfiguration, AbstractExecutor, AbstractAggregator
 from .protocol_buffers import mila_pb2, mila_pb2_grpc
@@ -365,7 +365,7 @@ class Client(IOManager):
         configuration = {**configuration, **self._config.model_overwrites}  # overwrite values based on settings
         configuration["checkpoint_path"] = checkpoint_path
 
-        configuration_path = "{}/config.latest".format(self._config.save_path)
+        configuration_path = "{}/config.latest.json".format(self._config.save_path)
         with open(configuration_path, "w") as write_buffer:
             json.dump(configuration, write_buffer)
 
@@ -377,7 +377,7 @@ class Client(IOManager):
 
     def _train(self, configuration_path: str) -> str:
         config: Type[AbstractConfiguration] = self._reflect(self._config.config_type)
-        config = config.from_json(configuration_path)
+        config = config.from_file(configuration_path)
 
         runner: Type[AbstractExecutor] = self._reflect(self._config.executor_type)
         runner = runner(config=config)
@@ -468,31 +468,5 @@ class Client(IOManager):
         except Exception as e:
             logging.error("[internal error] {}".format(e))
             self._invoke(self.close)
-
-class Local(IOManager):
-    def __init__(self, config: LocalConfiguration) -> None:
-        self._config = config
-
-    def get_checkpoints_paths(self):
-        return [
-            os.path.join(d, x)
-            for d, dirs, files in os.walk(self._config.chekpoints_path)
-            for x in files if x.endswith(".ckpt")
-        ]
-
-    def aggregate(self) -> None:
-        logging.info("Start local aggregation")
-
-        checkpoint_paths = self.get_checkpoints_paths()
-        save_path = "{}/{}.aggregate.pt".format(self._config.save_path, self._config.current_round)
-
-        aggregator: Type[AbstractAggregator] = self._reflect(self._config.aggregator_type)
-        aggregator(**self._config.aggregator_options).run(checkpoint_paths=checkpoint_paths, save_path=save_path)
-
-        logging.info("Aggregate model saved: [{}]".format(save_path))
-    
-    def run(self) -> None:
-        # Box related stuffs maybe
-        self.aggregate()
 
 

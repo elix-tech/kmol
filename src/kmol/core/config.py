@@ -2,7 +2,6 @@ from datetime import datetime
 import json
 import yaml
 import os
-from collections import defaultdict
 from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -27,6 +26,7 @@ class Config(AbstractConfiguration):
     criterion: Dict[str, Any]
     optimizer: Dict[str, Any]
     scheduler: Dict[str, Any]
+    output_path: str
 
     is_stepwise_scheduler: Optional[bool] = True
     is_finetuning: Optional[bool] = False
@@ -61,7 +61,7 @@ class Config(AbstractConfiguration):
     log_frequency: int = 20
     overwrite_checkpoint: bool = False
 
-    observers: DefaultDict[str, List[Dict]] = field(default_factory=lambda: defaultdict(list))
+    observers: DefaultDict[str, List[Dict]] = None
     differential_privacy: Dict[str, Any] = field(default_factory=lambda: {"enabled": False})
 
     target_metric: str = "roc_auc"
@@ -91,6 +91,7 @@ class Config(AbstractConfiguration):
 
         logging.add_file_log(Path(self.output_path))
         logging.stdout_handler.setLevel(self.log_level.upper())
+
         if getattr(self, "observers") is None:
             setattr(self, "observers", {})
 
@@ -108,3 +109,8 @@ class Config(AbstractConfiguration):
         options.update(**kwargs)
 
         return Config(**options)
+
+
+@dataclass
+class ScriptConfig(AbstractConfiguration):
+    script: Dict[str, Any]
