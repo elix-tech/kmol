@@ -8,7 +8,7 @@ The library was benchmarked on datasets containing ADME properties (Absorption, 
 Models are built using PyTorch and PyTorch Geometric.
 
 ## Installation
-
+Cuda toolkit of at least 11.1 needs to be install.
 Dependencies can be installed with conda:
 ```bash
 conda env create -f environment.yml
@@ -85,3 +85,49 @@ Another client can be simulated from a new terminal:
 ```bash
 mila client data/configs/mila/naive_aggregator/tox21/clients/2/client2.json
 ```
+
+### Runing a Aggregation in Command Line.
+
+Once all model have been run with the kmol module, it is possible to aggregate it using 
+what we introduce as a script.
+
+It is possible to use a new command line argument called `kmol-script`. This argument
+expect only a config file containing all the necessary argument for that script.
+
+In out case we are want to run an manual aggregation. So we can run:
+
+```
+kmol-script manual_aggregator.yaml
+```
+
+`manual_aggregator.yaml` is define as the following:
+
+```yaml
+script:
+  type: "manual_aggregation"
+  chekpoint_paths: 
+    - data/logs/local/tester1/2022-10-20_17-10/checkpoint_10.pt
+    - data/logs/local/tester2/2022-10-20_17-10/checkpoint_10.pt
+    - data/logs/local/tester3/2022-10-20_17-10/checkpoint_10.pt
+  aggregator_type: "mila.aggregators.WeightedTorchAggregator"
+  aggregator_options:
+    weights: [0.8, 0.1, 0.1]
+  save_path: "data/logs/manual_aggregator/2.aggregator"
+
+```
+
+- `type`: Would be the type of script we want to run.
+- `checkpoint_paths`: A list of checkpoint path we want to aggregate.
+- `aggregator_type`: The type of aggregator to use.
+- `aggregator_options`: The argument taken to instanciate the aggregator.
+
+Note: that for WeightedTorchAggregator the weights argument is a bit different.
+In mila we are xpecting a dictionary, here a list of weight is enough. The order of
+the weights should follow the order of the checkpoint_paths
+
+- `save_path`: Were to save the aggregator.
+
+If other type of aggregator is needed, only `aggregator_type` and `aggregator_options` 
+needs to be change.
+
+You can find the aggregator and their argument in `src/mila/aggregators.py`
