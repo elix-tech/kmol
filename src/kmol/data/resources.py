@@ -1,10 +1,12 @@
+from abc import abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any, Dict, Union, List, Optional, Iterable
 
 import numpy as np
 import torch
-from torch_geometric.data.dataloader import Collater as TorchGeometricCollater
+from torch_geometric.loader.dataloader import Collater as TorchGeometricCollater
+from ..vendor.graphormer import collater
 
 
 @dataclass
@@ -31,10 +33,15 @@ class LoadedContent:
     batches: int
 
 
-class Collater:
+class AbstractCollater:
+    @abstractmethod
+    def apply(self, batch: List[DataPoint]) -> Any:
+        raise NotImplementedError
 
+
+class GeneralCollater(AbstractCollater):
     def __init__(self):
-        self._collater = TorchGeometricCollater(follow_batch=[])
+        self._collater = TorchGeometricCollater(follow_batch=[], exclude_keys=[])
 
     def _unpack(self, batch: List[DataPoint]) -> Batch:
         ids = []
@@ -59,5 +66,25 @@ class Collater:
         batch = self._unpack(batch)
         for key, values in batch.inputs.items():
             batch.inputs[key] = self._collater.collate(values)
+
+        return batch
+
+
+class GraphormerCollater(GeneralCollater):
+    def __init__(self, max_node: int = 512, multi_hop_max_dist: int = 20, spatial_pos_max: int = 20):
+        # TODO: automate increment of max_node without requiring pre-setting
+        super().__init__()
+        self.max_node = max_node
+        self.multi_hop_max_dist = multi_hop_max_dist
+        self.spatial_pos_max = spatial_pos_max
+
+    def apply(self, batch: List[DataPoint]) -> Batch:
+        batch = self._unpack(batch)
+        for key, values in batch.inputs.items():
+            if key == "ligand":
+                batch.inputs[key] = collater.collater(values, self.max_node, self.multi_hop_max_dist, self.spatial_pos_max)
+            else:
+                batch_dict = self._collater.collate(values)
+                batch.inputs[key] = batch_dict
 
         return batch

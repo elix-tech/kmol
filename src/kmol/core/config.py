@@ -1,8 +1,9 @@
+from datetime import datetime
 import json
+import random
+import numpy as np
 import yaml
-import logging
 import os
-from collections import defaultdict
 from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -12,6 +13,7 @@ import torch
 from mila.factories import AbstractConfiguration
 
 from .helpers import SuperFactory
+from .logger import LOGGER as logging
 from .observers import AbstractEventHandler, EventManager, DifferentialPrivacy
 
 
@@ -26,7 +28,9 @@ class Config(AbstractConfiguration):
     criterion: Dict[str, Any]
     optimizer: Dict[str, Any]
     scheduler: Dict[str, Any]
+    output_path: str
 
+    collater: DefaultDict[str, Any] = field(default_factory=lambda: {"type": "general"})
     is_stepwise_scheduler: Optional[bool] = True
     is_finetuning: Optional[bool] = False
     checkpoint_path: Optional[str] = None
@@ -34,7 +38,7 @@ class Config(AbstractConfiguration):
     inference_mode: Optional[str] = None
     cross_validation_folds: int = 5
     mc_dropout_iterations: int = 5
-    mc_dropout_probability: Optional[float] = None
+    mc_dropout_probability: Optional[float] = 0.1
     probe_layer: Optional[str] = None
 
     train_split: str = "train"
@@ -51,6 +55,8 @@ class Config(AbstractConfiguration):
     enabled_gpus: List[int] = field(default_factory=lambda: [0])
     num_workers: int = 0
     featurization_jobs: int = 4
+    preprocessing_use_disk: bool = False
+    preprocessing_disk_dir: Optional[str] = None
 
     cache_location: str = "/tmp/federated/"
     clear_cache: bool = False
@@ -60,7 +66,7 @@ class Config(AbstractConfiguration):
     log_frequency: int = 20
     overwrite_checkpoint: bool = False
 
-    observers: DefaultDict[str, List[Dict]] = field(default_factory=lambda: defaultdict(list))
+    observers: DefaultDict[str, List[Dict]] = None
     differential_privacy: Dict[str, Any] = field(default_factory=lambda: {"enabled": False})
 
     target_metric: str = "roc_auc"
@@ -68,6 +74,11 @@ class Config(AbstractConfiguration):
     optuna_init: Optional[Dict[str, Any]] = None
     subset: Optional[Dict[str, Any]] = None
     visualizer: Optional[Dict[str, Any]] = None
+
+    augmentations: List[Dict[str, Any]] = None
+    static_augmentations: List[Dict[str, Any]] = None
+    online_preprocessing: bool = False
+    seed: int = 42
 
     def should_parallelize(self) -> bool:
         return torch.cuda.is_available() and self.use_cuda and len(self.enabled_gpus) > 1
@@ -79,18 +90,20 @@ class Config(AbstractConfiguration):
         return torch.device(device_name)
 
     def __post_init__(self):
+        random.seed(self.seed)
+        np.random.seed(self.seed)
+        torch.manual_seed(self.seed)
+        self.check_update_config()
         if not os.path.exists(self.output_path):
             os.makedirs(self.output_path)
 
-        with open(Path(self.output_path) / "config.json", 'w') as file:
-            json.dump(self.__dict__, file, indent = 2)
-        with open(Path(self.output_path) / "config.yaml", 'w') as file:
-            yaml.dump(self.__dict__, file, indent = 4)
+        with open(Path(self.output_path) / "config.json", "w") as file:
+            json.dump(self.__dict__, file, indent=2)
+        with open(Path(self.output_path) / "config.yaml", "w") as file:
+            yaml.dump(self.__dict__, file, indent=4)
 
-        logging.basicConfig(format=self.log_format, level=self.log_level.upper())
-        
-        if getattr(self, "observers") is None:
-            setattr(self, "observers", {})
+        logging.add_file_log(Path(self.output_path))
+        logging.stdout_handler.setLevel(self.log_level.upper())
 
         EventManager.flush()
         for event_name, event_handlers in self.observers.items():
@@ -101,8 +114,27 @@ class Config(AbstractConfiguration):
         if self.differential_privacy["enabled"]:
             DifferentialPrivacy.setup(**self.differential_privacy["options"])
 
+    def check_update_config(self):
+        self.output_path = str(Path(self.output_path) / datetime.now().strftime("%Y-%m-%d_%H-%M"))
+
+        if getattr(self, "observers") is None:
+            setattr(self, "observers", {})
+
+        for element in ["augmentations", "static_augmentations"]:
+            if getattr(self, element) is None:
+                setattr(self, element, [])
+
+        for e in self.static_augmentations:
+            if "featurization_jobs" not in e.keys():
+                e["featurization_jobs"] = self.featurization_jobs
+
     def cloned_update(self, **kwargs) -> "Config":
         options = deepcopy(vars(self))
         options.update(**kwargs)
 
         return Config(**options)
+
+
+@dataclass
+class ScriptConfig(AbstractConfiguration):
+    script: Dict[str, Any]

@@ -1,6 +1,5 @@
 import importlib
 import json
-import logging
 import os
 import re
 import uuid
@@ -18,10 +17,10 @@ from .configs import ServerConfiguration, ClientConfiguration
 from .exceptions import InvalidNameError, ClientAuthenticationError
 from .factories import AbstractConfiguration, AbstractExecutor, AbstractAggregator
 from .protocol_buffers import mila_pb2, mila_pb2_grpc
+from kmol.core.logger import LOGGER as logging
 
 
 class IOManager:
-
     def _read_file(self, file_path: str) -> bytes:
         with open(file_path, "rb") as read_buffer:
             return read_buffer.read()
@@ -56,7 +55,6 @@ class Participant:
 
 
 class ServerManager(IOManager):
-
     def __init__(self, config: ServerConfiguration) -> None:
         self._config = config
         self._registry: Dict[str, Participant] = {}
@@ -139,12 +137,9 @@ class ServerManager(IOManager):
 
         clients_count = self.get_clients_count()
 
-        return (
-            clients_count < self._config.minimum_clients
-            or (
-                clients_count < self._config.maximum_clients
-                and time() - self._last_registration_time < self._config.client_wait_time
-            )
+        return clients_count < self._config.minimum_clients or (
+            clients_count < self._config.maximum_clients
+            and time() - self._last_registration_time < self._config.client_wait_time
         )
 
     def are_more_rounds_required(self) -> bool:
@@ -190,22 +185,15 @@ class ServerManager(IOManager):
         return sum(1 for client in self._registry.values() if client.is_alive(self._config.heartbeat_timeout))
 
     def get_clients_model_path_for_current_round(self):
-        return [
-            self.get_client_filename_for_current_round(client)
-            for client in self._registry.values()
-        ]
+        return [self.get_client_filename_for_current_round(client) for client in self._registry.values()]
 
     def get_client_filename_for_current_round(self, client: Participant):
         return "{}/{}.{}.{}.remote".format(
-            self._config.save_path,
-            client.name,
-            client.ip_address.replace(".", "_"),
-            self._current_round
+            self._config.save_path, client.name, client.ip_address.replace(".", "_"), self._current_round
         )
 
 
 class DefaultServicer(ServerManager, mila_pb2_grpc.MilaServicer):
-
     def __init__(self, config: ServerConfiguration) -> None:
         super().__init__(config=config)
         self.__lock = Lock()
@@ -217,7 +205,7 @@ class DefaultServicer(ServerManager, mila_pb2_grpc.MilaServicer):
         return True
 
     def _get_ip(self, context) -> str:
-        return context.peer().split(':')[1]
+        return context.peer().split(":")[1]
 
     def Authenticate(self, request: grpc, context) -> str:
         client_ip = self._get_ip(context)
@@ -260,10 +248,7 @@ class DefaultServicer(ServerManager, mila_pb2_grpc.MilaServicer):
             client = self._registry[request.token]
             logging.info("[{}] Sending Model (round={})".format(client, client.round))
 
-            return mila_pb2.Model(
-                json_configuration=self.get_configuration(),
-                latest_checkpoint=self.get_latest_checkpoint()
-            )
+            return mila_pb2.Model(json_configuration=self.get_configuration(), latest_checkpoint=self.get_latest_checkpoint())
 
     def SendCheckpoint(self, request, context) -> EmptyResponse:
         if self._validate_token(request.token, context):
@@ -280,7 +265,6 @@ class DefaultServicer(ServerManager, mila_pb2_grpc.MilaServicer):
 
 
 class Server(IOManager):
-
     def __init__(self, config: ServerConfiguration) -> None:
         self._config = config
 
@@ -290,9 +274,7 @@ class Server(IOManager):
         root_certificate = self._read_file(self._config.ssl_root_cert)
 
         return grpc.ssl_server_credentials(
-            ((private_key, certificate_chain),),
-            root_certificates=root_certificate,
-            require_client_auth=True
+            ((private_key, certificate_chain),), root_certificates=root_certificate, require_client_auth=True
         )
 
     def run(self, servicer: mila_pb2_grpc.MilaServicer) -> None:
@@ -315,7 +297,6 @@ class Server(IOManager):
 
 
 class Client(IOManager):
-
     def __init__(self, config: ClientConfiguration) -> None:
         self._config = config
         self._token = None
@@ -327,9 +308,7 @@ class Client(IOManager):
 
     def _validate(self) -> None:
         if not re.match(r"^[\w]+$", self._config.name):
-            raise InvalidNameError(
-                "[ERROR] The client name can only contain alphanumeric characters and underscores."
-            )
+            raise InvalidNameError("[ERROR] The client name can only contain alphanumeric characters and underscores.")
 
     def _get_credentials(self) -> grpc.ServerCredentials:
         private_key = self._read_file(self._config.ssl_private_key)
@@ -337,17 +316,13 @@ class Client(IOManager):
         root_certificate = self._read_file(self._config.ssl_root_cert)
 
         return grpc.ssl_channel_credentials(
-            certificate_chain=certificate_chain,
-            private_key=private_key,
-            root_certificates=root_certificate
+            certificate_chain=certificate_chain, private_key=private_key, root_certificates=root_certificate
         )
 
     def _connect(self) -> grpc.Channel:
         if self._config.use_secure_connection:
             credentials = self._get_credentials()
-            return grpc.secure_channel(
-                target=self._config.target, credentials=credentials, options=self._config.options
-            )
+            return grpc.secure_channel(target=self._config.target, credentials=credentials, options=self._config.options)
         else:
             logging.warning("[CAUTION] Connection is insecure!")
             return grpc.insecure_channel(self._config.target, options=self._config.options)
@@ -365,7 +340,7 @@ class Client(IOManager):
         configuration = {**configuration, **self._config.model_overwrites}  # overwrite values based on settings
         configuration["checkpoint_path"] = checkpoint_path
 
-        configuration_path = "{}/config.latest".format(self._config.save_path)
+        configuration_path = "{}/config.latest.json".format(self._config.save_path)
         with open(configuration_path, "w") as write_buffer:
             json.dump(configuration, write_buffer)
 
@@ -377,7 +352,7 @@ class Client(IOManager):
 
     def _train(self, configuration_path: str) -> str:
         config: Type[AbstractConfiguration] = self._reflect(self._config.config_type)
-        config = config.from_json(configuration_path)
+        config = config.from_file(configuration_path)
 
         runner: Type[AbstractExecutor] = self._reflect(self._config.executor_type)
         runner = runner(config=config)

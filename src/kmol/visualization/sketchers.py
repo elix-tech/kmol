@@ -6,12 +6,11 @@ from typing import List, Dict
 import matplotlib.pyplot as plt
 import networkx as nx
 import torch
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image
 from cairosvg import svg2png
 from rdkit import Chem
 from rdkit.Chem import AllChem
 from rdkit.Chem.Draw import rdMolDraw2D
-from rdkit.Chem.Draw import DrawingOptions
 from torch_geometric.data import Data
 from torch_geometric.utils import to_networkx
 
@@ -27,9 +26,7 @@ class AbstractSketcher(metaclass=ABCMeta):
 
 
 class RdkitSketcher(AbstractSketcher):
-    def _generate_color_code(
-        self, highlight_intensities: List[float], color_switch_threshold: float = 0.3
-    ) -> Dict[int, tuple]:
+    def _generate_color_code(self, highlight_intensities: List[float], color_switch_threshold: float = 0.3) -> Dict[int, tuple]:
 
         if highlight_intensities is None:
             return {}
@@ -96,7 +93,7 @@ class RdkitSketcher(AbstractSketcher):
             highlightAtomColors=highlight_atoms,
             highlightBonds=list(highlight_bonds.keys()),
             highlightBondColors=highlight_bonds,
-            legend =f"\n\nClass: {label}; Prediction: {prediction}",
+            legend=f"\n\nClass: {label}; Prediction: {prediction}",
         )
         drawer.FinishDrawing()
         svg = drawer.GetDrawingText().replace("svg:", "")

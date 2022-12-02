@@ -1,17 +1,18 @@
-import logging
 import math
 import random
 import json
+import bisect
 from abc import ABCMeta, abstractmethod
 from collections import Counter, defaultdict
 from typing import Dict, List, Union, Tuple
 
 import pandas as pd
 from rdkit import Chem
-from tqdm import tqdm
 
 from .loaders import AbstractLoader
 from ..core.exceptions import SplitError
+from ..core.logger import LOGGER as logging
+from ..core.utils import progress_bar
 
 
 class AbstractSplitter(metaclass=ABCMeta):
@@ -52,9 +53,16 @@ class IndexSplitter(AbstractSplitter):
 class PrecomputedSplitter(AbstractSplitter):
     def __init__(self, splits: Dict[str, float], split_path: str):
         super().__init__(splits)
-        self.splits = json.load(open(split_path))
+        self.splits: Dict[str, List[Union[int, str]]] = json.load(open(split_path))
 
     def apply(self, data_loader: AbstractLoader) -> Dict[str, List[Union[int, str]]]:
+        ids = sorted(data_loader.list_ids())
+        for k, v in self.splits.items():
+            for index in v[:]:
+                if bisect.bisect_left(ids, index) == bisect.bisect(ids, index):
+                    logging.warning(f"[WARNING]: index value {index} is missing from cached dataset. It will be ignored.")
+                    self.splits[k].remove(index)
+
         return self.splits
 
 
@@ -87,8 +95,7 @@ class StratifiedSplitter(AbstractSplitter):
     """
 
     def __init__(
-            self, splits: Dict[str, float], seed: int, target_name: str,
-            bins_count: int = 0, is_target_input: bool = False
+        self, splits: Dict[str, float], seed: int, target_name: str, bins_count: int = 0, is_target_input: bool = False
     ):
         super().__init__(splits=splits)
 
@@ -130,8 +137,10 @@ class StratifiedSplitter(AbstractSplitter):
 
             if current_ratio < 1:
                 current_split_ids, leftover_ids = train_test_split(
-                    list(leftover_data.keys()), train_size=current_ratio,
-                    random_state=self._seed, stratify=list(leftover_data.values())
+                    list(leftover_data.keys()),
+                    train_size=current_ratio,
+                    random_state=self._seed,
+                    stratify=list(leftover_data.values()),
                 )
             else:
                 current_split_ids = list(leftover_data.keys())
@@ -146,7 +155,6 @@ class StratifiedSplitter(AbstractSplitter):
 
 
 class ScaffoldBalancerSplitter(AbstractSplitter):
-
     def __init__(self, splits: Dict[str, float], seed: int, smiles_field: str = "smiles"):
         super().__init__(splits=splits)
         self._seed = seed
@@ -156,7 +164,8 @@ class ScaffoldBalancerSplitter(AbstractSplitter):
         from rdkit.Chem.Scaffolds.MurckoScaffold import MurckoScaffoldSmiles
 
         logging.info("[SPLITTER] Extracting Scaffolds...")
-        return {entry.id_: MurckoScaffoldSmiles(entry.inputs[self.smiles_field]) for entry in tqdm(data_loader)}
+        with progress_bar() as progress:
+            return {entry.id_: MurckoScaffoldSmiles(entry.inputs[self.smiles_field]) for entry in progress.track(data_loader)}
 
     def apply(self, data_loader: AbstractLoader) -> Dict[str, List[Union[int, str]]]:
         from sklearn.model_selection import train_test_split
@@ -180,8 +189,10 @@ class ScaffoldBalancerSplitter(AbstractSplitter):
 
                 leftover_data = {id_: leftover_data[id_] for id_ in set(leftover_data) - set(additional_ids)}
                 current_split_ids, leftover_ids = train_test_split(
-                    list(leftover_data.keys()), train_size=adjusted_ratio,
-                    random_state=self._seed, stratify=list(leftover_data.values())
+                    list(leftover_data.keys()),
+                    train_size=adjusted_ratio,
+                    random_state=self._seed,
+                    stratify=list(leftover_data.values()),
                 )
 
                 current_split_ids.extend(additional_ids)
@@ -195,15 +206,12 @@ class ScaffoldBalancerSplitter(AbstractSplitter):
             ratio_left -= split_ratio
 
         total_samples_count = len(data_loader)
-        logging.info("[SPLITTER] Final Ratios: {}".format(
-            [len(split) / total_samples_count for split in splits.values()])
-        )
+        logging.info("[SPLITTER] Final Ratios: {}".format([len(split) / total_samples_count for split in splits.values()]))
 
         return splits
 
 
 class ScaffoldDividerSplitter(AbstractSplitter):
-
     def __init__(self, splits: Dict[str, float], seed: int, smiles_field: str = "smiles"):
         super().__init__(splits=splits)
         self._seed = seed
@@ -215,9 +223,10 @@ class ScaffoldDividerSplitter(AbstractSplitter):
         logging.info("[SPLITTER] Extracting Scaffolds...")
         sorted_scaffolds = defaultdict(list)
 
-        for entry in tqdm(data_loader):
-            scaffold = MurckoScaffoldSmiles(entry.inputs[self.smiles_field])
-            sorted_scaffolds[scaffold].append(entry.id_)
+        with progress_bar() as progress:
+            for entry in progress.track(data_loader):
+                scaffold = MurckoScaffoldSmiles(entry.inputs[self.smiles_field])
+                sorted_scaffolds[scaffold].append(entry.id_)
 
         return sorted_scaffolds
 
@@ -251,19 +260,13 @@ class ScaffoldDividerSplitter(AbstractSplitter):
             ratio_left -= split_ratio
 
         total_samples_count = len(data_loader)
-        logging.info("[SPLITTER] Final Ratios: {}".format(
-            [len(split) / total_samples_count for split in splits.values()])
-        )
+        logging.info("[SPLITTER] Final Ratios: {}".format([len(split) / total_samples_count for split in splits.values()]))
 
         return splits
 
 
 class ButinaClusterer:
-
-    def __init__(
-            self, butina_cutoff: float = 0.5, fingerprint_size: int = 1024,
-            radius: int = 2, smiles_field: str = "smiles"
-    ):
+    def __init__(self, butina_cutoff: float = 0.5, fingerprint_size: int = 1024, radius: int = 2, smiles_field: str = "smiles"):
         self._butina_cutoff = butina_cutoff
         self._fingerprint_size = fingerprint_size
         self._radius = radius
@@ -279,13 +282,14 @@ class ButinaClusterer:
 
         ids = []
         fingerprints = []
-        for entry in tqdm(data_loader):
-            ids.append(entry.id_)
-            fingerprints.append(
-                AllChem.GetMorganFingerprintAsBitVect(
-                    Chem.MolFromSmiles(entry.inputs[self.smiles_field]), self._radius, self._fingerprint_size
+        with progress_bar() as progress:
+            for entry in progress.track(data_loader):
+                ids.append(entry.id_)
+                fingerprints.append(
+                    AllChem.GetMorganFingerprintAsBitVect(
+                        Chem.MolFromSmiles(entry.inputs[self.smiles_field]), self._radius, self._fingerprint_size
+                    )
                 )
-            )
 
         samples_count = len(fingerprints)
         logging.info("[SPLITTER] Computing Similarities...")
@@ -302,15 +306,18 @@ class ButinaClusterer:
 
 
 class ButinaBalancerSplitter(ScaffoldBalancerSplitter, ButinaClusterer):
-
     def __init__(
-            self, splits: Dict[str, float], seed: int, butina_cutoff: float = 0.5, smiles_field: str = "smiles",
-            fingerprint_size: int = 1024, radius: int = 2
+        self,
+        splits: Dict[str, float],
+        seed: int,
+        butina_cutoff: float = 0.5,
+        smiles_field: str = "smiles",
+        fingerprint_size: int = 1024,
+        radius: int = 2,
     ):
         ScaffoldBalancerSplitter.__init__(self, splits=splits, seed=seed, smiles_field=smiles_field)
         ButinaClusterer.__init__(
-            self, butina_cutoff=butina_cutoff, fingerprint_size=fingerprint_size,
-            radius=radius, smiles_field=smiles_field
+            self, butina_cutoff=butina_cutoff, fingerprint_size=fingerprint_size, radius=radius, smiles_field=smiles_field
         )
 
     def _load_groups(self, data_loader: AbstractLoader) -> Dict[Union[int, str], float]:
@@ -325,15 +332,18 @@ class ButinaBalancerSplitter(ScaffoldBalancerSplitter, ButinaClusterer):
 
 
 class ButinaDividerSplitter(ScaffoldDividerSplitter, ButinaClusterer):
-
     def __init__(
-            self, splits: Dict[str, float], seed: int, butina_cutoff: float = 0.5, smiles_field: str = "smiles",
-            fingerprint_size: int = 1024, radius: int = 2
+        self,
+        splits: Dict[str, float],
+        seed: int,
+        butina_cutoff: float = 0.5,
+        smiles_field: str = "smiles",
+        fingerprint_size: int = 1024,
+        radius: int = 2,
     ):
         ScaffoldDividerSplitter.__init__(self, splits=splits, seed=seed, smiles_field=smiles_field)
         ButinaClusterer.__init__(
-            self, butina_cutoff=butina_cutoff, fingerprint_size=fingerprint_size,
-            radius=radius, smiles_field=smiles_field
+            self, butina_cutoff=butina_cutoff, fingerprint_size=fingerprint_size, radius=radius, smiles_field=smiles_field
         )
 
     def _load_groups(self, data_loader: AbstractLoader) -> Dict[int, List[Union[int, str]]]:
@@ -347,11 +357,11 @@ class ButinaDividerSplitter(ScaffoldDividerSplitter, ButinaClusterer):
 
 
 class DescriptorSplitter(StratifiedSplitter):
-
     def __init__(self, splits: Dict[str, float], seed: int, descriptor: str, bins_count: int = 10):
         super().__init__(splits=splits, seed=seed, bins_count=bins_count, target_name="smiles", is_target_input=True)
 
         from rdkit.ML.Descriptors.MoleculeDescriptors import MolecularDescriptorCalculator
+
         self._descriptor_calculator = MolecularDescriptorCalculator([descriptor])
 
         self._descriptor = descriptor

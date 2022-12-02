@@ -6,6 +6,7 @@ import torch
 from torch.nn.modules.batchnorm import _BatchNorm as BatchNormLayer
 
 from .helpers import Namespace
+from .logger import LOGGER as logging
 
 
 class AbstractEventHandler(metaclass=ABCMeta):
