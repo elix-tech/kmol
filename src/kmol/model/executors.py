@@ -203,18 +203,18 @@ class Trainer(AbstractExecutor):
                 self._to_device(batch)
                 ground_truth.append(batch.outputs)
 
-            inference_modes_dict = {
-                "evidential_classification": self.network.evidential_classification,
-                "evidential_classification_multilabel_logits": self.network.evidential_classification_multilabel_logits,
-                "evidential_classification_multilabel_nologits": self.network.evidential_classification_multilabel_nologits,
-                "evidential_regression": self.network.evidential_regression,
-            }
-            inference_mode = inference_modes_dict.get(self.config.inference_mode)
+                inference_modes_dict = {
+                    "evidential_classification": self.network.evidential_classification,
+                    "evidential_classification_multilabel_logits": self.network.evidential_classification_multilabel_logits,
+                    "evidential_classification_multilabel_nologits": self.network.evidential_classification_multilabel_nologits,
+                    "evidential_regression": self.network.evidential_regression,
+                }
+                inference_mode = inference_modes_dict.get(self.config.inference_mode)
 
-            if inference_mode:
-                logits.append(inference_mode(batch.inputs)["logits"])
-            else:
-                logits.append(self.network(batch.inputs))
+                if inference_mode:
+                    logits.append(inference_mode(batch.inputs)["logits"])
+                else:
+                    logits.append(self.network(batch.inputs))
 
             metrics = self._metric_computer.compute_metrics(ground_truth, logits)
             averages = self._metric_computer.compute_statistics(metrics, (np.mean,))
