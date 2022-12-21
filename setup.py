@@ -150,6 +150,6 @@ if __name__ == "__main__":
         ]
         +
         # Graphormer dependecy
-        cythonize([package]),
+        cythonize([package], language_level = "3"),
         cmdclass={"build_ext": BuildExtension},
     )

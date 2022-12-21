@@ -20,6 +20,7 @@ from .observers import AbstractEventHandler, EventManager, DifferentialPrivacy
 @dataclass
 class Config(AbstractConfiguration):
 
+    job_command: str
     model: Dict[str, Any]
     loader: Dict[str, Any]
     splitter: Dict[str, Any]
@@ -100,7 +101,7 @@ class Config(AbstractConfiguration):
         with open(Path(self.output_path) / "config.json", "w") as file:
             json.dump(self.__dict__, file, indent=2)
         with open(Path(self.output_path) / "config.yaml", "w") as file:
-            yaml.dump(self.__dict__, file, indent=4)
+            yaml.dump(self.__dict__, file, indent=4, allow_unicode=True)
 
         logging.add_file_log(Path(self.output_path))
         logging.stdout_handler.setLevel(self.log_level.upper())
@@ -115,7 +116,9 @@ class Config(AbstractConfiguration):
             DifferentialPrivacy.setup(**self.differential_privacy["options"])
 
     def check_update_config(self):
-        self.output_path = str(Path(self.output_path) / datetime.now().strftime("%Y-%m-%d_%H-%M"))
+        if self.job_command not in ['find_best_checkpoint', 'find_threshold']:
+            self.output_path = str(Path(self.output_path) / datetime.now().strftime("%Y-%m-%d_%H-%M"))
+        del self.job_command
 
         if getattr(self, "observers") is None:
             setattr(self, "observers", {})

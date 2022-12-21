@@ -10,7 +10,7 @@ from typing import Any, List
 @dataclass
 class AbstractConfiguration(metaclass=ABCMeta):
     @classmethod
-    def from_file(cls, file_path: str) -> "AbstractConfiguration":
+    def from_file(cls, file_path: str, job_command: str) -> "AbstractConfiguration":
         """
         Only json and YAML format are supported, config are expected to
         have the correct suffix.
@@ -81,7 +81,7 @@ class AbstractConfiguration(metaclass=ABCMeta):
         cfg = get_dict_from_file(file_path)
         if cfg.get("parameters", False):
             del cfg["parameters"]
-        return cls(**cfg)
+        return cls(job_command, **cfg)
 
     @classmethod
     def _update_recursive_dict(cls, current, update):

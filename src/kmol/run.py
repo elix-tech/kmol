@@ -594,7 +594,7 @@ def main():
     parser.add_argument("config")
     args = parser.parse_args()
 
-    Executor(config=Config.from_file(args.config), config_path=args.config).run(args.job)
+    Executor(config=Config.from_file(args.config, args.job), config_path=args.config).run(args.job)
 
 
 if __name__ == "__main__":

@@ -1,5 +1,6 @@
 import itertools
 import os
+import warnings
 from abc import ABCMeta, abstractmethod
 from functools import partial
 from typing import List, Dict, Tuple
@@ -7,6 +8,7 @@ from copy import deepcopy
 from concurrent.futures import ProcessPoolExecutor
 import multiprocessing
 from tqdm import tqdm
+from dask.distributed import Client
 
 from torch.utils.data import Subset
 
@@ -61,30 +63,33 @@ class AbstractPreprocessor(metaclass=ABCMeta):
     def _get_chunks(self, dataset):
         n_jobs = self._config.featurization_jobs
         chunk_size = len(dataset) // n_jobs
-        chunks = [list(range(i, i + chunk_size)) for i in range(0, len(dataset), chunk_size)]
+        range_list = list(range(0, len(dataset)))
+        chunks = [range_list[i * chunk_size:(i + 1) * chunk_size] for i in range((len(dataset) + chunk_size - 1) // chunk_size)]
         return [Subset(dataset, chunk) for chunk in chunks]
 
     def _run_parrallel(self, func, dataset, use_disk=False):
         chunks = self._get_chunks(dataset)
+        futures = []
         with progress_bar() as progress:
-            futures = []
             with multiprocessing.Manager() as manager:
                 _progress = manager.dict()
+
+                client = Client(n_workers=self._config.featurization_jobs)
+                warnings.simplefilter('ignore')
                 overall_progress_task = progress.add_task("[green]All jobs progress:")
+                for n, chunk in enumerate(chunks, 1):
+                    task_id = progress.add_task(f"featurizer {n}", visible=False)
+                    futures.append(client.submit(func, _progress, task_id, chunk))
 
-                with ProcessPoolExecutor(max_workers=self._config.featurization_jobs) as executor:
-                    for n, chunk in enumerate(chunks, 1):
-                        task_id = progress.add_task(f"featurizer {n}", visible=False)
-                        futures.append(executor.submit(func, _progress, task_id, chunk))
-
-                    n_finished = 0
-                    while n_finished < len(futures):
-                        for task_id, update_data in _progress.items():
-                            latest = update_data["progress"]
-                            total = update_data["total"]
-                            progress.update(task_id, completed=latest, total=total, visible=latest < total)
-                        n_finished = sum([future.done() for future in futures])
-                        progress.update(overall_progress_task, completed=n_finished, total=len(futures))
+                warnings.resetwarnings()
+                n_finished = 0
+                while n_finished < len(futures):
+                    for task_id, update_data in _progress.items():
+                        latest = update_data["progress"]
+                        total = update_data["total"]
+                        progress.update(task_id, completed=latest, total=total, visible=latest < total)
+                    n_finished = sum([future.done() for future in futures])
+                    progress.update(overall_progress_task, completed=n_finished, total=len(futures))
 
         if use_disk:
             logging.info("Merging cache files...")
