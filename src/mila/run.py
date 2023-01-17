@@ -1,8 +1,10 @@
 from argparse import ArgumentParser
 
 from .configs import ServerConfiguration, ClientConfiguration
-from .services import Server, Client, DefaultServicer
-
+# from .services import Server, Client, DefaultServicer
+from .services.clients import AbstractClient
+from .services.servers import AbstractServer
+from .services.server_manager import ServerManager
 
 class Executor:
 
@@ -18,15 +20,17 @@ class Executor:
     def server(self) -> None:
         config: ServerConfiguration = ServerConfiguration.from_json(self._config_path)
 
-        server = Server(config=config)
-        servicer = DefaultServicer(config=config)
-
+        # server = Server(config=config)
+        server = AbstractServer._reflect(config.server_type)(config=config)
+        # servicer = DefaultServicer(config=config)
+        servicer = ServerManager._reflect(config.server_manager_type)(config=config)
         server.run(servicer=servicer)
 
     def client(self) -> None:
         config: ClientConfiguration = ClientConfiguration.from_json(self._config_path)
 
-        client = Client(config=config)
+        # client = Client(config=config)
+        client = AbstractClient._reflect(config.client_type)(config=config)
         client.run()  
 
 

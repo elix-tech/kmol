@@ -7,7 +7,7 @@ from ...configs import ServerConfiguration
 from ...protocol_buffers import mila_pb2_grpc
 from .abstract_server import AbstractServer
 
-class Server(AbstractServer):
+class GrcpServer(AbstractServer):
 
     def __init__(self, config: ServerConfiguration) -> None:
         self._config = config

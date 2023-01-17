@@ -28,7 +28,8 @@ class AbstractClient(IOManager):
         configuration = json.loads(received_configuration.decode("utf-8"))
 
         configuration = {**configuration, **self._config.model_overwrites}  # overwrite values based on settings
-        configuration["checkpoint_path"] = checkpoint_path
+        if checkpoint_path.exists():
+            configuration["checkpoint_path"] = str(checkpoint_path)
 
         configuration_path = "{}/config.latest.json".format(self._config.save_path)
         with open(configuration_path, "w") as write_buffer:

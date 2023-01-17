@@ -4,7 +4,6 @@ import uuid
 from dataclasses import dataclass, field
 from time import time
 from typing import Callable, Dict, Type
-from time import time
 import pytz
 from datetime import datetime
 
@@ -19,7 +18,8 @@ class IOManager:
         with open(file_path, "rb") as read_buffer:
             return read_buffer.read()
 
-    def _reflect(self, object_path: str) -> Callable:
+    @classmethod
+    def _reflect(cls, object_path: str) -> Callable:
         module, class_name = object_path.rsplit(".", 1)
         return getattr(importlib.import_module(module), class_name)
 
@@ -32,6 +32,7 @@ class Participant:
     token: str = field(default_factory=lambda: str(uuid.uuid4()))
     round: int = 0
     awaiting_response: bool = False
+    cut_from_training: bool = False
 
     __last_heartbeat: float = field(default_factory=datetime.now(pytz.utc).timestamp)
 
@@ -43,7 +44,7 @@ class Participant:
     def is_alive(self, heartbeat_timeout: float, _time=None) -> bool:
         if _time is None:
             _time = datetime.now(pytz.utc).timestamp()
-        return _time - self.__last_heartbeat < heartbeat_timeout
+        return (_time - self.__last_heartbeat) < heartbeat_timeout
 
     def __eq__(self, other: "Participant") -> bool:
         return self.name == other.name and self.ip_address == other.ip_address
@@ -128,6 +129,8 @@ class ServerManager(IOManager):
         return self._read_file(self._latest_checkpoint)
 
     def close_registration(self) -> None:
+        if not self._is_registration_closed:
+            logging.info("Closing the registration")
         self._is_registration_closed = True
 
     def should_wait_for_additional_clients(self) -> bool:
@@ -189,13 +192,8 @@ class ServerManager(IOManager):
     def get_clients_model_path_for_current_round(self):
         return [
             self.get_client_filename_for_current_round(client)
-            for client in self._registry.values()
+            for client in self._registry.values() if client.is_alive(self._config.heartbeat_timeout)
         ]
 
-    def get_client_filename_for_current_round(self, client: Participant):
-        return "{}/{}.{}.{}.remote".format(
-            self._config.save_path,
-            client.name,
-            client.ip_address.replace(".", "_"),
-            self._current_round
-        )
+    def get_client_filename_for_current_round(self, client):
+        raise NotImplementedError

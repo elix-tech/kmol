@@ -7,31 +7,41 @@ optuna == 2.4.0
 grpcio-tools
 grpcio == 1.31.0
 rdkit
-openpyxl
 pyhumps == 1.6.1
+disklist == 0.4.0
+rich == 12.6.0
 openpyxl
 scikit-learn == 0.23.2
+mordred == 1.2.0
+pandas == 1.5.2
+numpy == 1.22.3
 
 
 
---find-links https://download.pytorch.org/whl/cu111/torch/
-torch == 1.8.1
---find-links https://download.pytorch.org/whl/cu111/torchvision/
-torchvision == 0.9.1
+# --find-links https://download.pytorch.org/whl/cu117/torch/
+# torch == 1.10.1
+# --find-links https://download.pytorch.org/whl/cu117/torchvision/
+# torchvision == 0.11.2
+
+--find-links https://download.pytorch.org/whl/cu113/torch_stable.html
+torch==1.10.1+cu113 
+torchvision==0.11.2+cu113
 # torchaudio == 0.8.1
 # torch == 1.6.0
 # torchvision == 0.7.0
 
 # --find-links https://pytorch-geometric.com/whl/torch-1.6.0+cu102.html
---find-links https://pytorch-geometric.com/whl/torch-1.8.1+cu111.html
-torch-scatter == 2.0.6
-torch-sparse == 0.6.10
-torch-cluster == 1.5.9
+--find-links https://pytorch-geometric.com/whl/torch-1.10.1+cu113.html
+torch-scatter == 2.0.9
+torch-sparse == 0.6.13
+torch-cluster == 1.6.0
 torch-spline-conv == 1.2.1
 
 torch-geometric == 2.0.2
 
 torch_lr_finder == 0.2.1
+
+boxsdk[jwt] == 3.6.1
 
 -e .
 

@@ -6,13 +6,12 @@ from typing import Callable, Any
 import grpc
 from kmol.core.logger import LOGGER as logging
 
-from ...factories import AbstractConfiguration, AbstractExecutor
 from ...protocol_buffers import mila_pb2, mila_pb2_grpc
 from ...exceptions import InvalidNameError
 from .abstract_client import AbstractClient
-from ...factories import ClientConfiguration
+from ...configs import ClientConfiguration
 
-class DefaultClient(AbstractClient):
+class GrcpClient(AbstractClient):
 
     def __init__(self, config: ClientConfiguration) -> None:
         super().__init__(config)

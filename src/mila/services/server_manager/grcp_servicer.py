@@ -7,10 +7,10 @@ from kmol.core.logger import LOGGER as logging
 from ...configs import ServerConfiguration
 from ...exceptions import ClientAuthenticationError
 from ...protocol_buffers import mila_pb2, mila_pb2_grpc
-from .server_manager import ServerManager
+from .server_manager import ServerManager, Participant
 
 
-class DefaultServicer(ServerManager, mila_pb2_grpc.MilaServicer):
+class GrcpServicer(ServerManager, mila_pb2_grpc.MilaServicer):
 
     def __init__(self, config: ServerConfiguration) -> None:
         super().__init__(config=config)
@@ -85,3 +85,10 @@ class DefaultServicer(ServerManager, mila_pb2_grpc.MilaServicer):
             return EmptyResponse()
 
 
+    def get_client_filename_for_current_round(self, client: Participant):
+        return "{}/{}.{}.{}.remote".format(
+            self._config.save_path,
+            client.name,
+            client.ip_address.replace(".", "_"),
+            self._current_round
+        )
