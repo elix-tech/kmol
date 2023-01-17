@@ -43,6 +43,7 @@ class Config(AbstractConfiguration):
     validation_split: str = "validation"
     test_split: str = "test"
     test_metrics: List[str] = field(default_factory=lambda: [])
+    prediction_additional_columns: List[str] = field(default_factory=lambda: [])
 
     epochs: int = 100
     batch_size: int = 32

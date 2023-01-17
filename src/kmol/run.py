@@ -14,10 +14,11 @@ from tqdm import tqdm
 
 from mila.factories import AbstractExecutor
 from .core.config import Config
-from .core.helpers import Namespace, ConfidenceInterval
+from .core.helpers import Namespace, ConfidenceInterval, SuperFactory
 from .core.logger import LOGGER as logging
 from .core.tuning import OptunaTemplateParser
 from .data.resources import DataPoint
+from .data.loaders import AbstractLoader
 from .data.streamers import GeneralStreamer, SubsetStreamer, CrossValidationStreamer
 from .model.executors import Predictor, ThresholdFinder, LearningRareFinder, Pipeliner
 from .model.metrics import PredictionProcessor, CsvLogger
@@ -293,6 +294,10 @@ class Executor(AbstractExecutor):
         predictor = Predictor(config=self._config)
         transformer_reverter = partial(self.__revert_transformers, streamer=streamer)
 
+
+        if len(self._config.prediction_additional_columns) > 0:
+            loader = SuperFactory.create(AbstractLoader, self._config.loader)
+
         results = defaultdict(list)
         outputs_to_save = defaultdict(list)
         for batch in data_loader.dataset:
@@ -323,6 +328,10 @@ class Executor(AbstractExecutor):
             if variance is not None:
                 results["variance"].extend(variance.cpu().numpy())
 
+            if len(self._config.prediction_additional_columns) > 0:
+                for col_name in self._config.prediction_additional_columns:
+                    results[col_name].extend(loader._dataset.iloc[batch.ids][col_name].values)
+
         results["predictions"] = np.vstack(results["predictions"])
         results["labels"] = np.vstack(results["labels"])
         if "variance" in results:
@@ -350,6 +359,7 @@ class Executor(AbstractExecutor):
             if "variance" in results:
                 results[f"{label}_logits_var"] = results["variance"][:, i]
                 columns.append(f"{label}_logits_var")
+            columns += self._config.prediction_additional_columns
 
         results = pd.DataFrame.from_dict({c: results[c] for c in columns})
 
