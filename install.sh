@@ -7,3 +7,5 @@ echo 'export LD_LIBRARY_PATH="$CONDA_PREFIX/lib:$LD_LIBRARY_PATH"' > $CONDA_PREF
 
 mkdir -p $CONDA_PREFIX/etc/conda/deactivate.d
 echo 'unset LD_LIBRARY_PATH' > $CONDA_PREFIX/etc/conda/deactivate.d/env_vars.sh
+
+echo "Install finish please deactivate and reactivate your conda environment to enable the env variables."

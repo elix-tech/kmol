@@ -2,7 +2,7 @@
 from threading import Thread
 from kmol.core.logger import LOGGER as logging
 from time import sleep
-from pathlib import Path
+import traceback
 
 from ...configs import ServerConfiguration
 from ..server_manager.box_servicer import BoxServicer
@@ -19,7 +19,7 @@ class BoxServer(AbstractServer):
         logging.info(msg)
         while True:
             func()
-            sleep(self._config.box_configuration.scan_frequency)
+            sleep(5)
 
 
     def _run(self, servicer: BoxServicer) -> None:
@@ -65,7 +65,6 @@ class BoxServer(AbstractServer):
 
         logging.info(f"All round are finish")
         servicer.create_end_training_file()
-        # servicer.send_model()
 
     def run(self, servicer: BoxServicer):
         try:
@@ -73,8 +72,9 @@ class BoxServer(AbstractServer):
         except KeyboardInterrupt:
             logging.info("Stopping gracefully...")
             servicer.create_end_training_file(msg="Training stop by user")
-        # except Exception as e:
-        #     logging.info(f"An error occured, creating the end file")
-        #     servicer.create_end_training_file(msg=print(e))
-        #     logging.error(e)
+        except Exception as e:
+            logging.info(f"An error occured, creating the end file")
+            msg = str(e)+ '\n' + ''.join(traceback.format_exception(None, e, e.__traceback__))
+            servicer.create_end_training_file(msg=msg)
+            logging.error(e)
         

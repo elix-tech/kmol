@@ -4,7 +4,6 @@ from pathlib import Path
 from kmol.core.logger import LOGGER as logging
 
 from .server_manager import ServerManager, Participant
-from ...exceptions import ClientAuthenticationError
 from ..box_utils import Box, File, User
 from ...configs import ServerConfiguration
 
@@ -32,7 +31,7 @@ class BoxServicer(ServerManager):
         for file in auth_files:
             if file.content().decode() == "":
                 if self._is_registration_closed:
-                    self.box.update_text(file, f"Error - Authentification failed... Registration is closed.")
+                    self.box.update_text(file, f"Error - Authentication failed... Registration is closed.")
                 else:
                     user = file.created_by
                     token = self.register_client(user.name, user)

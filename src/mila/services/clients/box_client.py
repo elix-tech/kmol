@@ -1,11 +1,8 @@
-import json
 from io import StringIO
 from time import time, sleep
 from pathlib import Path
 from threading import Thread
-from typing import Dict, Callable, Any, Type, Optional
-
-from boxsdk import Client
+from typing import Callable, Any
 
 from kmol.core.logger import LOGGER as logging
 
@@ -132,7 +129,7 @@ class BoxClient(AbstractClient):
             logging.info("Stopping gracefully...")
             self._invoke(self.close)
 
-        # except Exception as e:
-        #     logging.error("[internal error] {}".format(e))
-        #     self._invoke(self.close)
+        except Exception as e:
+            logging.error("[internal error] {}".format(e))
+            self._invoke(self.close)
 

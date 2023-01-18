@@ -25,7 +25,6 @@ class BoxConfiguration:
     shared_dir_name: str
     save_path: str
     group_name: str
-    scan_frequency: int
 
 
 @dataclass
@@ -107,4 +106,5 @@ def common_post_init(self):
     save_path = save_path / datetime.now().strftime('%Y-%m-%d_%H-%M')
     if not save_path.exists():
         save_path.mkdir(parents=True)
+    self.save_path = save_path
     
