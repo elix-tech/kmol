@@ -67,6 +67,60 @@ In addition, a configuration file is needed for the server and each individual c
 A detailed documentation on how to configure the server and clients can be found under section 3.5.1 and 3.5.2 of `docs/documentation.pdf` respectively.
 Sample configurations can be found under `data/configs/mila/`.  
 
+### Box and Grcp parameters
+
+There are two ways to run a federated example. One is with the grcp protocol to connect the client directly to the server. The second way uses box applications and sends the models to a box shared directory.  There is a needed set up to be done on Box for it to work. The set up won't be explained here, see `docs/box_documentation.pdf` for more details.
+
+The grcp parameter should be contain in `grcp_configuration` like the following:
+
+```json
+  "server_type": "mila.services.servers.GrcpServer",
+  "server_manager_type": "mila.services.server_manager.GrcpServicer",
+  ...
+  "grcp_configuration": {
+    "target": "localhost:8024",
+
+    "options": [
+          ["grpc.max_send_message_length", 1000000000],
+          ["grpc.max_receive_message_length", 1000000000],
+          ["grpc.ssl_target_name_override", "localhost"]
+      ],
+
+    "use_secure_connection": false,
+    "ssl_private_key": "data/certificates/client.key",
+    "ssl_cert": "data/certificates/client.crt",
+    "ssl_root_cert": "data/certificates/rootCA.pem"
+  }
+```
+
+The client configuration only changes having the parameter `client_type` to `mila.services.clients.GrcpClient` istead of `server_type` and `server_manager_type`.
+
+Note: if the user want to leave the default parameter it should still provide an empty directory to the grcp_configuration configuration.
+
+
+As for box we will have a similar config type:
+
+
+```json
+  "server_type": "mila.services.servers.BoxServer",
+  "server_manager_type": "mila.services.server_manager.BoxServicer",
+  ...
+  "box_configuration": {
+    "box_configuration_path": "example_jwt_config.json",
+    "shared_dir_name": "example-folder-jwt",
+    "save_path": "my_path_inside_shared_dir_name",
+    "group_name": "jwt-application-group-name"
+  }
+```
+
+Similar to grcp the client config will only need `client_type` set to `mila.services.clients.BoxClient`
+
+- `box_configuration_path`: The Public / private key pair file downloaded during the admin set up,
+- `shared_dir_name`: The name of the directory shared with the group of the application,
+- `save_path`: The path inside shared_dir_name where the training logs and weights should be save. To avoid issue we also add a date_time layer based on the time launched.,
+- `group_name`: The name of the group of the application
+
+
 ### Starting the server
 The server should start before clients start connecting.
 
