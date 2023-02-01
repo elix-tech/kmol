@@ -45,7 +45,7 @@ class WeightedTorchAggregator(AbstractAggregator):
         output = OrderedDict()
 
         for checkpoint_path in checkpoint_paths:
-            owner = checkpoint_path.split("/")[-1].split(".")[0]
+            owner = str(checkpoint_path).split("/")[-1].split(".")[0]
             weight = self._weights[owner]
 
             state = torch.load(checkpoint_path, map_location=torch.device("cpu"))
