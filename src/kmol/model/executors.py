@@ -20,6 +20,7 @@ from ..core.exceptions import CheckpointNotFound
 from ..core.logger import LOGGER as logging
 from ..core.helpers import Timer, SuperFactory, Namespace, HookProbe
 from ..core.observers import EventManager
+from ..core.custom_dataparallel import CustomDataParallel
 from ..data.resources import Batch, LoadedContent
 
 
@@ -69,7 +70,7 @@ class AbstractExecutor(metaclass=ABCMeta):
         EventManager.dispatch_event(event_name="after_network_create", payload=payload)
 
         if self.config.should_parallelize():
-            self.network = torch.nn.DataParallel(self.network, device_ids=self.config.enabled_gpus)
+            self.network = CustomDataParallel(self.network, device_ids=self.config.enabled_gpus)
 
         self.network.to(self.config.get_device())
 

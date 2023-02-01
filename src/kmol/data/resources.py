@@ -51,7 +51,7 @@ class Collater:
 
         outputs = np.array(outputs)
         outputs = torch.FloatTensor(outputs)
-
+        inputs = dict(inputs)
         return Batch(ids=ids, labels=batch[0].labels, inputs=inputs, outputs=outputs)
 
     def apply(self, batch: List[DataPoint]) -> Batch:
