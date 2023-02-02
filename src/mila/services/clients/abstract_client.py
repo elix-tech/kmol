@@ -43,7 +43,7 @@ class AbstractClient(IOManager):
 
     def _train(self, configuration_path: str) -> str:
         config: Type[AbstractConfiguration] = self._reflect(self._config.config_type)
-        config = config.from_file(configuration_path)
+        config = config.from_file(configuration_path, "train")
 
         runner: Type[AbstractExecutor] = self._reflect(self._config.executor_type)
         runner = runner(config=config)

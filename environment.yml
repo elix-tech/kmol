@@ -5,10 +5,10 @@ channels:
   - pytorch
   - conda-forge
   - defaults
+  - nvidia/label/cuda-11.7.0
 dependencies:
-  # - cudatoolkit=11.3
+  - cuda
   - openssl=1.1.1h
   - libprotobuf=3.13.0.1
   - python=3.9.1
-  # - python=3.8.3
   - pip
