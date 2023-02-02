@@ -1,12 +1,15 @@
 import datetime
 import hashlib
 import importlib
+import io
 import json
+import pickle
 import os
+import tempfile
 import timeit
 from dataclasses import dataclass
 from functools import partial, total_ordering
-from typing import Type, Any, Dict, Union, T, Optional, List, Callable, TextIO
+from typing import Type, Any, Dict, Union, T, Optional, List, Callable, TextIO, BinaryIO
 
 import humps
 import numpy as np
@@ -14,6 +17,7 @@ import torch
 
 from .exceptions import ReflectionError
 from .logger import LOGGER as logging
+from disklist import DiskList
 
 
 class Timer:
@@ -48,7 +52,7 @@ class SuperFactory:
     def create(
         instantiator: Optional[Type[Any]],
         dynamic_parameters: Dict[str, Any],
-        loaded_parameters: Optional[Dict[str, Any]] = None
+        loaded_parameters: Optional[Dict[str, Any]] = None,
     ) -> Any:
         """
         The super factory is a mix between an abstract factory and a dependency injector.
@@ -81,10 +85,7 @@ class SuperFactory:
             if "." in dependency_type:
                 instantiator = SuperFactory.reflect(dependency_type)
             else:
-                if (
-                    type(instantiator) is type(Union)
-                    and type(None) in instantiator.__args__
-                ):
+                if type(instantiator) is type(Union) and type(None) in instantiator.__args__:
                     # Fix for Optional arguments
                     instantiator = instantiator.__args__[0]
 
@@ -95,11 +96,8 @@ class SuperFactory:
                 subclasses = SuperFactory.find_descendants(instantiator)
                 if dependency_name not in subclasses:
                     raise ReflectionError(
-                        "Dependency not found: {}. Available options are: {}".format(
-                            dependency_name, subclasses.keys()
-                        )
+                        "Dependency not found: {}. Available options are: {}".format(dependency_name, subclasses.keys())
                     )
-
                 instantiator = subclasses.get(dependency_name)
 
         if not dynamic_parameters and not loaded_parameters:
@@ -112,30 +110,24 @@ class SuperFactory:
 
                 for option_name, option_value in dynamic_parameters.items():
                     if option_name not in parameters and "kwargs" not in parameters:
-                        raise ReflectionError(
-                            "Unknown option for [{}] ---> [{}]".format(
-                                instantiator.__name__, option_name
-                            )
-                        )
+                        raise ReflectionError("Unknown option for [{}] ---> [{}]".format(instantiator.__name__, option_name))
 
                     if option_name not in attributes:
                         continue  # for 3rd party libraries that don't use type hints...
 
                     if type(option_value) is dict and not (
-                        hasattr(attributes[option_name], "_name")
-                        and attributes[option_name]._name == "Dict"
+                        hasattr(attributes[option_name], "_name") and attributes[option_name]._name == "Dict"
                     ):
                         # if the option is a dictionary, and the argument is not expected to be one
                         # we consider it an additional object which we instantiate/inject recursively
-                        dynamic_parameters[option_name] = SuperFactory.create(
-                            attributes[option_name], option_value
-                        )
+                        dynamic_parameters[option_name] = SuperFactory.create(attributes[option_name], option_value)
 
             options = dynamic_parameters
             for key, value in loaded_parameters.items():
                 if key in parameters:
                     options[key] = value
-        except Exception:
+        except Exception as e:
+            logging.debug(f"Exception found while instantiating object: {e}")
             options = dynamic_parameters
 
         return instantiator(**options)
@@ -147,7 +139,6 @@ class SuperFactory:
 
         module_name, class_name = dependency.rsplit(".", 1)
         module = importlib.import_module(module_name)
-
         return getattr(module, class_name)
 
 
@@ -164,8 +155,7 @@ class CacheManager:
                 dictionary[key] = self._sort(value)
             elif type(value) is list and len(value) > 0:
                 if type(value[0]) is dict:
-                    dictionary[key] =  [self._sort(v) for v in value]
-
+                    dictionary[key] = [self._sort(v) for v in value]
         return dict(sorted(dictionary.items()))
 
     def key(self, **kwargs) -> str:
@@ -178,10 +168,21 @@ class CacheManager:
         return os.path.isfile("{}/{}".format(self._cache_location, key))
 
     def load(self, key: str) -> Any:
-        return torch.load("{}/{}".format(self._cache_location, key))
+        try:
+            with open("{}/{}".format(self._cache_location, key), "rb") as file:
+                bio = io.BytesIO(pickle.load(file))
+            return torch.load(bio)
+        except Exception:
+            return torch.load("{}/{}".format(self._cache_location, key))
 
     def save(self, data: Any, key: str) -> Any:
-        return torch.save(data, "{}/{}".format(self._cache_location, key))
+        try:
+            bio = io.BytesIO()
+            torch.save(data, bio)
+            with open("{}/{}".format(self._cache_location, key), "wb") as file:
+                pickle.dump(bio.getvalue(), file)
+        except Exception:
+            return torch.save(data, "{}/{}".format(self._cache_location, key))
 
     def delete(self, key: str) -> None:
         try:
@@ -196,19 +197,20 @@ class CacheManager:
         cache_key: Dict[str, Any],
         clear_cache: bool = False,
     ) -> Any:
-        if cache_key["loader"]["input_path"]:
+        if cache_key.get("loader", {}).get("input_path", False):
             cache_key["timestamp"] = os.path.getmtime(cache_key["loader"]["input_path"])
 
         cache_key = self.key(**cache_key)
-        print(f"[INFO] Dataset Cache Key: {cache_key}")
+        logging.info(f"Dataset Cache Key: {cache_key}")
+
+        if self.has(cache_key) and not clear_cache:
+            return self.load(cache_key)
+
+        content = processor(**arguments)
 
         if clear_cache:
             self.delete(cache_key)
 
-        if self.has(cache_key):
-            return self.load(cache_key)
-
-        content = processor(**arguments)
         self.save(content, cache_key)
 
         return content
@@ -236,9 +238,7 @@ class Namespace:
     def reduce(namespaces: List["Namespace"], operation: Callable) -> "Namespace":
         options = {}
         for key in vars(namespaces[0]).keys():
-            options[key] = operation(
-                [getattr(namespace, key) for namespace in namespaces]
-            )
+            options[key] = operation([getattr(namespace, key) for namespace in namespaces])
 
         return Namespace(**options)
 
@@ -273,38 +273,24 @@ class ConfidenceInterval:
         return self.mean < other.mean
 
     def __eq__(self, other: "ConfidenceInterval") -> bool:
-        return (
-            self.mean == other.mean
-            and self.deviation == other.deviation
-            and self.confidence == other.confidence
-        )
+        return self.mean == other.mean and self.deviation == other.deviation and self.confidence == other.confidence
 
     def __add__(self, other: "ConfidenceInterval") -> "ConfidenceInterval":
         return ConfidenceInterval(
             mean=self.mean + other.mean,
             deviation=self.deviation + other.deviation,
-            confidence=min(self.confidence, other.confidence)
+            confidence=min(self.confidence, other.confidence),
         )
 
     def __truediv__(self, other: int) -> "ConfidenceInterval":
-        return ConfidenceInterval(
-            mean=self.mean / other,
-            deviation=self.deviation / other,
-            confidence=self.confidence
-        )
+        return ConfidenceInterval(mean=self.mean / other, deviation=self.deviation / other, confidence=self.confidence)
 
     @staticmethod
-    def compute(
-        values: Union[List[List[float]], np.ndarray], z: float = 1.96
-    ) -> List["ConfidenceInterval"]:
+    def compute(values: Union[List[List[float]], np.ndarray], z: float = 1.96) -> List["ConfidenceInterval"]:
         values = np.array(values).transpose()
 
         return [
-            ConfidenceInterval(
-                mean=np.mean(value),
-                deviation=z * np.std(value) / np.sqrt(len(value)),
-                confidence=z
-            )
+            ConfidenceInterval(mean=np.mean(value), deviation=z * np.std(value) / np.sqrt(len(value)), confidence=z)
             for value in values
         ]
 
@@ -334,11 +320,7 @@ class Loggable:
 
 class HookProbe:
     def __init__(self, model: torch.nn.Module, module_name: Optional[str] = None):
-        self.module_name = (
-            module_name
-            if module_name != "last_hidden"
-            else getattr(model, "last_hidden_layer_name", None)
-        )
+        self.module_name = module_name if module_name != "last_hidden" else getattr(model, "last_hidden_layer_name", None)
 
         self._cache = []
         self.hook = None
@@ -363,3 +345,35 @@ class HookProbe:
 
     def get_probe(self):
         return torch.stack(self._cache).mean(dim=0)
+
+
+class CacheDiskList(DiskList):
+    def __init__(
+        self,
+        init_temp_file: BinaryIO = None,
+        cache_size: int = -1,
+        tmp_dir: Union[Any, os.PathLike, None] = None,
+        delete: bool = False,
+    ):
+        self.item_offsets = []
+        self.item_sizes = []
+        self.cache = []
+        self.cache_size = cache_size
+        self.cache_index = 0
+
+        self.delete = delete
+        self.tempfile = tempfile.NamedTemporaryFile(dir=tmp_dir, delete=delete) if not init_temp_file else init_temp_file
+        self.tempfile_name = self.tempfile.name
+
+    def clear(self):
+        self.tempfile.close()
+        os.unlink(self.tempfile_name)
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        del state["tempfile"]
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        self.tempfile = open(self.tempfile_name, "r+b")

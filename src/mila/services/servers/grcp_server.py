@@ -18,9 +18,7 @@ class GrcpServer(AbstractServer):
         root_certificate = self._read_file(self._config.ssl_root_cert)
 
         return grpc.ssl_server_credentials(
-            ((private_key, certificate_chain),),
-            root_certificates=root_certificate,
-            require_client_auth=True
+            ((private_key, certificate_chain),), root_certificates=root_certificate, require_client_auth=True
         )
 
     def run(self, servicer: mila_pb2_grpc.MilaServicer) -> None:

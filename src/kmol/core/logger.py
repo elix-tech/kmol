@@ -20,12 +20,12 @@ COLORS = {
     'ERROR': RED
 }
 
-
 class CustomFormatter(logging.Formatter):
     """
     Format time since first log to measure time of the overall run and add
     color to stdout
     """
+
     def __init__(self, *args, use_color=True, **kwargs):
         super().__init__(*args, **kwargs)
         self.start_time = time.time()
@@ -35,7 +35,7 @@ class CustomFormatter(logging.Formatter):
         record = deepcopy(record)
         levelname = record.levelname
         if self.use_color and levelname in COLORS:
-            levelname_color = COLOR_SEQ % (30 + COLORS[levelname]) + ' '+levelname+' ' + RESET_SEQ
+            levelname_color = COLOR_SEQ % (30 + COLORS[levelname]) + " " + levelname + " " + RESET_SEQ
             record.levelname = levelname_color
         return record
 
@@ -43,9 +43,9 @@ class CustomFormatter(logging.Formatter):
         record = self.apply_colors(record)
         s = super().format(record)
         elapsed_seconds = record.created - self.start_time
-        #using timedelta here for convenient default formatting
-        elapsed = datetime.timedelta(seconds = elapsed_seconds)
-        time_elapsed = str(elapsed).split('.')[0]
+        # using timedelta here for convenient default formatting
+        elapsed = datetime.timedelta(seconds=elapsed_seconds)
+        time_elapsed = str(elapsed).split(".")[0]
         return "{} | {}".format(time_elapsed, s)
 
 
@@ -55,10 +55,11 @@ class __Logger(logging.Logger):
     Contain one streamer (stdout)
     one file handler
     """
+
     _logger = logging.getLogger("logger_run")
 
     def __new__(cls):
-        if not hasattr(cls, 'instance'):
+        if not hasattr(cls, "instance"):
             cls.instance = super().__new__(cls)
         return cls.instance
 
@@ -81,18 +82,14 @@ class __Logger(logging.Logger):
     def handle_excepthook(self, type, message, stack):
         self._logger.error(f"An unhandled exception occured: {message}. Traceback: \n{''.join(traceback.format_tb(stack))}")
 
-
     def _get_formatter(self, **kwargs):
         return CustomFormatter(
-                '%(asctime)s | [%(levelname)s | %(filename)s:%(lineno)s] > %(message)s',
-                datefmt='%Y-%m-%d %H:%M:%S',
-                **kwargs
-            )
-
+            "%(asctime)s | [%(levelname)s | %(filename)s:%(lineno)s] > %(message)s", datefmt="%Y-%m-%d %H:%M:%S", **kwargs
+        )
 
     def add_file_log(self, dir_path):
         if not os.path.isdir(dir_path):
-                os.mkdir(dir_path)
+            os.mkdir(dir_path)
         path_log = dir_path / f"log_{self.now.strftime('%Y-%m-%d_%H-%M')}.log"
         self.file_handler = logging.FileHandler(path_log)
         self.file_handler.setLevel(logging.DEBUG)
@@ -130,6 +127,5 @@ class __Logger(logging.Logger):
         if self.has_file_handler():
             return
         self.addHandler(self.file_handler)
-
 
 LOGGER = __Logger()

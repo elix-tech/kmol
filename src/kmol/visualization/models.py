@@ -28,9 +28,7 @@ class IntegratedGradientsExplainer(Loggable):
         self.model = model
         self.model.eval()
         self.graph_input_key = config.visualizer.get("graph_input_key", "graph")
-        self.sketcher = SuperFactory.create(
-            AbstractSketcher, config.visualizer["sketcher"]
-        )
+        self.sketcher = SuperFactory.create(AbstractSketcher, config.visualizer["sketcher"])
         self.is_binary_classification = is_binary_classification
         self.is_multitask = is_multitask
 
@@ -41,9 +39,7 @@ class IntegratedGradientsExplainer(Loggable):
 
         return open(log_file_path, "w")
 
-    def explain(
-        self, data: Union[DataPoint, Batch], target: int
-    ) -> Dict[int, np.ndarray]:
+    def explain(self, data: Union[DataPoint, Batch], target: int) -> Dict[int, np.ndarray]:
         graphs = data.inputs[self.graph_input_key]
 
         number_nodes = graphs.x.shape[0]
@@ -59,9 +55,7 @@ class IntegratedGradientsExplainer(Loggable):
         node_mask = np.abs(mask.cpu().detach().numpy()).sum(axis=1)
         return self.per_mol_mask(data, node_mask)
 
-    def per_mol_mask(
-        self, data: DataPoint, node_masks: np.ndarray
-    ) -> Dict[int, np.ndarray]:
+    def per_mol_mask(self, data: DataPoint, node_masks: np.ndarray) -> Dict[int, np.ndarray]:
         node_mask_per_mol = defaultdict(list)
         batch_ids = data.inputs[self.graph_input_key].batch
 
@@ -70,21 +64,17 @@ class IntegratedGradientsExplainer(Loggable):
 
         for batch_id, node_mask in node_mask_per_mol.items():
             if np.max(node_mask) > 0:
-                node_mask_per_mol[batch_id] = (
-                    np.array(node_mask) / np.array(node_mask).max()
-                )
+                node_mask_per_mol[batch_id] = np.array(node_mask) / np.array(node_mask).max()
 
         return node_mask_per_mol
 
-    def model_forward(
-        self, node_mask: torch.Tensor, data: Union[DataPoint, Batch]
-    ) -> torch.Tensor:
+    def model_forward(self, node_mask: torch.Tensor, data: Union[DataPoint, Batch]) -> torch.Tensor:
         data.inputs[self.graph_input_key].x = node_mask
 
         if not hasattr(data.inputs[self.graph_input_key], "batch"):
-            data.inputs[self.graph_input_key].batch = torch.zeros(
-                data.inputs[self.graph_input_key].x.shape[0], dtype=int
-            ).to(data.inputs[self.graph_input_key].x.device)
+            data.inputs[self.graph_input_key].batch = torch.zeros(data.inputs[self.graph_input_key].x.shape[0], dtype=int).to(
+                data.inputs[self.graph_input_key].x.device
+            )
 
         return self.model(data.inputs)
 
@@ -109,12 +99,10 @@ class IntegratedGradientsExplainer(Loggable):
         labels = data.outputs
         return data_list, dataset_sample_ids, labels
 
-    def visualize(
-        self, data: Union[DataPoint, Batch], target: int, save_path: str
-    ) -> None:
+    def visualize(self, data: Union[DataPoint, Batch], target: int, save_path: str) -> None:
 
         if self.is_multitask:
-            protein_target= np.argwhere(data.outputs.cpu().numpy()==data.outputs.cpu().numpy())
+            protein_target = np.argwhere(data.outputs.cpu().numpy() == data.outputs.cpu().numpy())
 
         node_mask_per_mol = self.explain(data, target)
         preds_ten = self.model_predict(data)
@@ -123,9 +111,8 @@ class IntegratedGradientsExplainer(Loggable):
         preds_arr, labels_arr = self._gen_arr_from_ten(preds_ten, labels)
 
         if self.is_multitask:
-            preds_arr = preds_arr[:, protein_target[:,1]].squeeze(axis=-1)
+            preds_arr = preds_arr[:, protein_target[:, 1]].squeeze(axis=-1)
             labels_arr = labels_arr[:, protein_target[:, 1]].squeeze(axis=-1)
-
 
         if self.is_binary_classification:
             preds_arr = np.where(preds_arr >= 0.5, 1.0, 0.0)
@@ -133,9 +120,7 @@ class IntegratedGradientsExplainer(Loggable):
         preds_arr = preds_arr.tolist()
         labels_arr = labels_arr.tolist()
 
-        for (batch_sample_id, node_mask), dataset_sample_id in zip(
-            node_mask_per_mol.items(), dataset_sample_ids
-        ):
+        for (batch_sample_id, node_mask), dataset_sample_id in zip(node_mask_per_mol.items(), dataset_sample_ids):
             sample = data_list[batch_sample_id]
 
             prediction = preds_arr[batch_sample_id]

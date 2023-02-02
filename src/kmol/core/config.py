@@ -1,5 +1,7 @@
 from datetime import datetime
 import json
+import random
+import numpy as np
 import yaml
 import os
 from copy import deepcopy
@@ -18,6 +20,7 @@ from .observers import AbstractEventHandler, EventManager, DifferentialPrivacy
 @dataclass
 class Config(AbstractConfiguration):
 
+    job_command: str
     model: Dict[str, Any]
     loader: Dict[str, Any]
     splitter: Dict[str, Any]
@@ -28,6 +31,7 @@ class Config(AbstractConfiguration):
     scheduler: Dict[str, Any]
     output_path: str
 
+    collater: DefaultDict[str, Any] = field(default_factory=lambda: {"type": "general"})
     is_stepwise_scheduler: Optional[bool] = True
     is_finetuning: Optional[bool] = False
     checkpoint_path: Optional[str] = None
@@ -35,7 +39,7 @@ class Config(AbstractConfiguration):
     inference_mode: Optional[str] = None
     cross_validation_folds: int = 5
     mc_dropout_iterations: int = 5
-    mc_dropout_probability: Optional[float] = None
+    mc_dropout_probability: Optional[float] = 0.1
     probe_layer: Optional[str] = None
 
     train_split: str = "train"
@@ -53,6 +57,8 @@ class Config(AbstractConfiguration):
     enabled_gpus: List[int] = field(default_factory=lambda: [0])
     num_workers: int = 0
     featurization_jobs: int = 4
+    preprocessing_use_disk: bool = False
+    preprocessing_disk_dir: Optional[str] = None
 
     cache_location: str = "/tmp/federated/"
     clear_cache: bool = False
@@ -71,6 +77,11 @@ class Config(AbstractConfiguration):
     subset: Optional[Dict[str, Any]] = None
     visualizer: Optional[Dict[str, Any]] = None
 
+    augmentations: List[Dict[str, Any]] = None
+    static_augmentations: List[Dict[str, Any]] = None
+    online_preprocessing: bool = False
+    seed: int = 42
+
     def should_parallelize(self) -> bool:
         return torch.cuda.is_available() and self.use_cuda and len(self.enabled_gpus) > 1
 
@@ -81,20 +92,22 @@ class Config(AbstractConfiguration):
         return torch.device(device_name)
 
     def __post_init__(self):
-        self.output_path = str(Path(self.output_path) / datetime.now().strftime('%Y-%m-%d_%H-%M'))
+        random.seed(self.seed)
+        np.random.seed(self.seed)
+        torch.manual_seed(self.seed)
+        self.check_update_config()
         if not os.path.exists(self.output_path):
             os.makedirs(self.output_path)
 
-        with open(Path(self.output_path) / "config.json", 'w') as file:
-            json.dump(self.__dict__, file, indent = 2)
-        with open(Path(self.output_path) / "config.yaml", 'w') as file:
-            yaml.dump(self.__dict__, file, indent = 4)
+        dump_copy = self.__dict__.copy()
+        del dump_copy['job_command']
+        with open(Path(self.output_path) / "config.json", "w") as file:
+            json.dump(dump_copy, file, indent=2)
+        with open(Path(self.output_path) / "config.yaml", "w") as file:
+            yaml.dump(dump_copy, file, indent=4, allow_unicode=True)
 
         logging.add_file_log(Path(self.output_path))
         logging.stdout_handler.setLevel(self.log_level.upper())
-
-        if getattr(self, "observers") is None:
-            setattr(self, "observers", {})
 
         EventManager.flush()
         for event_name, event_handlers in self.observers.items():
@@ -104,6 +117,21 @@ class Config(AbstractConfiguration):
 
         if self.differential_privacy["enabled"]:
             DifferentialPrivacy.setup(**self.differential_privacy["options"])
+
+    def check_update_config(self):
+        if self.job_command not in ['find_best_checkpoint', 'find_threshold']:
+            self.output_path = str(Path(self.output_path) / datetime.now().strftime("%Y-%m-%d_%H-%M"))
+
+        if getattr(self, "observers") is None:
+            setattr(self, "observers", {})
+
+        for element in ["augmentations", "static_augmentations"]:
+            if getattr(self, element) is None:
+                setattr(self, element, [])
+
+        for e in self.static_augmentations:
+            if "featurization_jobs" not in e.keys():
+                e["featurization_jobs"] = self.featurization_jobs
 
     def cloned_update(self, **kwargs) -> "Config":
         options = deepcopy(vars(self))

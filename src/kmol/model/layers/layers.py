@@ -5,22 +5,22 @@ import torch_geometric
 from torch.nn.functional import leaky_relu
 from torch_scatter import scatter_mean, scatter_std, scatter
 
-from ..core.helpers import SuperFactory
+from ...core.helpers import SuperFactory
 
 
 class GraphConvolutionWrapper(torch.nn.Module):
     def __init__(
-            self,
-            in_features: int,
-            out_features: int,
-            dropout: float,
-            layer_type: str = "torch_geometric.nn.GCNConv",
-            is_residual: bool = True,
-            norm_layer: Optional[str] = None,
-            activation: str = "torch.nn.ReLU",
-            edge_features: int = 0,
-            propagate_edge_features: bool = False,
-            **kwargs
+        self,
+        in_features: int,
+        out_features: int,
+        dropout: float,
+        layer_type: str = "torch_geometric.nn.GCNConv",
+        is_residual: bool = True,
+        norm_layer: Optional[str] = None,
+        activation: str = "torch.nn.ReLU",
+        edge_features: int = 0,
+        propagate_edge_features: bool = False,
+        **kwargs,
     ):
         super().__init__()
         base_features = in_features + in_features // 2 if edge_features else in_features
@@ -76,11 +76,11 @@ class GraphConvolutionWrapper(torch.nn.Module):
         return x
 
     def forward(
-            self,
-            x: torch.Tensor,
-            edge_index: torch.Tensor,
-            edge_attr: torch.Tensor,
-            batch: torch.Tensor,
+        self,
+        x: torch.Tensor,
+        edge_index: torch.Tensor,
+        edge_attr: torch.Tensor,
+        batch: torch.Tensor,
     ) -> torch.Tensor:
 
         x = self._add_edge_features(x, edge_index, edge_attr)
@@ -103,13 +103,13 @@ class GraphConvolutionWrapper(torch.nn.Module):
 
 class LinearBlock(torch.nn.Module):
     def __init__(
-            self,
-            in_features: int,
-            hidden_features: int,
-            out_features: int,
-            activation: str = "torch.nn.ReLU",
-            dropout: float = 0.,
-            use_batch_norm: bool = False,
+        self,
+        in_features: int,
+        hidden_features: int,
+        out_features: int,
+        activation: str = "torch.nn.ReLU",
+        dropout: float = 0.0,
+        use_batch_norm: bool = False,
     ):
         super().__init__()
         self.out_features = out_features
@@ -123,7 +123,7 @@ class LinearBlock(torch.nn.Module):
             layers.append(torch.nn.Dropout(p=dropout))
         layers.append(torch.nn.Linear(hidden_features, out_features))
         self.block = torch.nn.Sequential(*layers)
-        self.last_hidden_layer = f'block.{len(layers)-1}'
+        self.last_hidden_layer = f"block.{len(layers)-1}"
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.block(x)

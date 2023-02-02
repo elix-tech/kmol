@@ -11,5 +11,6 @@ def main():
 
     ScriptLauncher(config=ScriptConfig.from_file(args.config)).run()
 
+
 if __name__ == "__main__":
     main()

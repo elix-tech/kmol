@@ -1,8 +1,8 @@
 from typing import Dict, List, Optional, Tuple, Union
 
 import torch
-from torch_geometric.nn import (GlobalAttention, Set2Set, global_add_pool,
-                                global_max_pool, global_mean_pool)
+from torch_geometric.nn.aggr import AttentionalAggregation, Set2Set
+from torch_geometric.nn.pool import global_add_pool, global_max_pool, global_mean_pool
 from torch_geometric.utils import softmax
 from torch_scatter import scatter_add
 
@@ -34,7 +34,7 @@ class MeanReadOut(torch.nn.Module):
         return global_mean_pool(x, batch)
 
 
-class AttentionReadOut(GlobalAttention):
+class AttentionReadOut(AttentionalAggregation):
     def __init__(self, in_channels: int, full: bool = True, out_channels: Optional[int] = None, **kwargs):
         """
         When full is set to true, attention is computed separately on each feature channel.
@@ -50,7 +50,17 @@ class AttentionReadOut(GlobalAttention):
         super().__init__(gate_nn, nn)
         self.out_dim = out
 
-    def forward(self, x: torch.Tensor, batch: torch.LongTensor):
+    def __call__(self, x, batch=None, size=None):
+        return super().__call__(x, batch, dim_size=size)
+
+    def forward(
+        self,
+        x: torch.Tensor,
+        batch: torch.LongTensor,
+        ptr: Optional[torch.Tensor] = None,
+        dim_size: Optional[int] = None,
+        dim: int = -2,
+    ) -> torch.Tensor:
         size = int(batch.max().item() + 1)
         if self.attention_out_dim == 1:
             return super().forward(x, batch, size=size)
@@ -92,9 +102,7 @@ class Set2SetReadOut(Set2Set):
 class CombinedReadOut(torch.nn.Module):
     def __init__(self, read_out_list: Union[Tuple[str, ...], List[str]], read_out_kwargs: dict):
         super().__init__()
-        self.read_outs = torch.nn.ModuleList(
-            [get_read_out(f, read_out_kwargs) for f in read_out_list]
-        )
+        self.read_outs = torch.nn.ModuleList([get_read_out(f, read_out_kwargs) for f in read_out_list])
         self.out_dim = sum([read_out.out_dim for read_out in self.read_outs])
 
     def forward(self, x: torch.Tensor, batch: torch.LongTensor):

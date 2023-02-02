@@ -6,8 +6,9 @@ channels:
   - conda-forge
   - defaults
 dependencies:
-  - cudatoolkit=11.3
+  # - cudatoolkit=11.3
   - openssl=1.1.1h
   - libprotobuf=3.13.0.1
   - python=3.9.1
+  # - python=3.8.3
   - pip

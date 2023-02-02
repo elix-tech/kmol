@@ -139,12 +139,9 @@ class ServerManager(IOManager):
 
         clients_count = self.get_clients_count()
 
-        return (
-            clients_count < self._config.minimum_clients
-            or (
-                clients_count < self._config.maximum_clients
-                and time() - self._last_registration_time < self._config.client_wait_time
-            )
+        return clients_count < self._config.minimum_clients or (
+            clients_count < self._config.maximum_clients
+            and time() - self._last_registration_time < self._config.client_wait_time
         )
 
     def are_more_rounds_required(self) -> bool:

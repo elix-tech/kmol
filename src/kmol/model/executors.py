@@ -10,7 +10,6 @@ import torch
 from torch.nn.modules.loss import _Loss as AbstractCriterion
 from torch.optim import Optimizer as AbstractOptimizer
 from torch.optim.lr_scheduler import _LRScheduler as AbstractLearningRateScheduler, ExponentialLR
-from tqdm import tqdm
 
 from .architectures import AbstractNetwork, EnsembleNetwork
 from .metrics import PredictionProcessor
@@ -22,6 +21,7 @@ from ..core.helpers import Timer, SuperFactory, Namespace, HookProbe
 from ..core.observers import EventManager
 from ..core.custom_dataparallel import CustomDataParallel
 from ..data.resources import Batch, LoadedContent
+from ..core.utils import progress_bar
 
 
 class AbstractExecutor(metaclass=ABCMeta):
@@ -42,15 +42,34 @@ class AbstractExecutor(metaclass=ABCMeta):
         batch.outputs = batch.outputs.to(self._device)
         for key, values in batch.inputs.items():
             try:
-                batch.inputs[key] = values.to(self._device)
-            except (AttributeError, ValueError):
+                if type(values) is dict:
+                    batch.inputs[key] = self.dict_to_device(values)
+                elif type(values) == list:
+                    batch.inputs[key] = [a.to(self._device) for a in values]
+                else:
+                    batch.inputs[key] = values.to(self._device)
+            except (AttributeError, ValueError) as e:
+                logging.debug(e)
                 pass
 
+    def dict_to_device(self, dict):
+        new_dict = {}
+        for k, v in dict.items():
+            if type(v) is dict:
+                new_dict[k] = self.dict_to_device(v)
+            else:
+                new_dict[k] = v.to(self._device)
+
+        return new_dict
+
     def _load_checkpoint(self, train: bool = False) -> None:
+        payload = Namespace(executor=self)
+        EventManager.dispatch_event(event_name="before_checkpoint_load", payload=payload)
         self.network.load_checkpoint(self.config.checkpoint_path, self.config.get_device())
 
         if not self.config.is_finetuning and train:
             info = torch.load(self.config.checkpoint_path, map_location=self.config.get_device())
+
             if self.optimizer and "optimizer" in info:
                 self.optimizer.load_state_dict(info["optimizer"])
 
@@ -80,9 +99,7 @@ class Trainer(AbstractExecutor):
         super().__init__(config)
         self._loss_tracker = ExponentialAverageMeter(smoothing_factor=0.95)
 
-        self._metric_trackers = {
-            name: ExponentialAverageMeter(smoothing_factor=0.9) for name in self.config.train_metrics
-        }
+        self._metric_trackers = {name: ExponentialAverageMeter(smoothing_factor=0.9) for name in self.config.train_metrics}
         self._metric_computer = PredictionProcessor(
             metrics=self.config.train_metrics,
             threshold=self.config.threshold,
@@ -107,9 +124,7 @@ class Trainer(AbstractExecutor):
         self.network = self.network.train()
         logging.debug(self.network)
 
-    def _initialize_scheduler(
-            self, optimizer: AbstractOptimizer, training_examples: int
-    ) -> AbstractLearningRateScheduler:
+    def _initialize_scheduler(self, optimizer: AbstractOptimizer, training_examples: int) -> AbstractLearningRateScheduler:
 
         return SuperFactory.create(
             AbstractLearningRateScheduler,
@@ -141,6 +156,7 @@ class Trainer(AbstractExecutor):
         self._to_device(batch)
         self.optimizer.zero_grad()
         outputs = self.network(batch.inputs)
+
         payload = Namespace(features=batch, logits=outputs, extras=[])
         EventManager.dispatch_event(event_name="before_criterion", payload=payload)
 
@@ -151,20 +167,30 @@ class Trainer(AbstractExecutor):
         if self.config.is_stepwise_scheduler:
             self.scheduler.step()
 
+        logits_modes_dict = {
+            "evidential_classification_multilabel_nologits": self.network.evidential_nologits_outputs_processing,
+            "simple_classification": self.network.simple_classification_outputs_processing,
+            "evidential_regression": self.network.evidential_regression_outputs_processing,
+        }
+        logits_mode = logits_modes_dict.get(self.config.inference_mode, self.network.pass_outputs)
+        outputs = logits_mode(outputs)
         self._update_trackers(loss.item(), batch.outputs, outputs)
 
     def _train_epoch(self, train_loader, epoch):
         self.network.train()
-        pbar = tqdm(train_loader.dataset, total=len(train_loader.dataset), leave=False)
         iteration = 1
-        for batch in pbar:
-            self._training_step(batch)
-            if iteration % self.config.log_frequency == 0:
-                pbar.set_description(f"Epoch {epoch} | Train Loss: {self._loss_tracker.get():.5f}")
-            iteration += 1
-        if not self.config.is_stepwise_scheduler:
-            self.scheduler.step()
-        logging.only_log_file(str(pbar))
+        with progress_bar() as progress:
+            description = f"Epoch {epoch} | Train Loss: {self._loss_tracker.get():.5f}"
+            task = progress.add_task(description, total=len(train_loader.dataset))
+            for batch in train_loader.dataset:
+                self._training_step(batch)
+                if iteration % self.config.log_frequency == 0:
+                    description = f"Epoch {epoch} | Train Loss: {self._loss_tracker.get():.5f}"
+                progress.update(task, description=description, advance=1)
+                iteration += 1
+            if not self.config.is_stepwise_scheduler:
+                self.scheduler.step()
+            logging.only_log_file(str(train_loader.dataset))
 
     @torch.no_grad()
     def _validation(self, val_loader):
@@ -173,13 +199,26 @@ class Trainer(AbstractExecutor):
         ground_truth = []
         logits = []
         self.network.eval()
-        for batch in tqdm(val_loader.dataset, leave=False):
-            self._to_device(batch)
-            ground_truth.append(batch.outputs)
-            logits.append(self.network(batch.inputs))
+        with progress_bar() as progress:
+            for batch in progress.track(val_loader.dataset, description="Validating..."):
+                self._to_device(batch)
+                ground_truth.append(batch.outputs)
 
-        metrics = self._metric_computer.compute_metrics(ground_truth, logits)
-        averages = self._metric_computer.compute_statistics(metrics, (np.mean,))
+                inference_modes_dict = {
+                    "evidential_classification": self.network.evidential_classification,
+                    "evidential_classification_multilabel_logits": self.network.evidential_classification_multilabel_logits,
+                    "evidential_classification_multilabel_nologits": self.network.evidential_classification_multilabel_nologits,
+                    "evidential_regression": self.network.evidential_regression,
+                }
+                inference_mode = inference_modes_dict.get(self.config.inference_mode)
+
+                if inference_mode:
+                    logits.append(inference_mode(batch.inputs)["logits"])
+                else:
+                    logits.append(self.network(batch.inputs))
+
+            metrics = self._metric_computer.compute_metrics(ground_truth, logits)
+            averages = self._metric_computer.compute_statistics(metrics, (np.mean,))
 
         return averages
 
@@ -194,7 +233,6 @@ class Trainer(AbstractExecutor):
             best_metric = target_metric
             self.save(epoch)
         return best_metric, new_best
-
 
     def _update_trackers(self, loss: float, ground_truth: torch.Tensor, logits: torch.Tensor) -> None:
         self._loss_tracker.update(loss)
@@ -219,7 +257,7 @@ class Trainer(AbstractExecutor):
             "scheduler": self.scheduler.state_dict(),
         }
         suffix = "best" if self.config.overwrite_checkpoint else epoch
-        model_path = Path(self.config.output_path) / f"checkpoint_{suffix}.pt"
+        model_path = Path(self.config.output_path) / f"checkpoint.{suffix}.pt"
         logging.info("Saving checkpoint: {}".format(model_path))
 
         payload = Namespace(info=info)
@@ -254,6 +292,7 @@ class Trainer(AbstractExecutor):
         with (Path(self.config.output_path) / "logs.txt").open("a") as f:
             f.write(message + "\n")
 
+
 class Predictor(AbstractExecutor):
     def __init__(self, config: Config):
         super().__init__(config)
@@ -264,8 +303,10 @@ class Predictor(AbstractExecutor):
 
     def set_hook_probe(self):
         if isinstance(self.network, EnsembleNetwork):
-            raise ValueError("Probing hidden layers is not defined for Ensembles."
-                             " Please change 'probe_layer' parameter to 'null' or use a different type of network.")
+            raise ValueError(
+                "Probing hidden layers is not defined for Ensembles."
+                " Please change 'probe_layer' parameter to 'null' or use a different type of network."
+            )
         else:
             self.probe = HookProbe(self.network, self.config.probe_layer)
 
@@ -275,14 +316,28 @@ class Predictor(AbstractExecutor):
             if self.config.probe_layer is not None:
                 self.set_hook_probe()
 
+            # TODO: use superfactory for this
             if self.config.inference_mode == "mc_dropout":
                 outputs = self.network.mc_dropout(
                     batch.inputs,
                     dropout_prob=self.config.mc_dropout_probability,
                     n_iter=self.config.mc_dropout_iterations,
+                    loss_type=self.config.criterion["type"],
+                )
+            elif self.config.inference_mode == "loss_aware":
+                outputs = self.network.loss_aware_forward(
+                    batch.inputs,
+                    loss_type=self.config.criterion["type"],
                 )
             else:
-                outputs = self.network(batch.inputs)
+                inference_modes_dict = {
+                    "evidential_classification": self.network.evidential_classification,
+                    "evidential_classification_multilabel_logits": self.network.evidential_classification_multilabel_logits,
+                    "evidential_classification_multilabel_nologits": self.network.evidential_classification_multilabel_nologits,
+                    "evidential_regression": self.network.evidential_regression,
+                }
+                inference_mode = inference_modes_dict.get(self.config.inference_mode, self.network)
+                outputs = inference_mode(batch.inputs)
 
             if isinstance(outputs, torch.Tensor):
                 outputs = {"logits": outputs}
@@ -299,9 +354,10 @@ class Predictor(AbstractExecutor):
         ground_truth = []
         logits = []
 
-        for batch in data_loader.dataset:
-            ground_truth.append(batch.outputs)
-            logits.append(self.run(batch).logits)
+        with progress_bar() as progress:
+            for batch in progress.track(data_loader.dataset):
+                ground_truth.append(batch.outputs)
+                logits.append(self.run(batch).logits)
 
         return ground_truth, logits
 
@@ -390,9 +446,7 @@ class LearningRareFinder(Trainer):
     MAXIMUM_LEARNING_RATE = 0.1
     MINIMUM_LEARNING_RATE = 1e-5
 
-    def _initialize_scheduler(
-            self, optimizer: AbstractOptimizer, training_examples: int
-    ) -> AbstractLearningRateScheduler:
+    def _initialize_scheduler(self, optimizer: AbstractOptimizer, training_examples: int) -> AbstractLearningRateScheduler:
 
         gamma = max(training_examples // self.config.batch_size, 1)
         gamma = np.log(self.MAXIMUM_LEARNING_RATE / self.MINIMUM_LEARNING_RATE) / gamma
@@ -411,7 +465,10 @@ class LearningRareFinder(Trainer):
         loss_records = []
 
         try:
-            with tqdm(total=data_loader.batches) as progress_bar:
+            with progress_bar() as progress:
+                description = f"Loss : {loss_records[-1]:.5f}"
+                task = progress.add_task(description, total=len(data_loader.dataset))
+                # with progress.track(total=data_loader.batches) as progress_bar:
                 for iteration, data in enumerate(data_loader.dataset, start=1):
                     self._to_device(data)
                     self.optimizer.zero_grad()
@@ -430,8 +487,8 @@ class LearningRareFinder(Trainer):
                     learning_rate_records.append(self._get_learning_rate())
                     loss_records.append(self._loss_tracker.get())
                     if iteration % 20 == 0:
-                        progress_bar.set_description(f"Loss : {loss_records[-1]:.5f}")
-                    progress_bar.update(1)
+                        progress.update(task, description=description)
+                    progress.advance(task, 1)
         except (KeyboardInterrupt, RuntimeError):
             pass
 

@@ -23,7 +23,7 @@ class GrcpServicer(ServerManager, mila_pb2_grpc.MilaServicer):
         return True
 
     def _get_ip(self, context) -> str:
-        return context.peer().split(':')[1]
+        return context.peer().split(":")[1]
 
     def Authenticate(self, request: grpc, context) -> str:
         client_ip = self._get_ip(context)
@@ -66,10 +66,7 @@ class GrcpServicer(ServerManager, mila_pb2_grpc.MilaServicer):
             client = self._registry[request.token]
             logging.info("[{}] Sending Model (round={})".format(client, client.round))
 
-            return mila_pb2.Model(
-                json_configuration=self.get_configuration(),
-                latest_checkpoint=self.get_latest_checkpoint()
-            )
+            return mila_pb2.Model(json_configuration=self.get_configuration(), latest_checkpoint=self.get_latest_checkpoint())
 
     def SendCheckpoint(self, request, context) -> EmptyResponse:
         if self._validate_token(request.token, context):
@@ -87,8 +84,5 @@ class GrcpServicer(ServerManager, mila_pb2_grpc.MilaServicer):
 
     def get_client_filename_for_current_round(self, client: Participant):
         return "{}/{}.{}.{}.remote".format(
-            self._config.save_path,
-            client.name,
-            client.ip_address.replace(".", "_"),
-            self._current_round
+            self._config.save_path, client.name, client.ip_address.replace(".", "_"), self._current_round
         )
