@@ -543,6 +543,7 @@ class MsaFeaturizer(AbstractFeaturizer):
         should_cache: bool = False,
         rewrite: bool = True,
         msa_extrator_cfg: Dict = None,
+        output_path = None,
     ):
         """
         @param template_mmcif_dir: path to alphafold templates usually in alphafold_dataset/pdb_mmcif/mmcif_files/
