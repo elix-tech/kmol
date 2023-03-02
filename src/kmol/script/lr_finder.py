@@ -27,7 +27,7 @@ class LrFinderScript(AbstractScript):
 
     def __init__(self, cfg_path, path_to_save, type_process="fast") -> None:
         assert type_process in ["fast", "accurate"], f"type_process must be either fast or accurate got '{type_process}'"
-        self._config = Config.from_file(cfg_path)
+        self._config = Config.from_file(cfg_path, job_command="eval")
         self.path_to_save = path_to_save
         self.type_process = type_process
         self.generate_training_materials()

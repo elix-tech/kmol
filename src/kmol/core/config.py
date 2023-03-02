@@ -142,4 +142,5 @@ class Config(AbstractConfiguration):
 
 @dataclass
 class ScriptConfig(AbstractConfiguration):
+    job_command: str
     script: Dict[str, Any]

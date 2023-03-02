@@ -17,7 +17,7 @@ from ..core.logger import LOGGER as logging
 class IntegratedGradientScript(AbstractScript):
     def __init__(self, config_path) -> None:
         super().__init__()
-        self._config = Config.from_file(config_path)
+        self._config = Config.from_file(config_path, job_command="eval")
         self.loader = SuperFactory.create(AbstractLoader, self._config.loader)
         streamer = GeneralStreamer(config=self._config)
         self.data_loader = iter(
@@ -39,13 +39,15 @@ class IntegratedGradientScript(AbstractScript):
 
     def run(self):
         results = pd.DataFrame([], columns=self.column_of_interest)
+        self.dataset.loc[:, self.model.ig_outputs] = None
+        self.dataset.loc[:, self.model.ig_outputs] = self.dataset.loc[:, self.model.ig_outputs].astype(object)
         for data in tqdm(self.data_loader):
             try:
                 ig = self.model.get_integrate_gradient(data.inputs)
-            except Exception:
+            except:
                 logging.info("One element has been skipped")
             for i, col in enumerate(self.model.ig_outputs):
-                self.dataset.loc[data.ids[0], col] = list(ig.values())[i]
+                self.dataset.at[data.ids[0], col] = list(ig.values())[i]
             results = pd.concat([results, self.dataset.loc[data.ids, self.column_of_interest]])
 
-        results.to_csv(Path(self._config.output_path) / "integrated_gradient_results.csv")
+        results.to_csv(Path(self._config.output_path) / 'integrated_gradient_results.csv')
