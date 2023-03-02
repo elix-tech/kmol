@@ -130,6 +130,10 @@ if __name__ == "__main__":
     extra_cuda_flags += cc_flag
     # Graphormer package
     package = Extension("algos", ["src/kmol/vendor/graphormer/algos.pyx"], include_dirs=[numpy.get_include()])
+    package.define_macros += [
+        ("NPY_NO_DEPRECATED_API", "NPY_1_7_API_VERSION")
+    ]
+    
     setup(
         ext_modules=[
             # Openfold dependencies
@@ -150,6 +154,6 @@ if __name__ == "__main__":
         ]
         +
         # Graphormer dependecy
-        cythonize([package], language_level = "3"),
+        cythonize([package], compiler_directives={'language_level' : "3"} ),
         cmdclass={"build_ext": BuildExtension},
     )

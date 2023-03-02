@@ -2,7 +2,7 @@ import os
 import itertools
 import pyximport
 from abc import ABCMeta, abstractmethod
-from functools import lru_cache, partial
+from functools import partial
 from itertools import chain
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
