@@ -29,7 +29,7 @@ def floyd_warshall(adjacency_matrix):
             if i == j:
                 M[i][j] = 0
             elif M[i][j] == 0:
-                M[i][j] = 1024
+                M[i][j] = 510
 
     # floyed algo
     for k in range(n):
@@ -47,9 +47,9 @@ def floyd_warshall(adjacency_matrix):
     # set unreachable path to 510
     for i in range(n):
         for j in range(n):
-            if M[i][j] >= 1024:
-                path[i][j] = 1024
-                M[i][j] = 1024
+            if M[i][j] >= 510:
+                path[i][j] = 510
+                M[i][j] = 510
 
     return M, path
 
@@ -81,7 +81,7 @@ def gen_edge_input(max_dist, path, edge_feat):
         for j in range(n):
             if i == j:
                 continue
-            if path_copy[i][j] == 1024:
+            if path_copy[i][j] == 510:
                 continue
             path = [i] + get_all_edges(path_copy, i, j) + [j]
             num_path = len(path) - 1

@@ -677,7 +677,6 @@ class GraphormerFeaturizer(GraphFeaturizer):
 
         return [bond_type_one_hot]
 
-    @lru_cache
     def _preprocess_item(self, item):
         edge_attr, edge_index, x = item.edge_attr.long(), item.edge_index, item.x
         N = item.num_nodes
