@@ -3,7 +3,9 @@ from typing import Iterator, List, Union, Any
 import ast
 
 import pandas as pd
+import dask.dataframe as dd
 from torch.utils.data import Dataset as TorchDataset
+import multiprocessing
 
 from .resources import DataPoint
 
@@ -48,6 +50,22 @@ class CsvLoader(AbstractLoader):
             inputs={**entry[self._input_columns]},
             outputs=entry[self._target_columns].to_list(),
         )
+
+    def get_all(self) -> List[DataPoint]:
+        """
+        Retrieve the dataset as List of Datapoint, faster than iterating though the
+        list of data in case of very large dataset.
+        """
+        df = dd.from_pandas(self._dataset, npartitions=4*multiprocessing.cpu_count())
+        result = df.map_partitions(lambda pdf: pdf.apply(
+            lambda row: DataPoint(
+            id_=row,
+            labels=self._target_columns,
+            inputs={**row[self._input_columns]},
+            outputs=row[self._target_columns]
+        ), axis=1))
+        result = result.compute(scheduler='processes')
+        return result.to_list()
 
     def list_ids(self) -> List[Union[int, str]]:
         return list(range(len(self)))
