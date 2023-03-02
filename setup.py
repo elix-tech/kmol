@@ -133,6 +133,8 @@ if __name__ == "__main__":
     package.define_macros += [
         ("NPY_NO_DEPRECATED_API", "NPY_1_7_API_VERSION")
     ]
+
+    packages = cythonize([package], compiler_directives={'language_level' : "3"})
     
     setup(
         ext_modules=[
@@ -154,6 +156,6 @@ if __name__ == "__main__":
         ]
         +
         # Graphormer dependecy
-        cythonize([package], compiler_directives={'language_level' : "3"} ),
+        packages,
         cmdclass={"build_ext": BuildExtension},
     )
