@@ -11,8 +11,7 @@ from kmol.core.logger import LOGGER as logging
 
 from ...configs import ClientConfiguration
 from ...factories import AbstractConfiguration, AbstractExecutor
-from ...protocol_buffers import mila_pb2, mila_pb2_grpc
-from ..server_manager.server_manager import IOManager
+from ...services import IOManager
 
 
 class AbstractClient(IOManager):
