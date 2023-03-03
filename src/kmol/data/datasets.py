@@ -1,4 +1,5 @@
 from typing import List
+from copy import deepcopy
 from torch.utils.data.dataset import Dataset, Subset
 from ..core.helpers import SuperFactory
 
@@ -39,6 +40,6 @@ class DatasetOnline(DatasetAugment):
         self.preprocessor = preprocessor
 
     def __getitem__(self, idx: int):
-        data = self.dataset[self.indices[idx]]
+        data = deepcopy(self.dataset[self.indices[idx]])
         data = self.preprocessor.preprocess(data)
         return self._apply_aug(data)

@@ -45,7 +45,7 @@ class WeightedTorchAggregator(AbstractAggregator):
         output = OrderedDict()
 
         for checkpoint_path in checkpoint_paths:
-            owner = checkpoint_path.split("/")[-1].split(".")[0]
+            owner = str(checkpoint_path).split("/")[-1].split(".")[0]
             weight = self._weights[owner]
 
             state = torch.load(checkpoint_path, map_location=torch.device("cpu"))
@@ -69,7 +69,7 @@ class BenchmarkedTorchAggregator(AbstractAggregator):
     ):
         self._config_instantiator: Type[AbstractConfiguration] = self._reflect(config_type)
         self._executor_instantiator: Type[AbstractExecutor] = self._reflect(executor_type)
-        self._config = self._config_instantiator.from_file(config_path)
+        self._config = self._config_instantiator.from_file(config_path, "eval")
         self._target_metric = target_metric
         self._minimized_metric = minimized_metric
 

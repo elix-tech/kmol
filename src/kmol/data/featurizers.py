@@ -2,7 +2,7 @@ import os
 import itertools
 import pyximport
 from abc import ABCMeta, abstractmethod
-from functools import lru_cache, partial
+from functools import partial
 from itertools import chain
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
@@ -24,8 +24,9 @@ from ..vendor.openfold.utils.tensor_utils import tensor_tree_map
 from ..model.architectures import MsaExtractor
 from .loaders import ListLoader
 
-pyximport.install(setup_args={"include_dirs": np.get_include()})
-from ..vendor.graphormer import algos  # noqa: E402
+#pyximport.install(setup_args={"include_dirs": np.get_include()})
+#from ..vendor.graphormer import algos  # noqa: E402
+import algos
 
 
 class AbstractFeaturizer(metaclass=ABCMeta):
@@ -677,7 +678,6 @@ class GraphormerFeaturizer(GraphFeaturizer):
 
         return [bond_type_one_hot]
 
-    @lru_cache
     def _preprocess_item(self, item):
         edge_attr, edge_index, x = item.edge_attr.long(), item.edge_index, item.x
         N = item.num_nodes

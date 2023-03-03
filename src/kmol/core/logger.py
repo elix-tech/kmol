@@ -12,8 +12,13 @@ RESET_SEQ = "\033[0m"
 COLOR_SEQ = "\033[%dm"
 BOLD_SEQ = "\033[1m"
 
-COLORS = {"WARNING": YELLOW, "INFO": WHITE, "DEBUG": BLUE, "CRITICAL": RED, "ERROR": RED}
-
+COLORS = {
+    'WARNING': YELLOW,
+    'INFO': WHITE,
+    'DEBUG': BLUE,
+    'CRITICAL': RED,
+    'ERROR': RED
+}
 
 class CustomFormatter(logging.Formatter):
     """
@@ -122,6 +127,5 @@ class __Logger(logging.Logger):
         if self.has_file_handler():
             return
         self.addHandler(self.file_handler)
-
 
 LOGGER = __Logger()

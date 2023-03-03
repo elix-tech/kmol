@@ -1,0 +1,16 @@
+script:
+  type: "manual_aggregation"
+  chekpoint_paths: 
+    - data/logs/local/tester1/2022-10-20_17-10/checkpoint_10.pt
+    - data/logs/local/tester2/2022-10-20_17-10/checkpoint_10.pt
+    - data/logs/local/tester3/2022-10-20_17-10/checkpoint_10.pt
+  aggregator_type: "mila.aggregators.WeightedTorchAggregator"
+  aggregator_options:
+    weights: [0.8, 0.1, 0.1]
+  #   config_type: "kmol.core.config.Config"
+  #   config_path: "data/configs/model/tox21.json" 
+  #   executor_type: "kmol.run.Executor" 
+  #   target_metric: "roc_auc"
+  save_path: "data/logs/manual_aggregator/2.aggregator"
+
+    

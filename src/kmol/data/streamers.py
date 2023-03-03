@@ -14,7 +14,6 @@ from .splitters import AbstractSplitter
 from ..core.config import Config
 from ..core.helpers import SuperFactory
 
-
 class AbstractStreamer(metaclass=ABCMeta):
     @property
     def labels(self) -> List[str]:

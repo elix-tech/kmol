@@ -4,7 +4,6 @@ import importlib
 import io
 import json
 import pickle
-
 import os
 import tempfile
 import timeit
@@ -157,7 +156,6 @@ class CacheManager:
             elif type(value) is list and len(value) > 0:
                 if type(value[0]) is dict:
                     dictionary[key] = [self._sort(v) for v in value]
-
         return dict(sorted(dictionary.items()))
 
     def key(self, **kwargs) -> str:
