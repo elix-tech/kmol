@@ -1,4 +1,4 @@
-import logging
+import json
 import pickle
 from argparse import ArgumentParser
 from collections import defaultdict
@@ -10,20 +10,21 @@ import joblib
 import numpy as np
 import optuna
 import pandas as pd
-from tqdm import tqdm
+from rich import progress as pb
 
 from mila.factories import AbstractExecutor
 from .core.config import Config
-from .core.helpers import Namespace, ConfidenceInterval
+from .core.helpers import Namespace, ConfidenceInterval, SuperFactory
+from .core.logger import LOGGER as logging
 from .core.tuning import OptunaTemplateParser
 from .data.resources import DataPoint
+from .data.loaders import AbstractLoader
 from .data.streamers import GeneralStreamer, SubsetStreamer, CrossValidationStreamer
 from .model.executors import Predictor, ThresholdFinder, LearningRareFinder, Pipeliner
 from .model.metrics import PredictionProcessor, CsvLogger
 
 
 class Executor(AbstractExecutor):
-
     def __init__(self, config: Config, config_path: Optional[str] = ""):
         super().__init__(config)
         self._config_path = config_path
@@ -80,6 +81,7 @@ class Executor(AbstractExecutor):
                     shuffle=True,
                     subset_id=self._config.subset["id"],
                     subset_distributions=self._config.subset["distribution"],
+                    mode=GeneralStreamer.Mode.TRAIN,
                 )
             )
         else:
@@ -88,6 +90,7 @@ class Executor(AbstractExecutor):
                 split_name=self._config.train_split,
                 batch_size=self._config.batch_size,
                 shuffle=True,
+                mode=GeneralStreamer.Mode.TRAIN,
             )
             val_loader = None
             if self._config.validation_split in streamer.splits:
@@ -95,10 +98,9 @@ class Executor(AbstractExecutor):
                     split_name=self._config.validation_split,
                     batch_size=self._config.batch_size,
                     shuffle=False,
+                    mode=GeneralStreamer.Mode.TEST,
                 )
-            Pipeliner(config=self._config).train(
-                data_loader=train_loader, val_loader=val_loader
-            )
+            Pipeliner(config=self._config).train(data_loader=train_loader, val_loader=val_loader)
 
     def eval(self):
         streamer = GeneralStreamer(config=self._config)
@@ -110,6 +112,7 @@ class Executor(AbstractExecutor):
                     split_name=self._config.test_split,
                     batch_size=self._config.batch_size,
                     shuffle=False,
+                    mode=GeneralStreamer.Mode.TEST,
                 )
             )
         )
@@ -123,6 +126,7 @@ class Executor(AbstractExecutor):
             split_name=self._config.test_split,
             batch_size=self._config.batch_size,
             shuffle=False,
+            mode=GeneralStreamer.Mode.TEST,
         )
 
         results = Pipeliner(config=self._config).evaluate_all(data_loader=data_loader)
@@ -153,9 +157,9 @@ class Executor(AbstractExecutor):
             pipeliner.train(
                 data_loader=streamer.get(
                     split_name=streamer.get_fold_name(fold),
-                    mode=CrossValidationStreamer.Mode.TRAIN,
+                    mode=GeneralStreamer.Mode.TRAIN,
                     batch_size=self._config.batch_size,
-                    shuffle=True
+                    shuffle=True,
                 )
             )
 
@@ -163,9 +167,9 @@ class Executor(AbstractExecutor):
             fold_results = pipeliner.evaluate_all(
                 data_loader=streamer.get(
                     split_name=streamer.get_fold_name(fold),
-                    mode=CrossValidationStreamer.Mode.TEST,
+                    mode=GeneralStreamer.Mode.TEST,
                     batch_size=self._config.batch_size,
-                    shuffle=False
+                    shuffle=False,
                 )
             )
 
@@ -199,17 +203,17 @@ class Executor(AbstractExecutor):
             pipeliner.train(
                 data_loader=streamer.get(
                     split_name=streamer.get_fold_name(fold),
-                    mode=CrossValidationStreamer.Mode.TRAIN,
+                    mode=GeneralStreamer.Mode.TRAIN,
                     batch_size=self._config.batch_size,
-                    shuffle=True
+                    shuffle=True,
                 )
             )
 
             test_loader = streamer.get(
                 split_name=streamer.get_fold_name(fold),
-                mode=CrossValidationStreamer.Mode.TEST,
+                mode=GeneralStreamer.Mode.TEST,
                 batch_size=self._config.batch_size,
-                shuffle=False
+                shuffle=False,
             )
 
             pipeliner.find_best_checkpoint(data_loader=test_loader)
@@ -234,6 +238,7 @@ class Executor(AbstractExecutor):
             compute metrics on the predicted values in one go
         return the best checkpoint metrics
         """
+        self._config.overwrite_checkpoint = False
         streamer = CrossValidationStreamer(config=self._config)
         folds = {}
 
@@ -245,17 +250,17 @@ class Executor(AbstractExecutor):
             pipeliner.train(
                 data_loader=streamer.get(
                     split_name=streamer.get_fold_name(fold),
-                    mode=CrossValidationStreamer.Mode.TRAIN,
+                    mode=GeneralStreamer.Mode.TRAIN,
                     batch_size=self._config.batch_size,
-                    shuffle=True
+                    shuffle=True,
                 )
             )
 
             folds[pipeliner] = streamer.get(
                 split_name=streamer.get_fold_name(fold),
-                mode=CrossValidationStreamer.Mode.TEST,
+                mode=GeneralStreamer.Mode.TEST,
                 batch_size=self._config.batch_size,
-                shuffle=False
+                shuffle=False,
             )
 
         processor = PredictionProcessor(metrics=self._config.test_metrics, threshold=self._config.threshold)
@@ -266,10 +271,7 @@ class Executor(AbstractExecutor):
             logits = []
 
             for pipeliner, test_loader in folds.items():
-                pipeliner._config.checkpoint_path = "{}/checkpoint.{}".format(
-                    pipeliner._config.output_path, checkpoint_id
-                )
-
+                pipeliner.config.checkpoint_path = "{}/checkpoint.{}.pt".format(pipeliner.config.output_path, checkpoint_id)
                 pipeliner.initialize_predictor()
                 fold_ground_truth, fold_logits = pipeliner.predict(data_loader=test_loader)
                 ground_truth.extend(fold_ground_truth)
@@ -282,15 +284,69 @@ class Executor(AbstractExecutor):
 
         return results
 
+    def standard_cv(self) -> Namespace:
+        """
+        for each fold:
+            train the fold
+            find the best checkpoint
+            run inference on the test data (concatenating the output)
+            compute metrics on the fold
+        return statistics over folds
+        """
+        streamer = CrossValidationStreamer(config=self._config)
+        processor = PredictionProcessor(metrics=self._config.test_metrics, threshold=self._config.threshold)
+        all_results = []
+
+        for fold in range(self._config.cross_validation_folds):
+            output_path = "{}/.{}/".format(self._config.output_path, fold)
+            config = self._config.cloned_update(output_path=output_path)
+            pipeliner = Pipeliner(config=config)
+
+            test_loader = streamer.get(
+                split_name=streamer.get_fold_name(fold),
+                mode=CrossValidationStreamer.Mode.TEST,
+                batch_size=self._config.batch_size,
+                shuffle=False,
+            )
+
+            pipeliner.train(
+                data_loader=streamer.get(
+                    split_name=streamer.get_fold_name(fold),
+                    mode=CrossValidationStreamer.Mode.TRAIN,
+                    batch_size=self._config.batch_size,
+                    shuffle=True,
+                ),
+                val_loader=test_loader,
+            )
+
+            pipeliner.find_best_checkpoint(data_loader=test_loader)
+            fold_ground_truth, fold_logits = pipeliner.predict(data_loader=test_loader)
+            all_results.append(processor.compute_metrics(ground_truth=fold_ground_truth, logits=fold_logits))
+
+        # reduction on all fold summaries
+        results = Namespace.reduce(all_results, ConfidenceInterval.compute)
+        self.__log_results(
+            results=results,
+            labels=streamer.labels,
+            statistics=(np.min, np.max, np.mean, np.median),
+        )
+
+        return results
+
     def _collect_predictions(self):
         streamer = GeneralStreamer(config=self._config)
         data_loader = streamer.get(
             split_name=self._config.test_split,
             batch_size=self._config.batch_size,
-            shuffle=False
+            shuffle=False,
+            mode=GeneralStreamer.Mode.TEST,
         )
         predictor = Predictor(config=self._config)
         transformer_reverter = partial(self.__revert_transformers, streamer=streamer)
+
+
+        if len(self._config.prediction_additional_columns) > 0:
+            loader = SuperFactory.create(AbstractLoader, self._config.loader)
 
         results = defaultdict(list)
         outputs_to_save = defaultdict(list)
@@ -298,21 +354,18 @@ class Executor(AbstractExecutor):
             outputs = predictor.run(batch)
             logits = outputs.logits
             variance = getattr(outputs, "logits_var", None)
+            softmax_score = getattr(outputs, "softmax_score", None)
+            protein_gradients = getattr(outputs, "protein_gd_mean", None)
+            ligand_gradients = getattr(outputs, "ligand_gd_mean", None)
             hidden_layer_output = getattr(outputs, "hidden_layer", None)
             labels = batch.outputs.cpu().numpy()
             labels = np.apply_along_axis(transformer_reverter, axis=1, arr=labels)
 
             if hidden_layer_output is not None:
-                outputs_to_save["hidden_layer"].extend(
-                    hidden_layer_output.cpu().numpy()
-                )
+                outputs_to_save["hidden_layer"].extend(hidden_layer_output.cpu().numpy())
 
-            predictions = PredictionProcessor.apply_threshold(
-                logits, self._config.threshold
-            )
-            predictions = np.apply_along_axis(
-                transformer_reverter, axis=1, arr=predictions
-            )
+            predictions = PredictionProcessor.apply_threshold(logits, self._config.threshold)
+            predictions = np.apply_along_axis(transformer_reverter, axis=1, arr=predictions)
 
             results["predictions"].extend(predictions)
             results["id"].extend(batch.ids)
@@ -321,15 +374,29 @@ class Executor(AbstractExecutor):
 
             if variance is not None:
                 results["variance"].extend(variance.cpu().numpy())
+            if softmax_score is not None:
+                results["softmax_score"].extend(softmax_score.cpu().numpy())
+            if protein_gradients is not None:
+                results["protein_gd"].extend(protein_gradients.cpu().numpy())
+            if ligand_gradients is not None:
+                results["ligand_gd"].extend(ligand_gradients.cpu().numpy())
+
+            if len(self._config.prediction_additional_columns) > 0:
+                for col_name in self._config.prediction_additional_columns:
+                    results[col_name].extend(loader._dataset.iloc[batch.ids][col_name].values)
 
         results["predictions"] = np.vstack(results["predictions"])
         results["labels"] = np.vstack(results["labels"])
         if "variance" in results:
             results["variance"] = np.vstack(results["variance"])
+        if "softmax_score" in results:
+            results["softmax_score"] = np.vstack(results["softmax_score"])
+        if "protein_gd" in results:
+            results["protein_gd"] = np.vstack(results["protein_gd"])
+        if "ligand_gd" in results:
+            results["ligand_gd"] = np.vstack(results["ligand_gd"])
         if "hidden_layer" in outputs_to_save:
-            outputs_to_save["hidden_layer"] = np.vstack(
-                outputs_to_save["hidden_layer"]
-            ).tolist()
+            outputs_to_save["hidden_layer"] = np.vstack(outputs_to_save["hidden_layer"]).tolist()
 
         return results, outputs_to_save, streamer.labels
 
@@ -349,7 +416,17 @@ class Executor(AbstractExecutor):
             if "variance" in results:
                 results[f"{label}_logits_var"] = results["variance"][:, i]
                 columns.append(f"{label}_logits_var")
-
+            if "softmax_score" in results:
+                results[f"{label}_softmax"] = results["softmax_score"][:, i]
+                columns.append(f"{label}_softmax")
+            if "protein_gd" in results:
+                results[f"{label}_protein_gd"] = results["protein_gd"][:, i]
+                columns.append(f"{label}_protein_gd")
+            if "ligand_gd" in results:
+                results[f"{label}_ligand_gd"] = results["ligand_gd"][:, i]
+                columns.append(f"{label}_ligand_gd")
+            columns += self._config.prediction_additional_columns
+        
         results = pd.DataFrame.from_dict({c: results[c] for c in columns})
 
         predictions_dir = Path(self._config.output_path)
@@ -379,10 +456,10 @@ class Executor(AbstractExecutor):
             logging.info(study.best_params)
 
         with OptunaTemplateParser(
-            template_path=self._config_path,
+            config=self._config,
             evaluator=self.__run_trial,
             delete_checkpoints=True,
-            log_path="{}summary.csv".format(self._config.output_path),
+            log_path=str(Path(self._config.output_path) / "summary.csv"),
         ) as template_parser:
 
             study = optuna.create_study(direction="maximize")
@@ -404,11 +481,12 @@ class Executor(AbstractExecutor):
                 split_name=self._config.test_split,
                 batch_size=self._config.batch_size,
                 shuffle=False,
+                mode=GeneralStreamer.Mode.TEST,
             )
         )
 
         logging.info("-----------------------------------------------------------------------")
-        print("Best checkpoint: {}".format(self._config.checkpoint_path))
+        logging.info("Best checkpoint: {}".format(self._config.checkpoint_path))
         self.eval()
 
         return self._config.checkpoint_path
@@ -422,13 +500,14 @@ class Executor(AbstractExecutor):
             split_name=self._config.train_split,
             batch_size=self._config.batch_size,
             shuffle=False,
+            mode=GeneralStreamer.Mode.TEST,
         )
 
         evaluator = ThresholdFinder(self._config)
         threshold = evaluator.run(data_loader)
 
-        print("Best Thresholds: {}".format(threshold))
-        print("Average: {}".format(np.mean(threshold)))
+        logging.info("Best Thresholds: {}".format(threshold))
+        logging.info("Average: {}".format(np.mean(threshold)))
 
         return threshold
 
@@ -438,6 +517,7 @@ class Executor(AbstractExecutor):
             split_name=self._config.train_split,
             batch_size=self._config.batch_size,
             shuffle=False,
+            mode=GeneralStreamer.Mode.TEST,
         )
 
         trainer = LearningRareFinder(self._config)
@@ -451,15 +531,16 @@ class Executor(AbstractExecutor):
         visualizer_type = visualizer_params.pop("type", "umap")
 
         if visualizer_type not in ["umap", "iig"]:
-            raise ValueError(
-                f"Visualizer type should be one of 'umap', 'iig', received: {visualizer_type}"
-            )
+            raise ValueError(f"Visualizer type should be one of 'umap', 'iig', received: {visualizer_type}")
 
         if visualizer_type == "iig":
 
             streamer = GeneralStreamer(config=self._config)
             data_loader = streamer.get(
-                split_name=self._config.test_split, batch_size=1, shuffle=False
+                split_name=self._config.test_split,
+                batch_size=1,
+                shuffle=False,
+                mode=GeneralStreamer.Mode.TEST,
             )
             pipeliner = Pipeliner(config=self._config)
             network = pipeliner.get_network()
@@ -470,13 +551,19 @@ class Executor(AbstractExecutor):
             with IntegratedGradientsExplainer(
                 network, self._config, is_binary_classification=task_type, is_multitask=is_multitask
             ) as visualizer:
-                for sample_id, batch in enumerate(tqdm(data_loader.dataset)):
-                    pipeliner._to_device(batch)
-                    for target_id in self._config.visualizer["targets"]:
-                        save_path = "sample_{}_target_{}.png".format(
-                            sample_id, target_id
-                        )
-                        visualizer.visualize(batch, target_id, save_path)
+                with pb.Progress(
+                    "[progress.description]{task.description}",
+                    pb.BarColumn(),
+                    pb.MofNCompleteColumn(),
+                    "[progress.percentage]{task.percentage:>3.0f}%",
+                    pb.TimeRemainingColumn(),
+                    pb.TimeElapsedColumn(),
+                ) as progress:
+                    for sample_id, batch in enumerate(progress.track(data_loader.dataset)):
+                        pipeliner._to_device(batch)
+                        for target_id in self._config.visualizer["targets"]:
+                            save_path = "sample_{}_target_{}.png".format(sample_id, target_id)
+                            visualizer.visualize(batch, target_id, save_path)
 
         elif visualizer_type == "umap":
 
@@ -488,9 +575,7 @@ class Executor(AbstractExecutor):
             label_prefix = visualizer_params.pop("labels", "predictions")
             labels = results[label_prefix]
             labels = labels[:, label_index]
-            label_name = (
-                labels_names[label_index] if label_prefix == "labels" else label_prefix
-            )
+            label_name = labels_names[label_index] if label_prefix == "labels" else label_prefix
 
             visualizer = UMAPVisualizer(self._config.output_path, **visualizer_params)
             visualizer.visualize(hidden_features, labels=labels, label_name=label_name)
@@ -502,12 +587,15 @@ class Executor(AbstractExecutor):
         streamer = GeneralStreamer(config=self._config)
 
         for split_name, split_values in streamer.splits.items():
-            print(split_name)
-            print("-------------------------------------")
-            print(split_values)
-            print("")
+            logging.info(split_name)
+            logging.info("-------------------------------------")
+            logging.info(split_values)
+            logging.info("")
 
         return streamer.splits
+
+    def print_cfg(self) -> None:
+        logging.info(json.dumps(self._config.__dict__, indent=2))
 
 
 def main():
@@ -516,7 +604,7 @@ def main():
     parser.add_argument("config")
     args = parser.parse_args()
 
-    Executor(config=Config.from_json(args.config), config_path=args.config).run(args.job)
+    Executor(config=Config.from_file(args.config, args.job), config_path=args.config).run(args.job)
 
 
 if __name__ == "__main__":

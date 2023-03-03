@@ -8,7 +8,7 @@ The library was benchmarked on datasets containing ADME properties (Absorption, 
 Models are built using PyTorch and PyTorch Geometric.
 
 ## Installation
-
+Cuda toolkit of at least 11.1 needs to be install.
 Dependencies can be installed with conda:
 ```bash
 conda env create -f environment.yml
@@ -67,6 +67,60 @@ In addition, a configuration file is needed for the server and each individual c
 A detailed documentation on how to configure the server and clients can be found under section 3.5.1 and 3.5.2 of `docs/documentation.pdf` respectively.
 Sample configurations can be found under `data/configs/mila/`.  
 
+### Box and Grcp parameters
+
+There are two ways to run a federated example. One is with the grcp protocol to connect the client directly to the server. The second way uses box applications and sends the models to a box shared directory.  There is a needed set up to be done on Box for it to work. The set up won't be explained here, see `docs/box_documentation.pdf` for more details.
+
+The grcp parameter should be contain in `grcp_configuration` like the following:
+
+```json
+  "server_type": "mila.services.servers.GrcpServer",
+  "server_manager_type": "mila.services.server_manager.GrcpServicer",
+  ...
+  "grcp_configuration": {
+    "target": "localhost:8024",
+
+    "options": [
+          ["grpc.max_send_message_length", 1000000000],
+          ["grpc.max_receive_message_length", 1000000000],
+          ["grpc.ssl_target_name_override", "localhost"]
+      ],
+
+    "use_secure_connection": false,
+    "ssl_private_key": "data/certificates/client.key",
+    "ssl_cert": "data/certificates/client.crt",
+    "ssl_root_cert": "data/certificates/rootCA.pem"
+  }
+```
+
+The client configuration only changes having the parameter `client_type` to `mila.services.clients.GrcpClient` istead of `server_type` and `server_manager_type`.
+
+Note: if the user want to leave the default parameter it should still provide an empty directory to the grcp_configuration configuration.
+
+
+As for box we will have a similar config type:
+
+
+```json
+  "server_type": "mila.services.servers.BoxServer",
+  "server_manager_type": "mila.services.server_manager.BoxServicer",
+  ...
+  "box_configuration": {
+    "box_configuration_path": "example_jwt_config.json",
+    "shared_dir_name": "example-folder-jwt",
+    "save_path": "my_path_inside_shared_dir_name",
+    "group_name": "jwt-application-group-name"
+  }
+```
+
+Similar to grcp the client config will only need `client_type` set to `mila.services.clients.BoxClient`
+
+- `box_configuration_path`: The Public / private key pair file downloaded during the admin set up,
+- `shared_dir_name`: The name of the directory shared with the group of the application,
+- `save_path`: The path inside shared_dir_name where the training logs and weights should be save. To avoid issue we also add a date_time layer based on the time launched.,
+- `group_name`: The name of the group of the application
+
+
 ### Starting the server
 The server should start before clients start connecting.
 
@@ -85,3 +139,49 @@ Another client can be simulated from a new terminal:
 ```bash
 mila client data/configs/mila/naive_aggregator/tox21/clients/2/client2.json
 ```
+
+### Runing a Aggregation in Command Line.
+
+Once all model have been run with the kmol module, it is possible to aggregate it using 
+what we introduce as a script.
+
+It is possible to use a new command line argument called `kmol-script`. This argument
+expect only a config file containing all the necessary argument for that script.
+
+In out case we are want to run an manual aggregation. So we can run:
+
+```
+kmol-script manual_aggregator.yaml
+```
+
+`manual_aggregator.yaml` is define as the following:
+
+```yaml
+script:
+  type: "manual_aggregation"
+  chekpoint_paths: 
+    - data/logs/local/tester1/2022-10-20_17-10/checkpoint_10.pt
+    - data/logs/local/tester2/2022-10-20_17-10/checkpoint_10.pt
+    - data/logs/local/tester3/2022-10-20_17-10/checkpoint_10.pt
+  aggregator_type: "mila.aggregators.WeightedTorchAggregator"
+  aggregator_options:
+    weights: [0.8, 0.1, 0.1]
+  save_path: "data/logs/manual_aggregator/2.aggregator"
+
+```
+
+- `type`: Would be the type of script we want to run.
+- `checkpoint_paths`: A list of checkpoint path we want to aggregate.
+- `aggregator_type`: The type of aggregator to use.
+- `aggregator_options`: The argument taken to instanciate the aggregator.
+
+Note: that for WeightedTorchAggregator the weights argument is a bit different.
+In mila we are xpecting a dictionary, here a list of weight is enough. The order of
+the weights should follow the order of the checkpoint_paths
+
+- `save_path`: Were to save the aggregator.
+
+If other type of aggregator is needed, only `aggregator_type` and `aggregator_options` 
+needs to be change.
+
+You can find the aggregator and their argument in `src/mila/aggregators.py`

@@ -3,13 +3,14 @@ from typing import Iterator, List, Union, Any
 import ast
 
 import pandas as pd
+import dask.dataframe as dd
 from torch.utils.data import Dataset as TorchDataset
+import multiprocessing
 
 from .resources import DataPoint
 
 
 class AbstractLoader(TorchDataset):
-
     @abstractmethod
     def __len__(self) -> int:
         raise NotImplementedError
@@ -32,7 +33,6 @@ class AbstractLoader(TorchDataset):
 
 
 class CsvLoader(AbstractLoader):
-
     def __init__(self, input_path: str, input_column_names: List[str], target_column_names: List[str]):
         self._input_columns = input_column_names
         self._target_columns = target_column_names
@@ -48,8 +48,24 @@ class CsvLoader(AbstractLoader):
             id_=id_,
             labels=self._target_columns,
             inputs={**entry[self._input_columns]},
-            outputs=entry[self._target_columns].to_list()
+            outputs=entry[self._target_columns].to_list(),
         )
+
+    def get_all(self) -> List[DataPoint]:
+        """
+        Retrieve the dataset as List of Datapoint, faster than iterating though the
+        list of data in case of very large dataset.
+        """
+        df = dd.from_pandas(self._dataset, npartitions=4*multiprocessing.cpu_count())
+        result = df.map_partitions(lambda pdf: pdf.apply(
+            lambda row: DataPoint(
+            id_=row,
+            labels=self._target_columns,
+            inputs={**row[self._input_columns]},
+            outputs=row[self._target_columns]
+        ), axis=1))
+        result = result.compute(scheduler='processes')
+        return result.to_list()
 
     def list_ids(self) -> List[Union[int, str]]:
         return list(range(len(self)))
@@ -59,19 +75,33 @@ class CsvLoader(AbstractLoader):
 
 
 class MultitaskLoader(CsvLoader):
+    """
+    Loader for prediction of multiple target interaction given one ligand as an input.
+    """
 
-    def __init__(self, input_path: str, task_column_name: str, max_num_tasks: int, input_column_names: List[str], target_column_names: List[str]):
+    def __init__(
+        self,
+        input_path: str,
+        task_column_name: str,
+        max_num_tasks: int,
+        input_column_names: List[str],
+        target_column_names: List[str],
+    ):
+        """
+        @param input_path: path to csv dataset
+        @param task_column_name: Name of the column containing the positive protein list.
+        @param max_num_tasks: Number of unique protein in the dataset
+        @input_column_names: Name of the smiles column
+        @target_column_names: Name of the target column use as prediction.
+        """
+
         self._input_columns = input_column_names
         self._target_columns = target_column_names
         self._task_column_name = task_column_name
         self._max_num_tasks = max_num_tasks
 
-        converter_dict = {
-            target: ast.literal_eval for target in target_column_names
-        }
-        converter_dict.update({
-            task: ast.literal_eval for task in [task_column_name]
-        })
+        converter_dict = {target: ast.literal_eval for target in target_column_names}
+        converter_dict.update({task: ast.literal_eval for task in [task_column_name]})
         self._dataset = pd.read_csv(
             filepath_or_buffer=input_path,
             converters=converter_dict,
@@ -83,7 +113,7 @@ class MultitaskLoader(CsvLoader):
         tasks = entry[self._task_column_name]
         labels = entry[self._target_columns].to_list()[0]
 
-        task_outputs = [float('nan')]*self._max_num_tasks
+        task_outputs = [float("nan")] * self._max_num_tasks
 
         for idx in range(len(tasks)):
             task = tasks[idx]
@@ -98,10 +128,7 @@ class MultitaskLoader(CsvLoader):
 
 
 class ExcelLoader(CsvLoader):
-
-    def __init__(
-            self, input_path: str, sheet_index: str, input_column_names: List[str], target_column_names: List[str]
-    ):
+    def __init__(self, input_path: str, sheet_index: str, input_column_names: List[str], target_column_names: List[str]):
         self._input_columns = input_column_names
         self._target_columns = target_column_names
 
@@ -109,10 +136,7 @@ class ExcelLoader(CsvLoader):
 
 
 class SdfLoader(CsvLoader):
-
-    def __init__(
-            self, input_path: str, input_column_names: List[str], target_column_names: List[str]
-    ):
+    def __init__(self, input_path: str, input_column_names: List[str], target_column_names: List[str]):
         self._input_columns = input_column_names
         self._target_columns = target_column_names
 
@@ -129,7 +153,6 @@ class SdfLoader(CsvLoader):
 
 
 class ListLoader(AbstractLoader):
-
     def __init__(self, data: List[DataPoint], indices: List[str]):
         self._dataset = data
         self._indices = indices

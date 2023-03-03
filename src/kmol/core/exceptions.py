@@ -16,3 +16,7 @@ class TransformerError(ValueError):
 
 class SplitError(ValueError):
     pass
+
+
+class CollaterError(ValueError):
+    pass

@@ -1,4 +1,7 @@
 {
+    "server_type": "mila.services.servers.GrcpServer",
+    "server_manager_type": "mila.services.server_manager.GrcpServicer",
+    "grcp_configuration": {},
     "task_configuration_file": "data/configs/model/adme/papp_llc.json",
     "aggregator_type": "mila.aggregators.PlainTorchAggregator",
     "config_type": "kmol.core.config.Config",

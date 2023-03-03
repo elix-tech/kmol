@@ -6,6 +6,7 @@ import torch
 from torch.nn.modules.batchnorm import _BatchNorm as BatchNormLayer
 
 from .helpers import Namespace
+from .logger import LOGGER as logging
 
 
 class AbstractEventHandler(metaclass=ABCMeta):
@@ -31,8 +32,15 @@ class EventManager:
         EventManager._LISTENERS = defaultdict(list)
 
 
+class AddLogEventHandler(AbstractEventHandler):
+    """event: before_metric"""
+
+    def run(self, payload: Namespace):
+        payload.logits = torch.log(payload.logits)
+
+
 class AddSigmoidEventHandler(AbstractEventHandler):
-    """event: before_criterion|before_predict"""
+    """event: before_criterion|before_predict|before_metric"""
 
     def run(self, payload: Namespace):
         payload.logits = torch.sigmoid(payload.logits)
@@ -60,9 +68,7 @@ class AddArgmaxEventHandler(AbstractEventHandler):
         self._keepdim = keepdim
 
     def run(self, payload: Namespace):
-        payload.logits = torch.argmax(
-            payload.logits, dim=self._dim, keepdim=self._keepdim
-        )
+        payload.logits = torch.argmax(payload.logits, dim=self._dim, keepdim=self._keepdim)
 
 
 class InjectLossWeightsEventHandler(AbstractEventHandler):
@@ -168,7 +174,7 @@ class AddFedproxRegularizationEventHandler(AbstractEventHandler):
         regularization = 0.0
         for name, parameter in local_weights.items():
             if not name.endswith(".num_batches_tracked"):
-                regularization += ((self.mu / 2) * torch.norm((parameter - global_weights[name])) ** 2)
+                regularization += (self.mu / 2) * torch.norm((parameter - global_weights[name])) ** 2
 
         payload.loss += regularization
 
@@ -181,9 +187,7 @@ class DifferentialPrivacy:
             self._options = kwargs
 
             if "alphas" not in self._options:
-                self._options["alphas"] = [1 + i / 10.0 for i in range(1, 100)] + list(
-                    range(12, 64)
-                )
+                self._options["alphas"] = [1 + i / 10.0 for i in range(1, 100)] + list(range(12, 64))
 
         def run(self, payload: Namespace) -> None:
             from vendor.opacus.custom.privacy_engine import PrivacyEngine
@@ -192,9 +196,7 @@ class DifferentialPrivacy:
             network = trainer.network
 
             if not isinstance(self._options["max_grad_norm"], list):
-                self._options["max_grad_norm"] = [self._options["max_grad_norm"]] * len(
-                    list(network.parameters())
-                )
+                self._options["max_grad_norm"] = [self._options["max_grad_norm"]] * len(list(network.parameters()))
 
             privacy_engine = PrivacyEngine(
                 module=network,
@@ -215,14 +217,8 @@ class DifferentialPrivacy:
             optimizer = payload.trainer.optimizer
 
             try:
-                epsilon, best_alpha = optimizer.privacy_engine.get_privacy_spent(
-                    self._delta
-                )
-                payload.message += (
-                    " - privacy_cost: (ε = {:.2f}, δ = {}, α = {})".format(
-                        epsilon, self._delta, best_alpha
-                    )
-                )
+                epsilon, best_alpha = optimizer.privacy_engine.get_privacy_spent(self._delta)
+                payload.message += " - privacy_cost: (ε = {:.2f}, δ = {}, α = {})".format(epsilon, self._delta, best_alpha)
             except AttributeError:
                 pass
 

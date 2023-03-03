@@ -1,37 +1,23 @@
-import logging
-import operator
-import os
-from abc import ABCMeta, abstractmethod
 from copy import copy
+import operator
+from abc import ABCMeta, abstractmethod
 from enum import Enum
-from functools import reduce
-from joblib import Parallel, delayed
+from functools import partial, reduce
 from typing import List, Dict, Union
 
 from torch.utils.data import DataLoader, Subset
-from tqdm import tqdm
 
-from .featurizers import AbstractFeaturizer
-from .loaders import AbstractLoader, ListLoader
-from .resources import DataPoint, Collater, LoadedContent
+from .preprocessor import CachePreprocessor, OnlinePreprocessor
+from .datasets import DatasetAugment, DatasetOnline
+from .resources import DataPoint, AbstractCollater, LoadedContent
 from .splitters import AbstractSplitter
-from .transformers import AbstractTransformer
 from ..core.config import Config
-from ..core.exceptions import FeaturizationError
-from ..core.helpers import SuperFactory, CacheManager
-
+from ..core.helpers import SuperFactory
 
 class AbstractStreamer(metaclass=ABCMeta):
-    def __init__(self):
-        self._dataset = self._load_dataset()
-
     @property
     def labels(self) -> List[str]:
         return self._dataset.get_labels()
-
-    @abstractmethod
-    def _load_dataset(self) -> AbstractLoader:
-        raise NotImplementedError
 
     @abstractmethod
     def get(self, split_name: str, shuffle: bool, batch_size: int) -> DataLoader:
@@ -39,113 +25,69 @@ class AbstractStreamer(metaclass=ABCMeta):
 
 
 class GeneralStreamer(AbstractStreamer):
+    class Mode(Enum):
+        TRAIN = "train"
+        TEST = "test"
+
     def __init__(self, config: Config):
         self._config = config
-        self._cache_manager = CacheManager(cache_location=self._config.cache_location)
+        if self._config.online_preprocessing:
+            self._preprocessor = OnlinePreprocessor(self._config)
+        else:
+            self._preprocessor = CachePreprocessor(self._config)
 
-        self._featurizers = [
-            SuperFactory.create(AbstractFeaturizer, featurizer)
-            for featurizer in self._config.featurizers
-        ]
-
-        self._transformers = [
-            SuperFactory.create(AbstractTransformer, transformer)
-            for transformer in self._config.transformers
-        ]
-
-        self._dataset = self._load_dataset()
+        self._dataset = self._preprocessor._load_dataset()
+        self._preprocessor._load_augmented_data()
         self.splits = self._generate_splits()
+        self._generate_aug_splits()
+        self._dataset_object = self._generate_partial_dataset_object()
 
     def _generate_splits(self) -> Dict[str, List[Union[int, str]]]:
         splitter = SuperFactory.create(AbstractSplitter, self._config.splitter)
         return splitter.apply(data_loader=self._dataset)
 
-    def _load_dataset(self) -> AbstractLoader:
-        return self._cache_manager.execute_cached_operation(
-            processor=self._prepare_dataset,
-            clear_cache=self._config.clear_cache,
-            arguments={},
-            cache_key={
-                "loader": self._config.loader,
-                "featurizers": self._config.featurizers,
-                "transformers": self._config.transformers,
-                "last_modified": os.path.getmtime(self._config.loader["input_path"])
-            }
-        )
-
-    def _featurize(self, sample: DataPoint):
-        for featurizer in self._featurizers:
-            try:
-                featurizer.run(sample)
-            except (
-                FeaturizationError,
-                ValueError,
-                IndexError,
-                AttributeError,
-                TypeError,
-            ) as e:
-                raise FeaturizationError(
-                    "[WARNING] Could not run featurizer '{}' on '{}' --- {}".format(
-                        featurizer.__class__.__name__, sample.id_, e
-                    )
-                )
-
-    def _apply_transformers(self, sample: DataPoint) -> None:
-        for transformer in self._transformers:
-            transformer.apply(sample)
+    def _generate_aug_splits(self) -> Dict[str, List[Union[int, str]]]:
+        for a in self._preprocessor._static_augmentations:
+            a.generate_splits(self.splits)
 
     def reverse_transformers(self, sample: DataPoint) -> None:
-        for transformer in reversed(self._transformers):
-            transformer.reverse(sample)
+        return self._preprocessor.reverse_transformers(sample)
 
-    def _prepare_dataset(self) -> ListLoader:
+    def _get_subset(self, split_name: str, mode: Mode, **kwargs) -> Subset:
+        # Retrieve base data and indices
+        indices = self._get_indices(split_name, mode, **kwargs)
+        # Retrieve static aug data and indices
+        if mode == self.Mode.TRAIN:
+            aug_indices = self._get_aug_indices(split_name, **kwargs)
+            indices += aug_indices
+            dataset = self._preprocessor._add_static_aug_dataset(self._dataset)
+        else:
+            dataset = self._dataset
 
-        loader = SuperFactory.create(AbstractLoader, self._config.loader)
-        all_ids = loader.list_ids()
-        n_jobs = self._config.featurization_jobs
-        chunk_size = len(all_ids) // n_jobs
-        logging.info("Starting featurization...")
-        chunks = [
-            all_ids[i:i + chunk_size] for i in range(0, len(all_ids), chunk_size)
-        ]
-        chunks = [Subset(loader, chunk) for chunk in chunks]
-        dataset = sum(
-            Parallel(n_jobs=len(chunks))(
-                delayed(self._prepare_chunk)(chunk) for chunk in chunks
-            ),
-            [],
-        )
-
-        ids = [sample.id_ for sample in dataset]
-        return ListLoader(dataset, ids)
-
-    def _prepare_chunk(self, loader) -> List[DataPoint]:
-        dataset = []
-        with tqdm(total=len(loader)) as progress_bar:
-            for sample in loader:
-                try:
-                    self._featurize(sample)
-                    self._apply_transformers(sample)
-
-                    dataset.append(sample)
-
-                except FeaturizationError as e:
-                    logging.warning(e)
-
-                progress_bar.update(1)
-
+        dataset = self._dataset_object(dataset=dataset, indices=indices)
+        dataset.set_training_mode(mode == self.Mode.TRAIN)
         return dataset
 
-    def _get_subset(self, split_name: str, **kwargs) -> Subset:
-        return Subset(dataset=self._dataset, indices=self.splits[split_name])
+    def _get_indices(self, split_name, mode, **kwargs):
+        return self.splits[split_name]
 
-    def get(
-        self, split_name: str, batch_size: int, shuffle: bool, **kwargs
-    ) -> LoadedContent:
-        collater = Collater()
+    def _get_aug_indices(self, split_name, **kwargs):
+        splits = []
+        for a in self._preprocessor._static_augmentations:
+            splits += a.splits[a.get_aug_split_name(split_name)]
+        return splits
+
+    def _generate_partial_dataset_object(self) -> Subset:
+        if self._config.online_preprocessing:
+            return partial(DatasetOnline, augmentations=self._config.augmentations, preprocessor=self._preprocessor)
+        else:
+            return partial(DatasetAugment, augmentations=self._config.augmentations)
+
+    def get(self, split_name: str, batch_size: int, shuffle: bool, mode: Mode, **kwargs) -> LoadedContent:
+        collater = SuperFactory.create(AbstractCollater, self._config.collater)
 
         data_loader = DataLoader(
-            dataset=self._get_subset(split_name, **kwargs),
+            dataset=self._get_subset(split_name, mode, **kwargs),
             collate_fn=collater.apply,
             batch_size=batch_size,
             shuffle=shuffle,
@@ -162,43 +104,36 @@ class GeneralStreamer(AbstractStreamer):
 
 
 class SubsetStreamer(GeneralStreamer):
-    def _get_subset(
-        self, split_name: str, subset_id: int, subset_distributions: List[float]
-    ) -> Subset:
+    def _get_indices(
+        self, split_name: str, mode: GeneralStreamer.Mode, subset_id: int, subset_distributions: List[float]
+    ) -> List:
         indices = self.splits[split_name]
 
         remaining_entries_count = len(indices)
-        start_index = int(
-            remaining_entries_count * sum(subset_distributions[:subset_id])
-        )
-        end_index = int(
-            remaining_entries_count * sum(subset_distributions[: subset_id + 1])
-        )
+        start_index = int(remaining_entries_count * sum(subset_distributions[:subset_id]))
+        end_index = int(remaining_entries_count * sum(subset_distributions[: subset_id + 1]))
 
-        return Subset(dataset=self._dataset, indices=indices[start_index:end_index])
+        return indices[start_index:end_index]
+
+    def _get_aug_indices(self, split_name: str, subset_id: int, subset_distributions: List[float]) -> List:
+        splits = []
+        for a in self._preprocessor._static_augmentations:
+            splits += a.splits[a.get_aug_split_name(split_name, self, subset_id, subset_distributions)]
+        return splits
 
 
 class CrossValidationStreamer(GeneralStreamer):
-    class Mode(Enum):
-        TRAIN = "train"
-        TEST = "test"
-
     def get_fold_name(self, fold: int) -> str:
         return "fold_{}".format(fold)
 
     def _generate_splits(self) -> Dict[str, List[str]]:
         split_ratio = 1 / self._config.cross_validation_folds
-        splits = {
-            self.get_fold_name(fold): split_ratio
-            for fold in range(self._config.cross_validation_folds)
-        }
+        splits = {self.get_fold_name(fold): split_ratio for fold in range(self._config.cross_validation_folds)}
 
-        splitter = SuperFactory.create(
-            AbstractSplitter, self._config.splitter, {"splits": splits}
-        )
+        splitter = SuperFactory.create(AbstractSplitter, self._config.splitter, {"splits": splits})
         return splitter.apply(data_loader=self._dataset)
 
-    def _get_subset(self, split_name: str, mode: Mode) -> Subset:
+    def _get_indices(self, split_name: str, mode: GeneralStreamer.Mode) -> List:
         if mode == self.Mode.TEST:
             indices = self.splits[split_name]
         else:
@@ -206,4 +141,12 @@ class CrossValidationStreamer(GeneralStreamer):
             indices.pop(split_name)
             indices = reduce(operator.iconcat, indices.values(), [])  # flatten
 
-        return Subset(dataset=self._dataset, indices=indices)
+        return indices
+
+    def _get_aug_indices(self, split_name: str) -> List:
+        aug_indices = []
+        for a in self._preprocessor._static_augmentations:
+            aug_split = copy(a.splits)
+            aug_split.pop(split_name + "_aug")
+            aug_indices += reduce(operator.iconcat, aug_split.values(), [])  # flatten
+        return aug_indices

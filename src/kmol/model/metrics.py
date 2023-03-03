@@ -1,5 +1,4 @@
 import json
-import logging
 import math
 from abc import ABCMeta, abstractmethod
 from collections import defaultdict
@@ -27,7 +26,10 @@ from sklearn.metrics import (
 )
 
 from ..core.helpers import Namespace
+from ..core.logger import LOGGER as logging
 from ..core.observers import EventManager
+
+
 class MetricType(Enum):
     REGRESSION = "regression"
     CLASSIFICATION = "classification"
@@ -55,27 +57,19 @@ class CustomMetrics:
         return ranks
 
     @staticmethod
-    def pearson_correlation_coefficient(
-        ground_truth: List[float], predictions: List[float]
-    ) -> float:
+    def pearson_correlation_coefficient(ground_truth: List[float], predictions: List[float]) -> float:
         return stats.pearsonr(ground_truth, predictions)[0]
 
     @staticmethod
-    def spearman_correlation_coefficient(
-        ground_truth: List[float], predictions: List[float]
-    ) -> float:
+    def spearman_correlation_coefficient(ground_truth: List[float], predictions: List[float]) -> float:
         return stats.spearmanr(ground_truth, predictions).correlation
 
     @staticmethod
-    def kullback_leibler_divergence(
-        ground_truth: List[float], predictions: List[float]
-    ) -> float:
+    def kullback_leibler_divergence(ground_truth: List[float], predictions: List[float]) -> float:
         return stats.entropy(ground_truth, predictions)
 
     @staticmethod
-    def jensen_shannon_divergence(
-        ground_truth: List[float], predictions: List[float]
-    ) -> float:
+    def jensen_shannon_divergence(ground_truth: List[float], predictions: List[float]) -> float:
         return math.exp(distance.jensenshannon(ground_truth, predictions))
 
     @staticmethod
@@ -95,9 +89,7 @@ class CustomMetrics:
             return float(ground_truth[0] == predictions[0])
 
         samples_count = ground_truth.shape[0]
-        worst_possible_outcome = (
-            np.arange(int(samples_count % 2 == 0), samples_count, step=2).sum() * 2
-        )
+        worst_possible_outcome = np.arange(int(samples_count % 2 == 0), samples_count, step=2).sum() * 2
 
         return 1 - np.sum(np.abs(ground_truth - predictions)) / worst_possible_outcome
 
@@ -106,11 +98,11 @@ class AvailableMetrics:
     # fmt: off
     MAE = MetricConfiguration(type=MetricType.REGRESSION, calculator=mean_absolute_error, maximize=False)
     MSE = MetricConfiguration(type=MetricType.REGRESSION, calculator=mean_squared_error, maximize=False)
-    RMSE = MetricConfiguration(type=MetricType.REGRESSION, calculator=partial(mean_squared_error, squared=False), maximize=False)
+    RMSE = MetricConfiguration(type=MetricType.REGRESSION, calculator=partial(mean_squared_error, squared=False), maximize=False)  # noqa: E501
     R2 = MetricConfiguration(type=MetricType.REGRESSION, calculator=r2_score)
     PEARSON = MetricConfiguration(type=MetricType.REGRESSION, calculator=CustomMetrics.pearson_correlation_coefficient)
     SPEARMAN = MetricConfiguration(type=MetricType.REGRESSION, calculator=CustomMetrics.spearman_correlation_coefficient)
-    KL_DIV = MetricConfiguration(type=MetricType.REGRESSION, calculator=CustomMetrics.kullback_leibler_divergence, maximize=False)
+    KL_DIV = MetricConfiguration(type=MetricType.REGRESSION, calculator=CustomMetrics.kullback_leibler_divergence, maximize=False)  # noqa: E501
     JS_DIV = MetricConfiguration(type=MetricType.REGRESSION, calculator=CustomMetrics.jensen_shannon_divergence, maximize=False)
     CHEBYSHEV = MetricConfiguration(type=MetricType.REGRESSION, calculator=distance.chebyshev, maximize=False)
     MANHATTAN = MetricConfiguration(type=MetricType.REGRESSION, calculator=distance.cityblock, maximize=False)
@@ -120,8 +112,8 @@ class AvailableMetrics:
     PR_AUC = MetricConfiguration(type=MetricType.CLASSIFICATION, calculator=average_precision_score)
     ACCURACY = MetricConfiguration(type=MetricType.CLASSIFICATION, calculator=accuracy_score, uses_threshold=True)
     ACCURACY_MULTICLASS = MetricConfiguration(type=MetricType.CLASSIFICATION, calculator=accuracy_score, uses_threshold=False)
-    PRECISION = MetricConfiguration(type=MetricType.CLASSIFICATION, calculator=partial(precision_score, zero_division=1), uses_threshold=True)
-    RECALL = MetricConfiguration(type=MetricType.CLASSIFICATION, calculator=partial(recall_score, zero_division=1), uses_threshold=True)
+    PRECISION = MetricConfiguration(type=MetricType.CLASSIFICATION, calculator=partial(precision_score, zero_division=1), uses_threshold=True)  # noqa: E501
+    RECALL = MetricConfiguration(type=MetricType.CLASSIFICATION, calculator=partial(recall_score, zero_division=1), uses_threshold=True)  # noqa: E501
     F1 = MetricConfiguration(type=MetricType.CLASSIFICATION, calculator=f1_score, uses_threshold=True)
     COHEN_KAPPA = MetricConfiguration(type=MetricType.CLASSIFICATION, calculator=cohen_kappa_score, uses_threshold=True)
     JACCARD = MetricConfiguration(type=MetricType.CLASSIFICATION, calculator=jaccard_score, uses_threshold=True)
@@ -203,25 +195,15 @@ class PredictionProcessor:
 
         return ground_truth, logits, predictions
 
-    def compute_metrics(
-        self, ground_truth: List[torch.Tensor], logits: List[torch.Tensor]
-    ) -> Namespace:
-        ground_truth, logits, predictions = self._prepare(
-            ground_truth=ground_truth, logits=logits
-        )
+    def compute_metrics(self, ground_truth: List[torch.Tensor], logits: List[torch.Tensor]) -> Namespace:
+        ground_truth, logits, predictions = self._prepare(ground_truth=ground_truth, logits=logits)
         metrics = defaultdict(list)
         for target_index in range(len(ground_truth)):
             for metric_name, metric_settings in self._metrics.items():
-                labels = (
-                    predictions[target_index]
-                    if metric_settings.uses_threshold
-                    else logits[target_index]
-                )
+                labels = predictions[target_index] if metric_settings.uses_threshold else logits[target_index]
 
                 try:
-                    computed_value = metric_settings.calculator(
-                        ground_truth[target_index], labels
-                    )
+                    computed_value = metric_settings.calculator(ground_truth[target_index], labels)
                     if not metric_settings.maximize:
                         computed_value *= -1
                 except ValueError:
@@ -231,19 +213,13 @@ class PredictionProcessor:
 
         return Namespace(**metrics)
 
-    def find_best_threshold(
-        self, ground_truth: List[torch.Tensor], logits: List[torch.Tensor]
-    ) -> List[float]:
+    def find_best_threshold(self, ground_truth: List[torch.Tensor], logits: List[torch.Tensor]) -> List[float]:
         logits = [torch.sigmoid(tensor) for tensor in logits]
-        ground_truth, logits, _ = self._prepare(
-            ground_truth=ground_truth, logits=logits
-        )
+        ground_truth, logits, _ = self._prepare(ground_truth=ground_truth, logits=logits)
 
         best = []
         for i in range(len(ground_truth)):
-            false_positive_rate, true_positive_rate, thresholds = roc_curve(
-                ground_truth[i], logits[i]
-            )
+            false_positive_rate, true_positive_rate, thresholds = roc_curve(ground_truth[i], logits[i])
             best.append(thresholds[np.argmax(true_positive_rate - false_positive_rate)])
 
         return best
@@ -266,16 +242,16 @@ class JsonLogger(AbstractMetricLogger):
         logging.info("--------------------------------------------------------------")
 
     def log_content(self, content: Namespace) -> None:
-        print(json.dumps(vars(content)))
+        logging.info(json.dumps(vars(content)))
 
 
 class CsvLogger(AbstractMetricLogger):
     def log_header(self, headers: List[str]) -> None:
         logging.info("--------------------------------------------------------------")
-        print("metric,{}".format(",".join(headers)))
+        logging.info("metric,{}".format(",".join(headers)))
         logging.info("--------------------------------------------------------------")
 
     def log_content(self, content: Namespace) -> None:
         for name, values in vars(content).items():
             values = [str(value) for value in values]
-            print("{},{}".format(name, ",".join(values)))
+            logging.info("{},{}".format(name, ",".join(values)))

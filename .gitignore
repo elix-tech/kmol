@@ -7,9 +7,14 @@ __pycache__
 !/data/configs
 !/data/sessions
 sandbox/
-scripts/
 projects/
+notebooks/
+notebooks-uncertainty/
 
 build/
 dist/
 *.egg-info/
+
+src/kmol/vendor/graphormer/algos.c
+src/algos.*.so
+src/kmol/vendor/graphormer/algos.*.so

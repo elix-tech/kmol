@@ -1,5 +1,13 @@
 [build-system]
-requires = ["setuptools>=42", "wheel", "setuptools_scm[toml]>=6.2"]
+requires = ["setuptools>=42", "wheel", "setuptools_scm[toml]>=6.2", "cython", "numpy", "torch"]
 build-backend = "setuptools.build_meta"
 
+[tool.black]
+line-length = 128
+
+[tool.flake8]
+ignore = ['E203']
+max-line-length = 128
+
 [tool.setuptools_scm]
+

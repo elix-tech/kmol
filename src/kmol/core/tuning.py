@@ -25,22 +25,18 @@ class OptunaTemplateParser(Loggable):
     - if numeric values do not contain a dot ".", an int value will be suggested ie: {{{layers=2-5-1}}}
     """
 
-    def __init__(
-            self, template_path: str, evaluator: Callable[[Config], float],
-            log_path: str, delete_checkpoints: bool = True
-    ):
+    def __init__(self, config: Config, evaluator: Callable[[Config], float], log_path: str, delete_checkpoints: bool = True):
         Loggable.__init__(self, file_path=log_path)
         self.log("trial_number,performance,configuration_path\n")
 
-        with open(template_path) as read_buffer:
-            self._template = read_buffer.read()
-            self._template = self._template.replace(" ", "").replace("\n", "")
+        self._template = json.dumps(config.__dict__)
+        self._template = self._template.replace(" ", "").replace("\n", "")
 
         self._evaluator = evaluator
         self._should_delete_checkpoints = delete_checkpoints
 
     def _get_trial_save_path(self, save_path: str, trial_id: int) -> str:
-        return "{}{}/".format(save_path, trial_id)
+        return "{}/trial_{}/".format(save_path, trial_id)
 
     def _suggest_configuration(self, trial: optuna.Trial) -> Dict[str, Any]:
         replacements = {}
@@ -52,7 +48,7 @@ class OptunaTemplateParser(Loggable):
                 replacements[key] = trial.suggest_categorical(name, placeholder.split("|"))
                 continue
 
-            key = "\"{}\"".format(key)
+            key = '"{}"'.format(key)
             low, high, step = placeholder.split("-")
 
             if "." in placeholder:

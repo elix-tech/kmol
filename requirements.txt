@@ -1,0 +1,11 @@
+# Pip requirement for the kmol project
+
+disklist == 0.4.0
+boxsdk[jwt] == 3.6.1
+torch-lr-finder == 0.2.1
+
+# Openfold requirements
+deepspeed==0.5.10
+ml-collections==0.1.0
+
+-e .
