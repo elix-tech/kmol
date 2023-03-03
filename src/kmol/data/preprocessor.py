@@ -191,7 +191,7 @@ class OnlinePreprocessor(AbstractPreprocessor):
             dataset = dataset + a.aug_dataset
 
         if any([type(a.aug_dataset) == list for a in self._static_augmentations]):
-            dataset = [data_point for data_point in dataset]
+            dataset = dataset.get_all()
         for dataset in [a.aug_dataset for a in self._static_augmentations]:
             if type(dataset) == list:
                 dataset = dataset + a.aug_dataset
