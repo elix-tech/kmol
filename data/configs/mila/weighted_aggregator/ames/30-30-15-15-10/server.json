@@ -1,4 +1,7 @@
 {
+    "server_type": "mila.services.servers.GrcpServer",
+    "server_manager_type": "mila.services.server_manager.GrcpServicer",
+    "grcp_configuration": {},
     "task_configuration_file": "data/configs/model/ames.json",
     "aggregator_type": "mila.aggregators.WeightedTorchAggregator",
     "aggregator_options": {"weights": {"tester1": 0.3, "tester2": 0.3, "tester3": 0.15, "tester4": 0.15, "tester5": 0.1}},

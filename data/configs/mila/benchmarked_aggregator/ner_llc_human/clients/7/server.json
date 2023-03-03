@@ -1,4 +1,7 @@
 {
+    "server_type": "mila.services.servers.GrcpServer",
+    "server_manager_type": "mila.services.server_manager.GrcpServicer",
+    "grcp_configuration": {},
     "task_configuration_file": "data/configs/model/adme/ner_llc_human.json",
     "aggregator_type": "mila.aggregators.BenchmarkedTorchAggregator",
     "aggregator_options": {"config_type": "kmol.core.config.Config", "config_path": "data/configs/model/adme/ner_llc_human.json", "executor_type": "kmol.run.Executor", "target_metric": "roc_auc"},

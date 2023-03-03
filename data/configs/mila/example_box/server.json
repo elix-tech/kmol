@@ -1,0 +1,23 @@
+{
+    "server_type": "mila.services.servers.BoxServer",
+    "server_manager_type": "mila.services.server_manager.BoxServicer",
+    "task_configuration_file": "data/configs/model/tox21.json",
+    "aggregator_type": "mila.aggregators.PlainTorchAggregator",
+    "config_type": "kmol.core.config.Config",
+    "executor_type": "kmol.run.Executor",
+
+    "rounds_count": 3,
+    "workers": 4,
+    "minimum_clients": 2,
+    "maximum_clients": 2,
+
+    "client_wait_time": 300,
+    "heartbeat_timeout": 90,
+
+    "box_configuration": {
+        "box_configuration_path": "kmol_jwt_config.json",
+        "shared_dir_name": "kmol folder jwt",
+        "save_path": "test_run",
+        "group_name": "Test kMol jwt group"
+    }
+}
