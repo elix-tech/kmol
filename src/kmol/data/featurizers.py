@@ -447,6 +447,30 @@ class BagOfWordsFeaturizer(AbstractFeaturizer):
 
         return torch.FloatTensor(list(sample.values()))
 
+class ToIndexFeaturizer(AbstractFeaturizer):
+    def __init__(
+        self,
+        inputs: List[str],
+        outputs: List[str],
+        vocabulary: List[str],
+        should_cache: bool = False,
+        rewrite: bool = True,
+    ):
+        super().__init__(inputs, outputs, should_cache, rewrite)
+        self._vocabulary = vocabulary
+        self._to_index_dict = self._create_index_dict()
+
+    def _create_index_dict(self):
+        to_index_dict = {}
+        for index, amino_acid in enumerate(self._vocabulary):
+            to_index_dict[amino_acid] = index
+
+        return to_index_dict
+
+    def _process(self, data: str, entry: DataPoint) -> torch.FloatTensor:
+        sample = [self._to_index_dict[amino_acid] for amino_acid in data]
+
+        return torch.FloatTensor(sample)
 
 class PerturbedBagOfWordsFeaturizer(BagOfWordsFeaturizer):
     def __init__(

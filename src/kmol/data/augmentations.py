@@ -193,24 +193,11 @@ class RandomTemplateSelectionAugmentation(AbstractAugmentation):
         return data
 
 
-class ProteinPerturbationAugmentation(AbstractAugmentation):
-    """
-    Augmentation useful for lrodd network. Perturb the protein following a Bernoulli distribution.
-    """
+class ProteinPertubationAugmentation(AbstractAugmentation):
     def __init__(self, vocabulary: List[str], max_length: int, p: float = 0.2):
         self._original_vocabulary = vocabulary
         self._bernoulli_prob = p
-        self._vocabulary = self._get_combinations(vocabulary, max_length)
         self._max_length = max_length
-
-    def _get_combinations(self, vocabulary: List[str], max_length: int) -> List[str]:
-        combinations = []
-
-        for length in range(1, max_length + 1):
-            for variation in itertools.product(vocabulary, repeat=length):
-                combinations.append("".join(variation))
-
-        return combinations
 
     def _perturb(self, data: str) -> str:
         bern = bernoulli(self._bernoulli_prob)
@@ -221,8 +208,29 @@ class ProteinPerturbationAugmentation(AbstractAugmentation):
                 l_data[i] = random.choice(self._original_vocabulary)
         return ''.join(l_data)
 
+class ProteinPerturbationBaggedAugmentation(ProteinPertubationAugmentation):
+    """
+    Augmentation useful for pseudo lrodd background network. Perturb the protein following a Bernoulli distribution.
+    """
+    def __init__(self, vocabulary: List[str], max_length: int, p: float = 0.2, input: str = "target_sequence", output: str = "protein"):
+        self._original_vocabulary = vocabulary
+        self._bernoulli_prob = p
+        self._vocabulary = self._get_combinations(vocabulary, max_length)
+        self._max_length = max_length
+        self._input = input
+        self._output = output
+
+    def _get_combinations(self, vocabulary: List[str], max_length: int) -> List[str]:
+        combinations = []
+
+        for length in range(1, max_length + 1):
+            for variation in itertools.product(vocabulary, repeat=length):
+                combinations.append("".join(variation))
+
+        return combinations
+
     def __call__(self, data: dict, seed=None) -> torch.FloatTensor:
-        target_sequence = data["target_sequence"]
+        target_sequence = data[self._input]
         target_sequence = self._perturb(target_sequence)
 
         sample = dict.fromkeys(self._vocabulary, 0)
@@ -231,5 +239,28 @@ class ProteinPerturbationAugmentation(AbstractAugmentation):
             for start_index in range(0, len(target_sequence) - length + 1):
                 sample[target_sequence[start_index:start_index + length]] += 1
 
-        data["protein"] = torch.FloatTensor(list(sample.values()))
+        data[self._output] = torch.FloatTensor(list(sample.values()))
+        return data
+
+class ProteinPerturbationSequenceAugmentation(ProteinPertubationAugmentation):
+    """
+    Augmentation useful for lrodd generative bg network. Perturb the protein following a Bernoulli distribution.
+    """
+    def __init__(self, vocabulary: List[str], max_length: int, p: float = 0.2, input: str = "target_sequence", output: str = "protein"):
+        self._original_vocabulary = vocabulary
+        self._bernoulli_prob = p
+        self._max_length = max_length
+        self._to_index_dict = self._create_index_dict()
+
+    def _create_index_dict(self):
+        to_index_dict = {}
+        for index, amino_acid in enumerate(self._vocabulary):
+            to_index_dict[amino_acid] = index
+
+        return to_index_dict
+
+    def __call__(self, data: dict, seed=None) -> torch.FloatTensor:
+        target_sequence = data[self._input]
+        target_sequence = self._perturb(target_sequence)
+        data[self._output] = [self._to_index_dict[amino_acid] for amino_acid in target_sequence]
         return data
