@@ -24,7 +24,6 @@ class Batch:
     inputs: Dict[str, torch.Tensor]
     outputs: torch.FloatTensor
 
-
 @dataclass
 class LoadedContent:
 
@@ -88,3 +87,49 @@ class GraphormerCollater(GeneralCollater):
                 batch.inputs[key] = batch_dict
 
         return batch
+
+
+class PaddedCollater(GeneralCollater):
+    def __init__(self, padded_column):
+        super().__init__()
+        self.padded_column = padded_column
+
+    def _pad_and_create_mask(self, seqs, dtype=torch.long):
+        max_length = max([len(seq) for seq in seqs])
+        padded_seqs = [torch.zeros(max_length, dtype=dtype) for _ in range(len(seqs))]
+        mask = [torch.zeros(max_length, dtype=torch.bool) for _ in range(len(seqs))]
+        for i, seq in enumerate(seqs):
+            padded_seqs[i][:len(seq)] = torch.tensor(seq, dtype=dtype)
+            mask[i][:len(seq)] = 1
+
+        return padded_seqs, mask
+
+    def _unpack(self, batch: List[DataPoint]) -> Batch:
+        ids = []
+        inputs = defaultdict(list)
+        outputs = []
+
+        for entry in batch:
+            ids.append(entry.id_)
+
+            for key, value in entry.inputs.items():
+                inputs[key].append(value)
+
+            outputs.append(entry.outputs)
+        
+        # Pad inputs
+        inputs_padded = defaultdict(list)
+        
+        for key, values in inputs.items():
+            if key == self.padded_column:
+                inputs_padded[key], inputs_padded["mask"] = self._pad_and_create_mask(values)
+            else:
+                inputs_padded[key] = values
+
+        # Pad outputs
+        outputs_padded, _ = self._pad_and_create_mask(outputs, dtype=torch.float)
+        outputs_padded = torch.stack(outputs_padded)
+        
+        inputs_padded = dict(inputs_padded)
+
+        return Batch(ids=ids, labels=batch[0].labels, inputs=inputs_padded, outputs=outputs_padded)

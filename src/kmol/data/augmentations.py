@@ -251,10 +251,12 @@ class ProteinPerturbationSequenceAugmentation(ProteinPertubationAugmentation):
         self._bernoulli_prob = p
         self._max_length = max_length
         self._to_index_dict = self._create_index_dict()
+        self._input = input
+        self._output = output
 
     def _create_index_dict(self):
         to_index_dict = {}
-        for index, amino_acid in enumerate(self._vocabulary):
+        for index, amino_acid in enumerate(self._original_vocabulary):
             to_index_dict[amino_acid] = index
 
         return to_index_dict

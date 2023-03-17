@@ -355,6 +355,7 @@ class Executor(AbstractExecutor):
             logits = outputs.logits
             variance = getattr(outputs, "logits_var", None)
             softmax_score = getattr(outputs, "softmax_score", None)
+            likelihood_ratio = getattr(outputs, "likelihood_ratio", None)
             protein_gradients = getattr(outputs, "protein_gd_mean", None)
             ligand_gradients = getattr(outputs, "ligand_gd_mean", None)
             hidden_layer_output = getattr(outputs, "hidden_layer", None)
@@ -380,6 +381,8 @@ class Executor(AbstractExecutor):
                 results["protein_gd"].extend(protein_gradients.cpu().numpy())
             if ligand_gradients is not None:
                 results["ligand_gd"].extend(ligand_gradients.cpu().numpy())
+            if likelihood_ratio:
+                results["likelihood_ratio"].extend(likelihood_ratio.cpu().numpy())
 
             if len(self._config.prediction_additional_columns) > 0:
                 for col_name in self._config.prediction_additional_columns:
@@ -395,6 +398,8 @@ class Executor(AbstractExecutor):
             results["protein_gd"] = np.vstack(results["protein_gd"])
         if "ligand_gd" in results:
             results["ligand_gd"] = np.vstack(results["ligand_gd"])
+        if "likelihood_ratio" in results:
+            results["likelihood_ratio"] = np.vstack(results["likelihood_ratio"])
         if "hidden_layer" in outputs_to_save:
             outputs_to_save["hidden_layer"] = np.vstack(outputs_to_save["hidden_layer"]).tolist()
 
@@ -425,6 +430,10 @@ class Executor(AbstractExecutor):
             if "ligand_gd" in results:
                 results[f"{label}_ligand_gd"] = results["ligand_gd"][:, i]
                 columns.append(f"{label}_ligand_gd")
+        if "likelihood_ratio" in results:
+            results["likelihood_ratio"] = results["likelihood_ratio"][:]
+            columns.append("likelihood_ratio")
+
             columns += self._config.prediction_additional_columns
         
         results = pd.DataFrame.from_dict({c: results[c] for c in columns})

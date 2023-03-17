@@ -1,7 +1,8 @@
 from typing import Any, Dict, List
 import torch
 from torch import nn
-from . import EnsembleNetwork, AbstractNetwork
+from . import EnsembleNetwork
+from .abstract_network import AbstractNetwork
 
 
 class PseudoLroddNetwork(EnsembleNetwork):
@@ -13,7 +14,7 @@ class PseudoLroddNetwork(EnsembleNetwork):
 
         return {
             "logits": fg_output,
-            "logits_var": fg_output - bg_output,
+            "likelihood_ratio": fg_output/bg_output,
         }
 
     def loss_aware_forward(self, data: Dict[str, Any], loss_type: str) -> Dict[str, torch.Tensor]:
@@ -29,23 +30,40 @@ class PseudoLroddNetwork(EnsembleNetwork):
         }
 
 
-class GenerativeLSTM(AbstractNetwork):
-    def __init__(self, in_features, hidden_features, out_features, num_layers=1):
-        super(GenerativeLSTM, self).__init__()
+class GenerativeLstmNetwork(AbstractNetwork):
+    def __init__(
+        self, 
+        in_features: int,
+        hidden_features: int,
+        out_features: int, 
+    ):
+        super().__init__()
         self.hidden_size = hidden_features
-        self.num_layers = num_layers
         self.embedding = nn.Embedding(in_features, hidden_features)
-        self.lstm = nn.LSTM(hidden_features, hidden_features, num_layers, batch_first=True)
+        self.lstm = nn.LSTM(hidden_features, hidden_features, 1, batch_first=True)
         self.fc = nn.Linear(hidden_features, out_features)
 
-    def forward(self, x, hidden):
-        x = self.embedding(x)
-        output, hidden = self.lstm(x, hidden)
+    def get_requirements(self) -> List[str]:
+        return ["protein", "mask"]
+
+    def forward(self, data: Dict[str, Any]) -> Dict[str, torch.Tensor]:
+        input = data["protein"]
+        mask = data["mask"]
+
+        x = self.embedding(input)
+
+        output, _ = self.lstm(x) #, hidden)
         output = self.fc(output)
+
+        # Use the mask to ignore padded elements when calculating the loss
+        masked_output = torch.masked_select(output[:, :-1, :], mask)
+        masked_input = torch.masked_select(input, mask)
+
+        log_likelihood = -torch.nn.functional.cross_entropy(masked_output, masked_input)
 
         return {
             "logits": output,
-            "ll": -torch.nn.functional.cross_entropy(output[:, :-1, :], x),
+            "log_likelihood": log_likelihood,
         }
 
 class LroddNetwork(EnsembleNetwork):
@@ -57,7 +75,7 @@ class LroddNetwork(EnsembleNetwork):
 
         return {
             "logits": classifier_output,
-            "lr": fg_output["ll"] - bg_output["ll"],
+            "likelihood_ratio": fg_output["log_likelihood"] - bg_output["log_likelihood"],
         }
 
 

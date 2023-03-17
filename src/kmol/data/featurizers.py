@@ -469,8 +469,7 @@ class ToIndexFeaturizer(AbstractFeaturizer):
 
     def _process(self, data: str, entry: DataPoint) -> torch.FloatTensor:
         sample = [self._to_index_dict[amino_acid] for amino_acid in data]
-
-        return torch.FloatTensor(sample)
+        return torch.LongTensor(sample)
 
 class PerturbedBagOfWordsFeaturizer(BagOfWordsFeaturizer):
     def __init__(

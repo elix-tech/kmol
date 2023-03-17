@@ -160,7 +160,18 @@ class Trainer(AbstractExecutor):
         payload = Namespace(features=batch, logits=outputs, extras=[])
         EventManager.dispatch_event(event_name="before_criterion", payload=payload)
 
+        # TODO: sensitive change to be examined per other contributors
+        self.criterion.reduction = 'none'
         loss = self.criterion(payload.logits, payload.features.outputs, *payload.extras)
+        
+        mask = batch.inputs.get("mask")
+
+        if mask is not None:
+            mask = mask.to(self._device)
+            loss = loss[mask]  # Apply the mask
+        
+        loss = torch.mean(loss)  # Calculate the mean of the masked loss
+
         loss.backward()
 
         self.optimizer.step()
