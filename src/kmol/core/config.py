@@ -52,6 +52,7 @@ class Config(AbstractConfiguration):
     epochs: int = 100
     batch_size: int = 32
     drop_last_batch: bool = False
+    autoencoder: bool = False
 
     use_cuda: bool = True
     enabled_gpus: List[int] = field(default_factory=lambda: [0])

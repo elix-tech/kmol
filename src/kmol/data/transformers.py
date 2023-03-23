@@ -38,10 +38,10 @@ class AutoEncoderTransformer(AbstractTransformer):
         self._input = input
 
     def apply(self, data: DataPoint) -> None:
-        data.outputs = data.inputs[self._input].float()
+        data.outputs = data.inputs[self._input]
         
     def reverse(self, data: DataPoint) -> None:
-        return
+        pass
 
 
 class MinMaxNormalizeTransformer(AbstractTransformer):

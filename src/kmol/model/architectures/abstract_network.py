@@ -89,6 +89,10 @@ class AbstractNetwork(torch.nn.Module, metaclass=ABCMeta):
     def simple_classification_outputs_processing(self, outputs):
         return torch.argmax(outputs, dim=-1)
 
+    @torch.no_grad()
+    def generative_autoencoder_outputs_processing(self, outputs):
+        return outputs.view(-1, outputs.size(-1))
+
     def evidential_classification_multilabel_nologits(self, data):
         outputs = self.forward(data)
 

@@ -73,6 +73,17 @@ class CsvLoader(AbstractLoader):
     def get_labels(self) -> List[str]:
         return self._target_columns
 
+class FlexibleCsvLoader(CsvLoader):
+    # Allows the creation of new, columns. This is useful for autoencoders
+    def __init__(self, input_path: str, input_column_names: List[str], target_column_names: List[str]):
+        self._input_columns = input_column_names
+        self._target_columns = target_column_names
+
+        self._dataset = pd.read_csv(input_path)
+
+        # Add target columns if they don't exist
+        self._dataset = self._dataset.assign(**{col: None for col in target_column_names if col not in self._dataset.columns})
+
 
 class MultitaskLoader(CsvLoader):
     """

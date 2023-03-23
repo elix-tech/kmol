@@ -194,10 +194,9 @@ class RandomTemplateSelectionAugmentation(AbstractAugmentation):
 
 
 class ProteinPertubationAugmentation(AbstractAugmentation):
-    def __init__(self, vocabulary: List[str], max_length: int, p: float = 0.2):
+    def __init__(self, vocabulary: List[str], p: float = 0.2):
         self._original_vocabulary = vocabulary
         self._bernoulli_prob = p
-        self._max_length = max_length
 
     def _perturb(self, data: str) -> str:
         bern = bernoulli(self._bernoulli_prob)
@@ -246,10 +245,9 @@ class ProteinPerturbationSequenceAugmentation(ProteinPertubationAugmentation):
     """
     Augmentation useful for lrodd generative bg network. Perturb the protein following a Bernoulli distribution.
     """
-    def __init__(self, vocabulary: List[str], max_length: int, p: float = 0.2, input: str = "target_sequence", output: str = "protein"):
+    def __init__(self, vocabulary: List[str], p: float = 0.2, input: str = "target_sequence", output: str = "protein_index"):
         self._original_vocabulary = vocabulary
         self._bernoulli_prob = p
-        self._max_length = max_length
         self._to_index_dict = self._create_index_dict()
         self._input = input
         self._output = output
@@ -261,7 +259,7 @@ class ProteinPerturbationSequenceAugmentation(ProteinPertubationAugmentation):
 
         return to_index_dict
 
-    def __call__(self, data: dict, seed=None) -> torch.FloatTensor:
+    def __call__(self, data: dict, seed=None) -> torch.LongTensor:
         target_sequence = data[self._input]
         target_sequence = self._perturb(target_sequence)
         data[self._output] = [self._to_index_dict[amino_acid] for amino_acid in target_sequence]

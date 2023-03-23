@@ -99,7 +99,8 @@ class PaddedCollater(GeneralCollater):
         padded_seqs = [torch.zeros(max_length, dtype=dtype) for _ in range(len(seqs))]
         mask = [torch.zeros(max_length, dtype=torch.bool) for _ in range(len(seqs))]
         for i, seq in enumerate(seqs):
-            padded_seqs[i][:len(seq)] = torch.tensor(seq, dtype=dtype)
+            seq_tensor = seq if torch.is_tensor(seq) else torch.tensor(seq, dtype=dtype)
+            padded_seqs[i][:len(seq)] = seq_tensor.clone().detach()
             mask[i][:len(seq)] = 1
 
         return padded_seqs, mask
@@ -117,7 +118,6 @@ class PaddedCollater(GeneralCollater):
 
             outputs.append(entry.outputs)
         
-        # Pad inputs
         inputs_padded = defaultdict(list)
         
         for key, values in inputs.items():
@@ -126,7 +126,6 @@ class PaddedCollater(GeneralCollater):
             else:
                 inputs_padded[key] = values
 
-        # Pad outputs
         outputs_padded, _ = self._pad_and_create_mask(outputs, dtype=torch.float)
         outputs_padded = torch.stack(outputs_padded)
         
