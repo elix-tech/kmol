@@ -381,7 +381,7 @@ class Executor(AbstractExecutor):
                 results["protein_gd"].extend(protein_gradients.cpu().numpy())
             if ligand_gradients is not None:
                 results["ligand_gd"].extend(ligand_gradients.cpu().numpy())
-            if likelihood_ratio:
+            if likelihood_ratio is not None:
                 results["likelihood_ratio"].extend(likelihood_ratio.cpu().numpy())
 
             if len(self._config.prediction_additional_columns) > 0:
@@ -430,11 +430,12 @@ class Executor(AbstractExecutor):
             if "ligand_gd" in results:
                 results[f"{label}_ligand_gd"] = results["ligand_gd"][:, i]
                 columns.append(f"{label}_ligand_gd")
-        if "likelihood_ratio" in results:
-            results["likelihood_ratio"] = results["likelihood_ratio"][:]
-            columns.append("likelihood_ratio")
-
+            # TODO: check if this should be outside the for loop
             columns += self._config.prediction_additional_columns
+        
+        if "likelihood_ratio" in results:
+            results["likelihood_ratio"] = results["likelihood_ratio"].flatten()
+            columns.append("likelihood_ratio")
         
         results = pd.DataFrame.from_dict({c: results[c] for c in columns})
 

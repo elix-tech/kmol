@@ -66,13 +66,14 @@ class GenerativeLstmNetwork(AbstractNetwork):
         
         loss = loss.view_as(input) * mask
 
-        log_likelihood = -loss.sum() / mask.sum()
+        #log_likelihood = -loss.sum() / mask.sum()
+        log_likelihood = -loss.sum(dim=1) / mask.sum(dim=1)
 
         return {
             "logits": output,
             "log_likelihood": log_likelihood,
         }
-        
+
 
 class LroddNetwork(EnsembleNetwork):
     def __init__(self, model_configs: List[Dict[str, Any]]):
@@ -89,4 +90,14 @@ class LroddNetwork(EnsembleNetwork):
             "likelihood_ratio": fg_output["log_likelihood"] - bg_output["log_likelihood"],
         }
 
+    def loss_aware_forward(self, data: Dict[str, Any], loss_type: str) -> Dict[str, torch.Tensor]:
+        outputs = self.forward(data)
+        classifier_output, likelihood_ratio = outputs["logits"], outputs["likelihood_ratio"]
 
+        if loss_type == "torch.nn.BCEWithLogitsLoss":
+            classifier_output = torch.sigmoid(classifier_output)
+                    
+        return {
+            "logits": classifier_output,
+            "likelihood_ratio": likelihood_ratio,
+        }
