@@ -24,8 +24,6 @@ from ..vendor.openfold.utils.tensor_utils import tensor_tree_map
 from ..model.architectures import MsaExtractor
 from .loaders import ListLoader
 
-#pyximport.install(setup_args={"include_dirs": np.get_include()})
-#from ..vendor.graphormer import algos  # noqa: E402
 import algos
 
 

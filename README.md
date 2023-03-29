@@ -8,12 +8,10 @@ The library was benchmarked on datasets containing ADME properties (Absorption, 
 Models are built using PyTorch and PyTorch Geometric.
 
 ## Installation
-Cuda toolkit of at least 11.1 needs to be install.
-Dependencies can be installed with conda:
 ```bash
 conda env create -f environment.yml
 conda activate kmol
-bash install.sh
+pip install --no-build-isolation .
 ```
 
 ## Local Examples
