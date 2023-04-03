@@ -1,0 +1,87 @@
+{
+    "model": {
+        "type": "generative_lstm",
+        "in_features": 21,
+        "hidden_features": 64,
+        "out_features": 21
+    },
+    "loader": {
+        "type": "flexible_csv",
+        "input_path":"/nasa/datasets/kyodai_federated/proj_202111_202203/activity/prepared/chembl_v2_above_500.csv",
+        "input_column_names": ["target_sequence"],
+        "target_column_names": ["autoencoded"]
+    },
+    "num_workers": 8,
+    "overwrite_checkpoint": true,
+    "splitter": {
+        "type": "skipping_allowed_precomputed",
+        "split_path": "/nasa/datasets/kyodai_federated/proj_202111_202203/activity/prepared/splits.json",
+        "splits": {"train": 0.8, "test": 0.1, "validation": 0.1},
+        "skipped_columns": ["validation"]
+    },
+    "featurizers": [
+        {
+            "type": "to_index",
+            "inputs": ["target_sequence"],
+            "outputs": ["protein_index"],
+            "should_cache": true,
+            "vocabulary": ["A", "C", "D", "E", "F", "G", "H", "I", "K", "L", "M", "N", "P", "Q", "R", "S", "T", "V", "W", "Y", "X"],
+            "rewrite": false
+        }
+    ],
+    "transformers": [
+        {
+            "type": "auto_encoder",
+            "target": "autoencoded",
+            "input": "protein_index" 
+        }
+    ],
+    "inference_mode": "generative_autoencoder",
+    "mc_dropout_iterations": 10,
+    "threshold": 0.5,
+    "cross_validation_folds": 5,
+    "train_metrics": [],
+    "test_metrics": [],
+
+    "epochs": 60,
+    "batch_size": 32,
+    "autoencoder": true, 
+
+    "use_cuda": true,
+    "enabled_gpus": [0],
+
+    "cache_location": "data/cache/",
+    "clear_cache": false,
+
+    "log_level": "info",
+    "log_format": "",
+    "log_frequency": 5,
+
+    "observers": {},
+    "optuna_trials": 1000,
+
+    "optimizer": {
+        "type": "torch.optim.AdamW",
+        "lr": 1.4e-5,
+        "weight_decay": 4e-06
+    },
+    "criterion": {
+        "type": "torch.nn.CrossEntropyLoss"
+    },
+    "scheduler": {
+        "type": "torch.optim.lr_scheduler.OneCycleLR",
+        "max_lr": 1.4e-4,
+        "epochs": 60,
+        "final_div_factor": 1000
+    },
+    "target_metric": null,
+    "output_path": "data/logs/fg_network/",
+    "checkpoint_path": null,
+
+    "augmentations": [],
+
+    "collater": {
+        "type": "Padded",
+        "padded_column": "protein_index"
+    }
+}

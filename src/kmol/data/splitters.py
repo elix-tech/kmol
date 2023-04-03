@@ -65,6 +65,24 @@ class PrecomputedSplitter(AbstractSplitter):
 
         return self.splits
 
+class SkippingAllowedPrecomputedSplitter(AbstractSplitter):
+    def __init__(self, splits: Dict[str, float], split_path: str, skipped_columns: List[str]):
+        super().__init__(splits)
+        self.splits: Dict[str, List[Union[int, str]]] = json.load(open(split_path))
+
+        for key in skipped_columns:
+            del self.splits[key]
+
+    def apply(self, data_loader: AbstractLoader) -> Dict[str, List[Union[int, str]]]:
+        ids = sorted(data_loader.list_ids())
+        for k, v in self.splits.items():
+            for index in v[:]:
+                if bisect.bisect_left(ids, index) == bisect.bisect(ids, index):
+                    logging.warning(f"[WARNING]: index value {index} is missing from cached dataset. It will be ignored.")
+                    self.splits[k].remove(index)
+
+        return self.splits
+
 
 class RandomSplitter(AbstractSplitter):
     """Split the dataset randomly"""

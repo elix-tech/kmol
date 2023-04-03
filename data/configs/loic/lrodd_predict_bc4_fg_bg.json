@@ -1,0 +1,133 @@
+{
+    "model": {
+        "type": "lrodd",
+        "model_configs": [
+            {
+                "type": "protein_ligand",
+                "protein_module": {
+                    "type": "linear",
+                    "in_features": 9723,
+                    "dropout": 0.1,
+                    "hidden_features": 256,
+                    "out_features": 128
+                },
+                "ligand_module": {
+                    "type": "graph_convolutional",
+                    "in_features": 45,
+                    "out_features": 128,
+                    "hidden_features": 1024,
+                    "edge_features": 12,
+                    "dropout": 0.1,
+                    "layer_type": "torch_geometric.nn.LEConv",
+                    "layers_count": 3,
+                    "molecule_features": 17,
+                    "is_residual": 1,
+                    "read_out": "attention",
+                    "norm_layer": "kmol.model.layers.BatchNorm"
+                },
+                "use_mi": true,
+                "xavier_init": false,
+                "hidden_features": 64,
+                "out_features": 3
+            },
+            {
+                "type": "generative_lstm",
+                "in_features": 21,
+                "hidden_features": 64,
+                "out_features": 21
+            },
+            {
+                "type": "generative_lstm",
+                "in_features": 21,
+                "hidden_features": 64,
+                "out_features": 21
+            }
+        ]    
+    },
+    "loader": {
+        "type": "csv",
+        "input_path":"data/datasets/chembl_superlight.csv",
+        "input_column_names": ["smiles", "target_sequence"],
+        "target_column_names": ["t_100n", "t_1u", "t_10u"]
+    },
+    "num_workers": 8,
+    "overwrite_checkpoint": true,
+    "splitter": {
+        "type": "index",
+        "splits": {"train": 0.8, "test": 0.1, "validation": 0.1}
+    },
+    "featurizers": [
+        {
+            "type": "graph",
+            "inputs": ["smiles"],
+            "outputs": ["ligand"],
+            "descriptor_calculator": {"type": "rdkit"}
+        },
+        {
+            "type": "bag_of_words",
+            "inputs": ["target_sequence"],
+            "outputs": ["protein"],
+            "should_cache": true,
+            "vocabulary": ["A", "C", "D", "E", "F", "G", "H", "I", "K", "L", "M", "N", "P", "Q", "R", "S", "T", "V", "W", "Y", "X"],
+            "max_length": 3,
+            "rewrite": false
+        },
+        {
+            "type": "to_index",
+            "inputs": ["target_sequence"],
+            "outputs": ["protein_index"],
+            "should_cache": true,
+            "vocabulary": ["A", "C", "D", "E", "F", "G", "H", "I", "K", "L", "M", "N", "P", "Q", "R", "S", "T", "V", "W", "Y", "X"],
+            "rewrite": false
+        }
+    ],
+    "transformers": [],
+    "inference_mode": "loss_aware",
+    "mc_dropout_iterations": 10,
+    "cross_validation_folds": 5,
+    "train_metrics": ["roc_auc", "accuracy", "pr_auc"],
+    "test_metrics": ["roc_auc", "accuracy", "pr_auc"],
+
+    "epochs": 10,
+    "batch_size": 128,
+
+    "use_cuda": true,
+    "enabled_gpus": [0],
+
+    "cache_location": "data/cache/",
+    "clear_cache": false,
+
+    "log_level": "info",
+    "log_format": "",
+    "log_frequency": 5,
+
+    "observers": {},
+    "optuna_trials": 1000,
+
+    "optimizer": {
+        "type": "torch.optim.AdamW",
+        "lr": 1.4e-5,
+        "weight_decay": 4e-06
+    },
+    "criterion": {
+        "type": "torch.nn.BCEWithLogitsLoss"
+    },
+    "scheduler": {
+        "type": "torch.optim.lr_scheduler.OneCycleLR",
+        "max_lr": 1.4e-4,
+        "epochs": 70,
+        "final_div_factor": 1000
+    },
+    "target_metric": "roc_auc",
+    "output_path": "data/logs/lrodd_test_full",
+    "checkpoint_path": [
+        "/nasa/shared_homes/loic/kyodai-kmol/kmol_main2/kmol-internal/data/logs/bc4_new_pytorch/2022-10-21_16-00/checkpoint_best.pt",
+        "/nasa/shared_homes/loic/kyodai-kmol/kmol_main2/kmol-internal/data/logs/fg_network/2023-03-30_15-48/checkpoint.best.pt",
+        "/nasa/shared_homes/loic/kyodai-kmol/kmol_main2/kmol-internal/data/logs/bg_network/2023-03-30_15-48/checkpoint.best.pt"
+    ],
+
+    "collater": {
+        "type": "Padded",
+        "padded_column": "protein_index"
+    }
+}
