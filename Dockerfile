@@ -70,7 +70,7 @@ RUN mkdir -p /opt/envs /opt/elix/kmol
 COPY --chown=root:root environment.yml /opt/elix/kmol/
 
 # # Adding content
-COPY manual_aggregator.yaml pyproject.toml setup.cfg setup.py /opt/elix/kmol/
+COPY pyproject.toml setup.cfg setup.py /opt/elix/kmol/
 COPY src/ /opt/elix/kmol/src
 RUN rm -rf ./src/*.egg-info
 # Clean up potential previous build env

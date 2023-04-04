@@ -10,12 +10,12 @@ echo "Building local project in the docker..."
 ## We need at least one gpu visible for kmol to compile (building wheels to install would
 ## be better but not available right now)
 PID=$$
-docker run --gpus=all --cidfile "/tmp/${PID}.container_id" -v $(pwd)/docker/install-venv.sh:/opt/elix/kmol/run.sh -i elix-kmol:base
+docker run --gpus=all --cidfile "/tmp/${PID}.container_id" -v $(pwd)/docker/install-venv.sh:/opt/elix/kmol/run.sh -ti elix-kmol:base
 CONTAINER_ID=$(cat "/tmp/${PID}.container_id"); rm -f "/tmp/${PID}.container_id"
 
 
 IMAGE_ID=$(docker commit -a "Kmol image builder" -m "Install kmol runtime" "${CONTAINER_ID}")
-docker rm ${CONTAINER_ID}
+# docker rm ${CONTAINER_ID}
 echo "   => Image id: ${IMAGE_ID}"
 
 docker tag "${IMAGE_ID}" "elix-kmol:1.1.4"

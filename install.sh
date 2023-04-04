@@ -2,9 +2,22 @@
 eval "$(conda 'shell.bash' 'hook' 2> /dev/null)"
 conda deactivate
 ENV_NAME=$(grep "name:" environment.yml | cut -d: -f2)
-# ENV_NAME="./env-test"
-(conda env list | grep -q ${ENV_NAME}) && (echo "env ${ENV_NAME} already created.."; exit 1)
-conda env create -f environment.yml
+LOCATION="./env-test"
+
+if (conda env list | grep -q ${ENV_NAME}) && [ "$LOCATION" == "" ] ; then
+    echo "The environment ${ENV_NAME} already created, stopping the generation"
+    echo "If needed delete and recreate the environment to delete a conda env use: "
+    echo "conda env remove -n ${ENV_NAME}"
+    exit 1
+fi
+
+if [ "$LOCATION" != "" ] ; then
+    ENV_NAME="$LOCATION"
+    LOCATION="-p $LOCATION"
+fi
+
+echo conda env create -f environment.yml $LOCATION
+conda env create -f environment.yml $LOCATION
 
 # Set PYTHONNOUSERSITE to true for our environment, this allow the conda environnment
 # effective insulation from Python packages installed at user-level.
