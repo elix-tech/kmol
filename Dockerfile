@@ -7,6 +7,7 @@ ARG PATH="/root/miniconda3/bin:${PATH}"
 RUN apt-get update -y
 
 RUN apt-get install -y wget build-essential
+RUN apt-get install -y git
 
 RUN wget \
     https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh \
@@ -34,12 +35,13 @@ RUN pip install torch-scatter==latest+cu102 -f https://pytorch-geometric.com/whl
 RUN pip install torch-sparse==latest+cu102 -f https://pytorch-geometric.com/whl/torch-1.6.0.html --use-deprecated=legacy-resolver
 RUN pip install torch-cluster==latest+cu102 -f https://pytorch-geometric.com/whl/torch-1.6.0.html --use-deprecated=legacy-resolver
 RUN pip install torch-spline-conv==latest+cu102 -f https://pytorch-geometric.com/whl/torch-1.6.0.html --use-deprecated=legacy-resolver
-RUN pip install torch-geometric==1.6.0
+RUN pip install torch-geometric==1.6.3
 
 # Adding content
-COPY ./setup.py /kmol/
 COPY ./setup.cfg /kmol/
 COPY ./pyproject.toml /kmol/
+COPY ./README.md /kmol/
+COPY .git /kmol/.git
 COPY ./src /kmol/src
 RUN pip install -e .
 
