@@ -8,8 +8,10 @@ The library was benchmarked on datasets containing ADME properties (Absorption, 
 Models are built using PyTorch and PyTorch Geometric.
 
 ## Installation
+kmol uses a conda virtual enviroment run the following command to create it.
 ```bash
 make create-env
+conda activate kmol
 ```
 
 ## Using docker
