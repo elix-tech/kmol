@@ -628,7 +628,10 @@ class MsaFeaturizer(AbstractFeaturizer):
         Return a unique set of protein to cache in the featurizer.
         """
         data_source = loader._dataset
-        data_source.pop("index")
+        try:
+            data_source.pop("index")
+        except KeyError:
+            pass
         data_source = loader._dataset.reset_index()
         unique_indices = list(data_source.groupby(self.sequence_column).apply(lambda x: x.iloc[0]).loc[:, "index"].values)
         return Subset(loader, unique_indices)
