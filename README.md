@@ -12,6 +12,25 @@ Models are built using PyTorch and PyTorch Geometric.
 bash install.sh
 ```
 
+## Using docker
+
+In order to build the image run the following command.
+
+```bash
+bash build_docker.sh
+```
+
+Then it is possible to run a model by passing the job and config command. Use the volume
+for the local data.
+
+```bash
+#Simplest command:
+docker run --rm -ti --gpus=all -v ./data:/opt/elix/kmol/data elix-kmol:1.1.4 {job} {path_to_config}
+# If a connection though bash is needed instead"1.1.4
+docker run --rm -ti --gpus=all --entrypoint /bin/bash elix-kmol:1.1.4
+```
+
+
 ## Local Examples
 
 All experiments are performed using configuration files (JSON).

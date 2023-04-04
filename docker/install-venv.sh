@@ -3,5 +3,4 @@
 eval "$(/opt/elix/anaconda3/setup)"
 enable-conda
 conda activate kmol
-
-kmol $*
+pip install --no-build-isolation .
