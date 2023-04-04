@@ -9,9 +9,7 @@ Models are built using PyTorch and PyTorch Geometric.
 
 ## Installation
 ```bash
-conda env create -f environment.yml
-conda activate kmol
-pip install --no-build-isolation .
+bash install.sh
 ```
 
 ## Local Examples
