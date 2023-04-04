@@ -9,7 +9,7 @@ Models are built using PyTorch and PyTorch Geometric.
 
 ## Installation
 ```bash
-bash install.sh
+make create-env
 ```
 
 ## Using docker
@@ -17,7 +17,7 @@ bash install.sh
 In order to build the image run the following command.
 
 ```bash
-bash build_docker.sh
+make build-docker
 ```
 
 Then it is possible to run a model by passing the job and config command. Use the volume
@@ -161,12 +161,12 @@ Once all model have been run with the kmol module, it is possible to aggregate i
 what we introduce as a script.
 
 It is possible to use a new command line argument called `kmol-script`. This argument
-expect only a config file containing all the necessary argument for that script.
+expects only a config file containing all the necessary argument for that script.
 
-In out case we are want to run an manual aggregation. So we can run:
+In out case we are want to run a manual aggregation. So we can run:
 
 ```
-kmol-script manual_aggregator.yaml
+kmol-script data/configs/manual_aggregator.yaml
 ```
 
 `manual_aggregator.yaml` is define as the following:

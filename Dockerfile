@@ -1,6 +1,8 @@
 FROM ubuntu:20.04 as base
 
-# Base set up and settings
+ENV LANG=C.UTF-8 LC_ALL=C.UTF-8
+RUN apt-get update -y
+
 RUN \
   /bin/echo 'force-unsafe-io' > /etc/dpkg/dpkg.cfg.d/02apt-speedup &&\
   /bin/echo 'Acquire::http::No-Cache "true";' > /etc/apt/apt.conf.d/docker-no-cache &&\

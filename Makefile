@@ -8,39 +8,26 @@ export HOST_UID
 export HOST_GID
 export HOST_USER
 
-bash-alphafold:
-	docker run --gpus all \
-	-v /nasa/datasets/kyodai_alphafold/2022_10:/dataset \
-	--user $(HOST_UID):$(HOST_GID) \
-	--rm -it alphafold bash
-
-bash-openfold:
-	docker run \
-	--gpus all \
-	-v $(shell pwd)/:/data \
-	-v /nasa/datasets/kyodai_federated/proj_202208_202210/activity/fasta_ready:/inputs \
-	-v /nasa/datasets/kyodai_federated/proj_202208_202210/activity/msa_ready:/precomputed_alignments \
-	-v /home/vincent/kmol-internal/data/debug:/outputs \
-	-v /nasa/datasets/kyodai_alphafold:/database \
-	--user $(HOST_UID):$(HOST_GID) \
-	--rm -it \
-	-ti openfold:latest \
-	bash
+help:
+	@echo "=== Usage ==="
+	@echo ""
+	@echo ""
+	@echo "create-env             create a kmol conda environment for the project"
+	@echo "build-docker           build the docker container"
+	@echo "build-docker-openfold  build openfold docker image  only necessary for the generate msa script"
+	@echo "wheel	  			  create a wheel for the project"
 
 wheel:
 	python setup.py bdist_wheel
-# python3 /opt/openfold/run_pretrained_openfold.py \
-# /data/fasta_dir \
-# /database/pdb_mmcif/mmcif_files/ \
-# --uniref90_database_path /database/uniref90/uniref90.fasta \
-# --mgnify_database_path /database/mgnify/mgy_clusters_2018_12.fa \
-# --pdb70_database_path /database/pdb70/pdb70 \
-# --uniclust30_database_path /database/uniclust30/uniclust30_2018_08/uniclust30_2018_08 \
-# --output_dir /data \
-# --bfd_database_path /database/bfd/bfd_metaclust_clu_complete_id30_c90_final_seq.sorted_opt \
-# --model_device cuda:0 \
-# --jackhmmer_binary_path /opt/conda/bin/jackhmmer \
-# --hhblits_binary_path /opt/conda/bin/hhblits \
-# --hhsearch_binary_path /opt/conda/bin/hhsearch \
-# --kalign_binary_path /opt/conda/bin/kalign \
-# --openfold_checkpoint_path /database/openfold_params/finetuning_ptm_2.pt
+
+create-env:
+	bash install.sh
+
+build-docker:
+	bash docker/build_docker.sh
+
+build-docker-openfold:
+	docker build -t openfold -f docker/Dockerfile_openfold . \
+    --build-arg host_uid=$(HOST_UID) \
+	--build-arg host_gid=$(HOST_GID) \
+	--build-arg host_user=$(USER) \

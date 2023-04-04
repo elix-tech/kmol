@@ -1,6 +1,7 @@
 __pycache__
 *.pyc
 *.test
+.vscode/
 
 /data/*
 !/data/datasets.zip
@@ -16,5 +17,5 @@ dist/
 *.egg-info/
 
 src/kmol/vendor/graphormer/algos.c
-src/algos.*.so
+src/*.so
 src/kmol/vendor/graphormer/algos.*.so
