@@ -7,10 +7,9 @@ rm -f docker/kmol.tar.gz
 tar \
     --exclude='*.egg-info' \
     --exclude='__pycache__' \
-    --exclude='*.so' src \
-    --no-recursion \
+    --exclude='*.so' \
     -cf docker/kmol.tar.gz \
-    LICENSE.txt pyproject.toml setup.cfg setup.py environment.yml src
+    LICENSE.txt pyproject.toml setup.cfg setup.py environment.yml ./src
 
 echo "Creating docker image..."
 docker build -f docker/Dockerfile -t elix-kmol:base docker/
@@ -24,7 +23,7 @@ CONTAINER_ID=$(cat "/tmp/${PID}.container_id"); rm -f "/tmp/${PID}.container_id"
 
 
 IMAGE_ID=$(docker commit -a "Kmol image builder" -m "Install kmol runtime" "${CONTAINER_ID}")
-# docker rm ${CONTAINER_ID}
+docker rm ${CONTAINER_ID}
 echo "   => Image id: ${IMAGE_ID}"
 
 docker tag "${IMAGE_ID}" "elix-kmol:1.1.4"

@@ -1,7 +1,6 @@
 FROM ubuntu:20.04 as base
 
-ENV LANG=C.UTF-8 LC_ALL=C.UTF-8
-RUN apt-get update -y
+COPY scripts/install-packages.sh /usr/local/bin/install-packages.sh
 
 RUN \
   /bin/echo 'force-unsafe-io' > /etc/dpkg/dpkg.cfg.d/02apt-speedup &&\
@@ -12,19 +11,19 @@ RUN /bin/sed -i 's/ main$/ main contrib non-free/g' /etc/apt/sources.list
 
 ARG TIMEZONE="Asia/Tokyo"
 RUN \
-    apt-get install -y tzdata &&\
+  /usr/local/bin/install-packages.sh tzdata &&\
   (/bin/echo "tzdata tzdata/Areas select ${TIMEZONE%/*}" | /usr/bin/debconf-set-selections) &&\
   (/bin/echo "tzdata tzdata/Zones/Asia select ${TIMEZONE#*/}" | /usr/bin/debconf-set-selections) &&\
   /bin/rm -f /etc/localtime /etc/timezone &&\
   /usr/sbin/dpkg-reconfigure -f noninteractive tzdata
 
-RUN apt-get install -y locales ca-certificates
+RUN /usr/local/bin/install-packages.sh locales ca-certificates
 
 RUN \
   for l in ja_JP.UTF-8 en_US.UTF-8; do sed -i "/${l}/s/^#[[:space:]]//" /etc/locale.gen; done && \
   /usr/sbin/locale-gen && \
   /usr/sbin/update-locale
-  
+
 ENV LC_ALL en_US.UTF-8
 
 RUN mkdir -p /etc/xdg/pip && \
@@ -36,7 +35,7 @@ RUN mkdir -p /etc/xdg/pip && \
 # Downloading and setting up conda
 FROM base as conda-install
 
-RUN apt-get install -y wget
+RUN /usr/local/bin/install-packages.sh wget
 
 RUN mkdir -p /opt/elix
 
@@ -45,19 +44,17 @@ RUN wget -O Anaconda3-${ANACONDA_VERSION}-Linux-x86_64.sh https://repo.anaconda.
 
 RUN bash ./Anaconda3-${ANACONDA_VERSION}-Linux-x86_64.sh -b -p /opt/elix/anaconda3
 
-ARG LOCAL_CONDA=/opt/elix/anaconda3/bin/conda
+COPY scripts/setup /opt/elix/anaconda3/setup
+RUN chmod 755 /opt/elix/anaconda3/setup
 
-RUN ${LOCAL_CONDA} install -n base -y conda-libmamba-solver
-RUN ${LOCAL_CONDA} config --system --set auto_update_conda False
-RUN ${LOCAL_CONDA} config --system --add envs_dirs /opt/envs
-RUN ${LOCAL_CONDA} config --system --set solver libmamba
-RUN ${LOCAL_CONDA} clean -f -y -a
+RUN bash -c '( eval "$(/opt/elix/anaconda3/setup)"; enable-conda; conda install -n base -y conda-libmamba-solver)'
+RUN bash -c '( eval "$(/opt/elix/anaconda3/setup)"; enable-conda; conda config --system --set auto_update_conda False; conda config --system --add envs_dirs /opt/envs; conda config --system --set solver libmamba )'
+RUN bash -c '( eval "$(/opt/elix/anaconda3/setup)"; enable-conda; conda clean -f -y -a )'
 
 # Setting up the project and installing the base env
 FROM base
 
-ARG LOCAL_CONDA=/opt/elix/anaconda3/bin/conda
-RUN apt-get install -y wget build-essential libxml2-dev
+RUN /usr/local/bin/install-packages.sh wget build-essential libxml2-dev
 
 COPY --from=conda-install /opt/elix /opt/elix
 
@@ -70,7 +67,7 @@ RUN mkdir -p /opt/envs /opt/elix/kmol
 ADD kmol.tar.gz /opt/elix/kmol
 RUN chown -R root:root /opt/elix/kmol
 # Build base conda env
-RUN ${LOCAL_CONDA} env create -f environment.yml
+RUN ( eval "$(/opt/elix/anaconda3/setup)"; enable-conda ; conda env create -f environment.yml )
 
 # Adding script for finding conda when launching experiments
 COPY scripts/setup /opt/elix/anaconda3/setup
