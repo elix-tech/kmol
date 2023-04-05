@@ -2,7 +2,7 @@
 eval "$(conda 'shell.bash' 'hook' 2> /dev/null)"
 conda deactivate
 ENV_NAME=$(grep "name:" environment.yml | cut -d: -f2)
-LOCATION=${1:-"./env-test"}
+LOCATION=${1:-""}
 
 if (conda env list | grep -q ${ENV_NAME}) && [ "$LOCATION" == "" ] ; then
     echo "The environment ${ENV_NAME} already created, stopping the generation"
