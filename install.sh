@@ -1,8 +1,8 @@
-#!/bin/env bash
+#!/bin/bash
 eval "$(conda 'shell.bash' 'hook' 2> /dev/null)"
 conda deactivate
 ENV_NAME=$(grep "name:" environment.yml | cut -d: -f2)
-LOCATION="./env-test"
+LOCATION=${1:-"./env-test"}
 
 if (conda env list | grep -q ${ENV_NAME}) && [ "$LOCATION" == "" ] ; then
     echo "The environment ${ENV_NAME} already created, stopping the generation"
@@ -27,12 +27,12 @@ mkdir -p $CONDA_PREFIX/etc/conda/activate.d
 echo 'export PYTHONNOUSERSITE=True' > $CONDA_PREFIX/etc/conda/activate.d/env_vars.sh
 
 mkdir -p $CONDA_PREFIX/etc/conda/deactivate.d
-echo 'unset PYTHONNOUSERSITE' > $CONDA_PREFIX/etc/conda/deactivate.d/env_vars.sh 
+echo 'unset PYTHONNOUSERSITE' > $CONDA_PREFIX/etc/conda/deactivate.d/env_vars.sh
 
 # Deactivate / activate to set PYTHONNOUSERSITE=True
 conda deactivate
 
 conda activate $ENV_NAME
 
-# Install local package 
+# Install local package
 pip install --no-build-isolation -e .
