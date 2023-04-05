@@ -60,30 +60,24 @@ ARG LOCAL_CONDA=/opt/elix/anaconda3/bin/conda
 RUN apt-get install -y wget build-essential libxml2-dev
 
 COPY --from=conda-install /opt/elix /opt/elix
-COPY docker/scripts/setup /opt/elix/anaconda3/setup
-RUN chmod 755 /opt/elix/anaconda3/setup
 
 WORKDIR /opt/elix/kmol
 SHELL [ "/bin/bash", "--login", "-c" ]
 
 RUN mkdir -p /opt/envs /opt/elix/kmol
-COPY --chown=root:root environment.yml /opt/elix/kmol/
 
 # # Adding content
-COPY pyproject.toml setup.cfg setup.py /opt/elix/kmol/
-COPY src/ /opt/elix/kmol/src
-RUN rm -rf ./src/*.egg-info
-# Clean up potential previous build env
-RUN chown -R root /opt/elix/kmol
-RUN find src -name __pycache__ -print0 | xargs -0 rm -rf
-RUN find src -name '*.so' -print0 | xargs -0 rm -f
+ADD kmol.tar.gz /opt/elix/kmol
+RUN chown -R root:root /opt/elix/kmol
 # Build base conda env
 RUN ${LOCAL_CONDA} env create -f environment.yml
 
-RUN chown -R root:root /opt/elix/kmol
+# Adding script for finding conda when launching experiments
+COPY scripts/setup /opt/elix/anaconda3/setup
+RUN chmod 755 /opt/elix/anaconda3/setup
 
 ENV NVIDIA_VISIBLE_DEVICE=all
 
-COPY docker/run.sh /opt/elix/kmol/run.sh
-COPY docker/install-venv.sh /opt/elix/kmol/install-venv.sh
+COPY run.sh /opt/elix/kmol/run.sh
+COPY install-venv.sh /opt/elix/kmol/install-venv.sh
 ENTRYPOINT [ "bash", "/opt/elix/kmol/run.sh" ]

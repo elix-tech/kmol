@@ -2,9 +2,18 @@
 
 set +e
 
+echo "Preparing kmol source..."
+rm -f docker/kmol.tar.gz
+tar \
+    --exclude='*.egg-info' \
+    --exclude='__pycache__' \
+    --exclude='*.so' src \
+    --no-recursion \
+    -cf docker/kmol.tar.gz \
+    LICENSE.txt pyproject.toml setup.cfg setup.py environment.yml src
+
 echo "Creating docker image..."
-# cd docker
-docker build -t elix-kmol:base .
+docker build -f docker/Dockerfile -t elix-kmol:base docker/
 
 echo "Building local project in the docker..."
 ## We need at least one gpu visible for kmol to compile (building wheels to install would
@@ -21,8 +30,8 @@ echo "   => Image id: ${IMAGE_ID}"
 docker tag "${IMAGE_ID}" "elix-kmol:1.1.4"
 
 
-echo -e "\n - Launch cmd examples"
-echo -e "Simplest command:"
+echo -e "\nLaunch cmd examples"
+echo -e "   => Simplest command:"
 echo -e "docker run --rm -ti --gpus=all -v ./data:/opt/elix/kmol/data elix-kmol:1.1.4 {job} {path_to_config} \n"
-echo -e "If a connection though bash is needed instead"
+echo -e "   => If a connection though bash is needed instead"
 echo -e "docker run --rm -ti --gpus=all --entrypoint /bin/bash elix-kmol:1.1.4"

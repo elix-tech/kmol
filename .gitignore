@@ -19,3 +19,4 @@ dist/
 src/kmol/vendor/graphormer/algos.c
 src/*.so
 src/kmol/vendor/graphormer/algos.*.so
+*.tar.gz
