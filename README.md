@@ -4,7 +4,7 @@
 kMoL is a machine learning library for drug discovery and life sciences, with federated learning capabilities.
 Some of its features include state-of-the-art graph-based predictive models, explainable AI components, and differential privacy for data protection.
 The library was benchmarked on datasets containing ADME properties (Absorption, Distribution, Metabolism, Excretion), toxicity, and binding affinities values.
- 
+
 Models are built using PyTorch and PyTorch Geometric.
 
 ## Installation
@@ -26,10 +26,10 @@ Then it is possible to run a model by passing the job and config command. Use th
 for the local data.
 
 ```bash
-#Simplest command:
+# Simplest command, will run 'kmol {job} {path_to_config}'
 docker run --rm -ti --gpus=all -v ./data:/opt/elix/kmol/data elix-kmol:1.1.4 {job} {path_to_config}
-# If a connection though bash is needed instead"1.1.4
-docker run --rm -ti --gpus=all --entrypoint /bin/bash elix-kmol:1.1.4
+# To start a shell in a container, override the entrypoint
+docker run --rm -ti --gpus=all -v ./data:/opt/elix/kmol/data --entrypoint /bin/bash elix-kmol:1.1.4
 ```
 
 
@@ -45,14 +45,14 @@ In these examples we focus on the [Tox21 Dataset](https://tripod.nih.gov/tox21/c
 After downloading the dataset to a suitable location, point to dataset with the "input_path" option in this JSON file.
 
 ### Training
-The `train` command can be used to train a model. 
- 
+The `train` command can be used to train a model.
+
 ```bash
 kmol train data/configs/model/tox21.json
 ```
 
 ### Finding the best checkpoint
-Training will save a checkpoint for each individual epoch. 
+Training will save a checkpoint for each individual epoch.
 These can be evaluated on a test split to find the best performing one with the `find_best_checkpoint` command.
 
 ```bash
@@ -60,7 +60,7 @@ kmol find_best_checkpoint data/configs/model/tox21.json
 ```
 
 ### Validate (a single checkpoint):
-If a `checkpoint_path` is set in the JSON file for a specific checkpoint, it can be evaluated with the `eval` command. 
+If a `checkpoint_path` is set in the JSON file for a specific checkpoint, it can be evaluated with the `eval` command.
 
 ```bash
 kmol eval data/configs/model/tox21.json
@@ -82,7 +82,7 @@ Similar to local training, a JSON configuration is needed to specify the trainin
 
 In addition, a configuration file is needed for the server and each individual client to establish proper communication.
 A detailed documentation on how to configure the server and clients can be found under section 3.5.1 and 3.5.2 of `docs/documentation.pdf` respectively.
-Sample configurations can be found under `data/configs/mila/`.  
+Sample configurations can be found under `data/configs/mila/`.
 
 ### Box and Grcp parameters
 
@@ -159,7 +159,7 @@ mila client data/configs/mila/naive_aggregator/tox21/clients/2/client2.json
 
 ### Runing a Aggregation in Command Line.
 
-Once all model have been run with the kmol module, it is possible to aggregate it using 
+Once all model have been run with the kmol module, it is possible to aggregate it using
 what we introduce as a script.
 
 It is possible to use a new command line argument called `kmol-script`. This argument
@@ -176,7 +176,7 @@ kmol-script data/configs/manual_aggregator.yaml
 ```yaml
 script:
   type: "manual_aggregation"
-  chekpoint_paths: 
+  chekpoint_paths:
     - data/logs/local/tester1/2022-10-20_17-10/checkpoint_10.pt
     - data/logs/local/tester2/2022-10-20_17-10/checkpoint_10.pt
     - data/logs/local/tester3/2022-10-20_17-10/checkpoint_10.pt
@@ -198,7 +198,7 @@ the weights should follow the order of the checkpoint_paths
 
 - `save_path`: Were to save the aggregator.
 
-If other type of aggregator is needed, only `aggregator_type` and `aggregator_options` 
+If other type of aggregator is needed, only `aggregator_type` and `aggregator_options`
 needs to be change.
 
 You can find the aggregator and their argument in `src/mila/aggregators.py`

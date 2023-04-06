@@ -19,4 +19,6 @@ dist/
 src/kmol/vendor/graphormer/algos.c
 src/*.so
 src/kmol/vendor/graphormer/algos.*.so
-*.tar.gz
+
+docker/kmol.tar.gz
+docker/environment.yml

@@ -35,46 +35,51 @@ RUN mkdir -p /etc/xdg/pip && \
 # Downloading and setting up conda
 FROM base as conda-install
 
+SHELL [ "/bin/bash", "--login", "-c" ]
+
 RUN /usr/local/bin/install-packages.sh wget
 
 RUN mkdir -p /opt/elix
 
 ARG ANACONDA_VERSION=2023.03
-RUN wget -O Anaconda3-${ANACONDA_VERSION}-Linux-x86_64.sh https://repo.anaconda.com/archive/Anaconda3-${ANACONDA_VERSION}-Linux-x86_64.sh
-
-RUN bash ./Anaconda3-${ANACONDA_VERSION}-Linux-x86_64.sh -b -p /opt/elix/anaconda3
+RUN bash -c '( wget -O ./Anaconda3-${ANACONDA_VERSION}-Linux-x86_64.sh https://repo.anaconda.com/archive/Anaconda3-${ANACONDA_VERSION}-Linux-x86_64.sh && \
+  chmod 755 ./Anaconda3-${ANACONDA_VERSION}-Linux-x86_64.sh && \
+  ./Anaconda3-${ANACONDA_VERSION}-Linux-x86_64.sh -b -p /opt/elix/anaconda3;)'
 
 COPY scripts/setup /opt/elix/anaconda3/setup
 RUN chmod 755 /opt/elix/anaconda3/setup
 
-RUN bash -c '( eval "$(/opt/elix/anaconda3/setup)"; enable-conda; conda install -n base -y conda-libmamba-solver)'
-RUN bash -c '( eval "$(/opt/elix/anaconda3/setup)"; enable-conda; conda config --system --set auto_update_conda False; conda config --system --add envs_dirs /opt/envs; conda config --system --set solver libmamba )'
-RUN bash -c '( eval "$(/opt/elix/anaconda3/setup)"; enable-conda; conda clean -f -y -a )'
+RUN ( eval "$(/opt/elix/anaconda3/setup)"; \
+ enable-conda; \
+ conda install -n base -y conda-libmamba-solver; \
+ conda config --system --set auto_update_conda False; \
+ conda config --system --add envs_dirs /opt/envs; \
+ conda config --system --set solver libmamba; \
+ conda clean -f -y -a )
 
-# Setting up the project and installing the base env
 FROM base
-
-RUN /usr/local/bin/install-packages.sh wget build-essential libxml2-dev
-
-COPY --from=conda-install /opt/elix /opt/elix
-
-WORKDIR /opt/elix/kmol
-SHELL [ "/bin/bash", "--login", "-c" ]
-
-RUN mkdir -p /opt/envs /opt/elix/kmol
-
-# # Adding content
-ADD kmol.tar.gz /opt/elix/kmol
-RUN chown -R root:root /opt/elix/kmol
-# Build base conda env
-RUN ( eval "$(/opt/elix/anaconda3/setup)"; enable-conda ; conda env create -f environment.yml )
-
-# Adding script for finding conda when launching experiments
-COPY scripts/setup /opt/elix/anaconda3/setup
-RUN chmod 755 /opt/elix/anaconda3/setup
 
 ENV NVIDIA_VISIBLE_DEVICE=all
 
+RUN /usr/local/bin/install-packages.sh wget build-essential libxml2-dev
+
+SHELL [ "/bin/bash", "--login", "-c" ]
+
+COPY --from=conda-install /opt/elix /opt/elix
+WORKDIR /opt/elix/kmol
+
+COPY scripts/setup /opt/elix/anaconda3/setup
+RUN chmod 755 /opt/elix/anaconda3/setup
+
+RUN mkdir -p /opt/envs /opt/elix/kmol
+
+COPY environment.yml /opt/elix/kmol
+RUN ( eval "$(/opt/elix/anaconda3/setup)"; enable-conda ; conda env create -f environment.yml )
+
+ADD kmol.tar.gz /opt/elix/kmol
+RUN chown -R root:root /opt/elix/kmol
+
 COPY run.sh /opt/elix/kmol/run.sh
 COPY install-venv.sh /opt/elix/kmol/install-venv.sh
+
 ENTRYPOINT [ "bash", "/opt/elix/kmol/run.sh" ]
