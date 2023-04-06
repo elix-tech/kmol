@@ -43,7 +43,7 @@
     "train_metrics": [],
     "test_metrics": [],
 
-    "epochs": 60,
+    "epochs": 5,
     "batch_size": 32,
     "autoencoder": true, 
 
@@ -71,11 +71,11 @@
     "scheduler": {
         "type": "torch.optim.lr_scheduler.OneCycleLR",
         "max_lr": 1.4e-4,
-        "epochs": 60,
+        "epochs": 5,
         "final_div_factor": 1000
     },
     "target_metric": null,
-    "output_path": "data/logs/fg_network/",
+    "output_path": "data/logs/fg_network_5/",
     "checkpoint_path": null,
 
     "augmentations": [],

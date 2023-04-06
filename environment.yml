@@ -1,4 +1,4 @@
-name: kmol
+name: kmol-lrodd
 channels:
   - zeroae
   - mordred-descriptor

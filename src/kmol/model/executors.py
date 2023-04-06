@@ -42,12 +42,17 @@ class AbstractExecutor(metaclass=ABCMeta):
         batch.outputs = batch.outputs.to(self._device)
         for key, values in batch.inputs.items():
             try:
-                if type(values) is dict:
+                if type(values) == torch.Tensor:
+                    batch.inputs[key] = values.to(self._device)
+                elif type(values) == dict:
                     batch.inputs[key] = self.dict_to_device(values)
                 elif type(values) == list:
-                    batch.inputs[key] = [a.to(self._device) for a in values]
+                    if values[0] == torch.Tensor:
+                        batch.inputs[key] = [a.to(self._device) for a in values]
+                    else:
+                        batch.inputs[key] = [a for a in values]
                 else:
-                    batch.inputs[key] = values.to(self._device)
+                    batch.inputs[key] = values
             except (AttributeError, ValueError) as e:
                 logging.debug(e)
                 pass
@@ -58,7 +63,10 @@ class AbstractExecutor(metaclass=ABCMeta):
             if type(v) is dict:
                 new_dict[k] = self.dict_to_device(v)
             else:
-                new_dict[k] = v.to(self._device)
+                if v == torch.Tensor:
+                    new_dict[k] = v.to(self._device)
+                else:
+                    new_dict[k] = v
 
         return new_dict
 
