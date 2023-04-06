@@ -28,8 +28,8 @@ for the local data.
 ```bash
 # Simplest command, will run 'kmol {job} {path_to_config}'
 docker run --rm -ti --gpus=all -v ./data:/opt/elix/kmol/data elix-kmol:1.1.4 {job} {path_to_config}
-# To start a shell in a container, override the entrypoint
-docker run --rm -ti --gpus=all -v ./data:/opt/elix/kmol/data --entrypoint /bin/bash elix-kmol:1.1.4
+# Running without a parameter will start an interactive shell in the same environment
+docker run --rm -ti --gpus=all -v ./data:/opt/elix/kmol/data elix-kmol:1.1.4
 ```
 
 

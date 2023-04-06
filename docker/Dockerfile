@@ -63,23 +63,24 @@ ENV NVIDIA_VISIBLE_DEVICE=all
 
 RUN /usr/local/bin/install-packages.sh wget build-essential libxml2-dev
 
-SHELL [ "/bin/bash", "--login", "-c" ]
-
 COPY --from=conda-install /opt/elix /opt/elix
-WORKDIR /opt/elix/kmol
 
 COPY scripts/setup /opt/elix/anaconda3/setup
 RUN chmod 755 /opt/elix/anaconda3/setup
+COPY 99-conda.sh /etc/profile.d/99-conda.sh
+
+WORKDIR /opt/elix/kmol
+SHELL [ "/bin/bash", "--login", "-c" ]
 
 RUN mkdir -p /opt/envs /opt/elix/kmol
 
 COPY environment.yml /opt/elix/kmol
-RUN ( eval "$(/opt/elix/anaconda3/setup)"; enable-conda ; conda env create -f environment.yml )
+RUN conda env create -f environment.yml
+
+RUN cd && (echo; echo "conda activate kmol") >> .bashrc
 
 ADD kmol.tar.gz /opt/elix/kmol
 RUN chown -R root:root /opt/elix/kmol
 
 COPY run.sh /opt/elix/kmol/run.sh
-COPY install-venv.sh /opt/elix/kmol/install-venv.sh
-
-ENTRYPOINT [ "bash", "/opt/elix/kmol/run.sh" ]
+ENTRYPOINT [ "/opt/elix/kmol/run.sh" ]

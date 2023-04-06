@@ -3,5 +3,5 @@
 if [[ $# -eq 0 ]]; then
   exec /bin/bash --login
 else
-  /bin/bash --login -i -c "kmol $@"
+  /bin/bash --login -i -c "$@"
 fi

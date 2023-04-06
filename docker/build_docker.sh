@@ -2,7 +2,7 @@
 
 set +e
 
-echo "Preparing kmol source..."
+echo " -o- Preparing kmol source..."
 rm -f docker/kmol.tar.gz
 cp environment.yml docker/environment.yml
 tar \
@@ -12,11 +12,11 @@ tar \
     -cf docker/kmol.tar.gz \
     LICENSE.txt pyproject.toml setup.cfg setup.py ./src
 
-echo "Creating docker image..."
+echo " -o- Creating docker image..."
 cd docker
 docker build -t elix-kmol:base .
 
-echo "Building local project in the docker..."
+echo " -o- Building local project in the docker..."
 ## We need at least one gpu visible for kmol to compile (building wheels to install would
 ## be better but not available right now)
 PID=$$
@@ -29,8 +29,14 @@ echo "   => Image id: ${IMAGE_ID}"
 
 docker tag "${IMAGE_ID}" "elix-kmol:1.1.4"
 
-echo -e "\nLaunch cmd examples"
-echo -e "   => Simplest command (run kmol {job} {path_to_config}):"
-echo -e "docker run --rm -ti --gpus=all -v ./data:/opt/elix/kmol/data elix-kmol:1.1.4 {job} {path_to_config} \n"
-echo -e "   => Running a shell in a container"
-echo -e "docker run --rm -ti --gpus=all --entrypoint /bin/bash elix-kmol:1.1.4"
+echo
+echo " -o-  Launch examples -o- "
+echo
+echo "   - Simplest command (start kmol {job} {path_to_config} in a container)"
+echo "     docker run --rm -ti --gpus=all -v ./data:/opt/elix/kmol/data elix-kmol:1.1.4 {job} {path_to_config}"
+echo
+echo "   - Running an interactive shell in the same environment"
+echo "     docker run --rm -ti --gpus=all -v ./data:/opt/elix/kmol/data elix-kmol:1.1.4"
+echo
+echo " -o-o-o-o-o-o-o-o-o-o-o-o-"
+echo
