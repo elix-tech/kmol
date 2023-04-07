@@ -34,5 +34,6 @@ conda deactivate
 
 conda activate $ENV_NAME
 
+rm src/*.so
 # Install local package
 pip install --no-build-isolation -e .
