@@ -16,8 +16,7 @@ from functools import reduce
 from operator import mul
 
 import torch
-
-attn_core_inplace_cuda = importlib.import_module("attn_core_inplace_cuda")
+import attn_core_inplace_cuda
 
 
 SUPPORTED_DTYPES = [torch.float32, torch.bfloat16]

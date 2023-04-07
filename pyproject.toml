@@ -1,13 +1,7 @@
 [build-system]
-requires = ["setuptools>=42", "wheel", "setuptools_scm[toml]>=6.2", "cython", "numpy", "torch"]
+requires = ["setuptools~=67.6.1", "wheel~=0.40.0", "pip~=23.0.1"]
 build-backend = "setuptools.build_meta"
 
 [tool.black]
 line-length = 128
-
-[tool.flake8]
-ignore = ['E203']
-max-line-length = 128
-
-[tool.setuptools_scm]
-
+target-version = ["py39"]

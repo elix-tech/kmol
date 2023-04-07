@@ -79,7 +79,7 @@ class AbstractPreprocessor(metaclass=ABCMeta):
                 overall_progress_task = progress.add_task("[green]All jobs progress:")
                 for n, chunk in enumerate(chunks, 1):
                     task_id = progress.add_task(f"featurizer {n}", visible=False)
-                    futures.append(client.submit(func, _progress, task_id, chunk))
+                    futures.append(client.submit(func, _progress, task_id, chunk, pure=False))
 
                 warnings.resetwarnings()
                 n_finished = 0
