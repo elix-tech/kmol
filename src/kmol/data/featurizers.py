@@ -24,8 +24,6 @@ from ..vendor.openfold.utils.tensor_utils import tensor_tree_map
 from ..model.architectures import MsaExtractor
 from .loaders import ListLoader
 
-#pyximport.install(setup_args={"include_dirs": np.get_include()})
-#from ..vendor.graphormer import algos  # noqa: E402
 import algos
 
 
@@ -630,7 +628,10 @@ class MsaFeaturizer(AbstractFeaturizer):
         Return a unique set of protein to cache in the featurizer.
         """
         data_source = loader._dataset
-        data_source.pop("index")
+        try:
+            data_source.pop("index")
+        except KeyError:
+            pass
         data_source = loader._dataset.reset_index()
         unique_indices = list(data_source.groupby(self.sequence_column).apply(lambda x: x.iloc[0]).loc[:, "index"].values)
         return Subset(loader, unique_indices)

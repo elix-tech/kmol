@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+
+set -e
+
+cat <<EOF
+__elix_remove_from_path(){
+  local to_remove="\$1"
+  local cur_path
+  local result=":\${PATH//\\~/\${HOME}}:"
+  while [ "\${cur_path}" != "\${result}" ]; do
+    cur_path="\$result"
+    result="\${result//:\${to_remove}:/:}"
+  done
+  result="\${result%:}"
+  echo "\${result#:}"
+}
+
+disable-conda(){
+  if [ ! -z "\${CONDA_SHLVL+x}" ]; then
+    for x in \$(seq "\${CONDA_SHLVL}")
+    do
+      conda deactivate
+    done
+    PATH="\$(__elix_remove_from_path "\$(realpath "\${CONDA_EXE%/*}/../condabin")")"
+    PATH="\$(__elix_remove_from_path "\$(realpath "\${CONDA_PYTHON_EXE%/*}")")"
+    unset CONDA_SHLVL
+    unset CONDA_EXE
+    unset CONDA_PYTHON_EXE
+    unset _CE_CONDA
+    unset _CE_M
+  fi
+  return 0
+}
+
+enable-conda(){
+  [ ! -z "\${VIRTUAL_ENV+x}" ] && deactivate
+
+  local conda_exe="/opt/elix/anaconda3/bin/conda"
+  if [ -x "\${conda_exe}" ]; then
+    case "\${SHELL}" in
+      */bash) eval "\$("\${conda_exe}" 'shell.bash' 'hook' 2> /dev/null)" ;;
+      */zsh)  eval "\$("\${conda_exe}" 'shell.zsh' 'hook' 2> /dev/null)" ;;
+      *) echo "Current shell \${SHELL} not handled" ;;
+    esac
+  fi
+
+  local target_env="\${1:-base}"
+  if [ -z "\${CONDA_DEFAULT_ENV+x}" -o "\${CONDA_DEFAULT_ENV}" != "\${target_env}" ]; then
+    conda activate "\${target_env}"
+  fi
+
+  return 0
+}
+
+EOF

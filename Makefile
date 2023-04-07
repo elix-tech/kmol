@@ -1,46 +1,31 @@
+MAKEFLAGS += --warn-undefined-variables
+MAKEFLAGS += --no-builtin-rules
 
+.RECIPEPREFIX = >
 
-# Get the user id and group, and use it so that created files are not owned by root
-HOST_UID = $(shell id -u)
-HOST_GID = $(shell id -g)
-HOST_USER = $(USER)
-export HOST_UID
-export HOST_GID
-export HOST_USER
+SHELL := bash
+.ONESHELL:
+.DELETE_ON_ERROR:
+.SHELLFLAGS := -e -o pipefail -c
 
-bash-alphafold:
-	docker run --gpus all \
-	-v /nasa/datasets/kyodai_alphafold/2022_10:/dataset \
-	--user $(HOST_UID):$(HOST_GID) \
-	--rm -it alphafold bash
+help:
+> @echo "=== Usage ==="
+> @echo ""
+> @echo ""
+> @echo "create-env             create a kmol conda environment for the project"
+> @echo "build-docker           build the docker container"
+> @echo "build-docker-openfold  build openfold docker image, only required to generate the msa script"
 
-bash-openfold:
-	docker run \
-	--gpus all \
-	-v $(shell pwd)/:/data \
-	-v /nasa/datasets/kyodai_federated/proj_202208_202210/activity/fasta_ready:/inputs \
-	-v /nasa/datasets/kyodai_federated/proj_202208_202210/activity/msa_ready:/precomputed_alignments \
-	-v /home/vincent/kmol-internal/data/debug:/outputs \
-	-v /nasa/datasets/kyodai_alphafold:/database \
-	--user $(HOST_UID):$(HOST_GID) \
-	--rm -it \
-	-ti openfold:latest \
-	bash
+create-env:
+> @./install.sh
+> @echo "Installation done: run 'conda activate kmol' to enable the virtual env and be able to run the kmol command."
 
-wheel:
-	python setup.py bdist_wheel
-# python3 /opt/openfold/run_pretrained_openfold.py \
-# /data/fasta_dir \
-# /database/pdb_mmcif/mmcif_files/ \
-# --uniref90_database_path /database/uniref90/uniref90.fasta \
-# --mgnify_database_path /database/mgnify/mgy_clusters_2018_12.fa \
-# --pdb70_database_path /database/pdb70/pdb70 \
-# --uniclust30_database_path /database/uniclust30/uniclust30_2018_08/uniclust30_2018_08 \
-# --output_dir /data \
-# --bfd_database_path /database/bfd/bfd_metaclust_clu_complete_id30_c90_final_seq.sorted_opt \
-# --model_device cuda:0 \
-# --jackhmmer_binary_path /opt/conda/bin/jackhmmer \
-# --hhblits_binary_path /opt/conda/bin/hhblits \
-# --hhsearch_binary_path /opt/conda/bin/hhsearch \
-# --kalign_binary_path /opt/conda/bin/kalign \
-# --openfold_checkpoint_path /database/openfold_params/finetuning_ptm_2.pt
+build-docker:
+> @./docker/build_docker.sh
+
+build-docker-openfold:
+> @cd openfold
+> @docker build -t openfold . \
+  --build-arg HOST_UID=$$(id -u) \
+  --build-arg HOST_GID=$$(id -g) \
+  --build-arg HOST_USER=$${USER}

@@ -3,6 +3,6 @@
 if [[ $# -eq 0 ]]; then
   exec /bin/bash --login
 else
-  params="$@"
-  /bin/bash --login -i -c "kmol ${params}"
+  cmd="$@"
+  /bin/bash --login -i -c "${cmd}"
 fi

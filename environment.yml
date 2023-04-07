@@ -2,40 +2,45 @@ name: kmol
 channels:
   - zeroae
   - mordred-descriptor
-  - pytorch
-  - conda-forge
-  - pyg
   - dask/label/dev
-  - defaults
+  - pyg
+  - pytorch
   - nvidia
+  - conda-forge
+  - defaults
 dependencies:
-  - cuda=11.7.1
-  - openssl>=1.1.1i,<1.1.2a
-  - libprotobuf=3.13.0.1
-  - python=3.9.1
-  - pip
-  - pytorch=1.13.1
-  - torchvision=0.14.1
-  - torchaudio=0.13.1
-  - pyg=2.2.0
-  - scikit-learn=1.2.1
-  - numpy=1.24.1
+  - biopython=1.79
+  - cairosvg=2.5.2
+  - captum=0.5.0
+  - cudatoolkit-dev=11.7.0
+  - cython=0.29.33
   - dask=2023.2.1a230224
   - distributed=2023.2.1a230224
-  - networkx=2.5.1
-  - rdkit=2022.9.4
-  - pandas=1.5.2
-  - cython=0.29.33
-  - mordred=1.2.0
-  - grpcio=1.35.0
-  - grpcio-tools=1.35.0
-  - optuna=2.4.0
-  - cairosvg=2.5.2
-  - pyhumps=1.6.1
-  - rich=12.6.0
-  - openpyxl
-  - biopython=1.79
   - dm-tree=0.1.6
+  - grpcio-tools=1.35.0
+  - grpcio=1.35.0
+  - libprotobuf=3.13.0.1
+  - mordred=1.2.0
+  - networkx=2.5.1
+  - numpy=1.24.1
+  - openpyxl=3.1.1
+  - optuna=2.4.0
+  - pandas=1.5.2
+  - pyg=2.2.0
+  - pyhumps=1.6.1
+  - python=3.9.1
+  - python_abi=3.9
+  - pytorch-cluster=1.6.0
+  - pytorch-cuda=11.7
+  - pytorch-mutex=1.0
+  - pytorch-scatter=2.1.1
+  - pytorch-sparse=0.6.16
+  - pytorch-spline-conv=1.2.2
+  - pytorch=1.13.1
+  - rdkit=2022.9.4
   - requests=2.26.0
+  - rich=12.6.0
+  - scikit-learn=1.2.1
+  - torchaudio=0.13.1
+  - torchvision=0.14.1
   - typing-extensions=4.3.0
-  - captum=0.5.0
