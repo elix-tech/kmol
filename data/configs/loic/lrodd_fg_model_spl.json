@@ -2,6 +2,7 @@
     "model": {
         "type": "generative_lstm",
         "in_features": 21,
+        "n_embedding": 64,
         "hidden_features": 64,
         "out_features": 21
     },

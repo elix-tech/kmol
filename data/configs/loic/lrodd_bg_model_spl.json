@@ -2,6 +2,7 @@
     "model": {
         "type": "generative_lstm",
         "in_features": 21,
+        "n_embedding": 64,
         "hidden_features": 64,
         "out_features": 21
     },
@@ -11,7 +12,7 @@
         "input_column_names": ["target_sequence"],
         "target_column_names": ["autoencoded"]
     },
-    "num_workers": 8,
+    "num_workers": 1,
     "overwrite_checkpoint": true,
     "splitter": {
         "type": "index",
@@ -41,15 +42,15 @@
     "train_metrics": [],
     "test_metrics": [],
 
-    "epochs": 60,
-    "batch_size": 32,
+    "epochs": 3,
+    "batch_size": 2,
     "autoencoder": true, 
 
     "use_cuda": true,
     "enabled_gpus": [0],
 
     "cache_location": "data/cache/",
-    "clear_cache": true,
+    "clear_cache": false,
 
     "log_level": "info",
     "log_format": "",
@@ -87,7 +88,7 @@
       ],
 
     "collater": {
-        "type": "Padded",
+        "type": "padded",
         "padded_column": "protein_index"
     }
 

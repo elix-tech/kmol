@@ -2,6 +2,7 @@
     "model": {
         "type": "generative_lstm",
         "in_features": 21,
+        "n_embedding": 64,
         "hidden_features": 64,
         "out_features": 21
     },
@@ -32,8 +33,8 @@
     "transformers": [
         {
             "type": "auto_encoder",
-            "target": "autoencoded",
-            "input": "protein_index" 
+            "input": "protein_index",
+            "target": "autoencoded"
         }
     ],
     "inference_mode": "generative_autoencoder",
@@ -72,7 +73,7 @@
         "type": "torch.optim.lr_scheduler.OneCycleLR",
         "max_lr": 1.4e-4,
         "epochs": 5,
-        "final_div_factor": 1000
+        "final_div_factor": 10
     },
     "target_metric": null,
     "output_path": "data/logs/bg_network_5/",
@@ -89,7 +90,7 @@
       ],
 
     "collater": {
-        "type": "Padded",
+        "type": "padded",
         "padded_column": "protein_index"
     }
 

@@ -34,13 +34,13 @@ class GenerativeLstmNetwork(AbstractNetwork):
     def __init__(
         self, 
         in_features: int,
+        n_embedding: int,
         hidden_features: int,
         out_features: int, 
     ):
         super().__init__()
-        self.hidden_size = hidden_features
-        self.embedding = nn.Embedding(in_features, hidden_features)
-        self.lstm = nn.LSTM(hidden_features, hidden_features, 1, batch_first=True)
+        self.embedding = nn.Embedding(in_features, n_embedding)
+        self.lstm = nn.LSTM(n_embedding, hidden_features, 1, batch_first=True)
         self.fc = nn.Linear(hidden_features, out_features)
 
     def get_requirements(self) -> List[str]:
@@ -48,7 +48,6 @@ class GenerativeLstmNetwork(AbstractNetwork):
 
     def forward(self, data: Dict[str, Any]) -> Dict[str, torch.Tensor]:
         x = data[self.get_requirements()[0]]
-        
         x = self.embedding(x)
 
         output, _ = self.lstm(x) #, hidden)

@@ -10,6 +10,7 @@ import torch
 from torch.nn.modules.loss import _Loss as AbstractCriterion
 from torch.optim import Optimizer as AbstractOptimizer
 from torch.optim.lr_scheduler import _LRScheduler as AbstractLearningRateScheduler, ExponentialLR
+from torch_geometric.data import Data
 
 from .architectures import AbstractNetwork, EnsembleNetwork
 from .metrics import PredictionProcessor
@@ -42,7 +43,7 @@ class AbstractExecutor(metaclass=ABCMeta):
         batch.outputs = batch.outputs.to(self._device)
         for key, values in batch.inputs.items():
             try:
-                if type(values) == torch.Tensor:
+                if type(values) == torch.Tensor or issubclass(type(values), Data):
                     batch.inputs[key] = values.to(self._device)
                 elif type(values) == dict:
                     batch.inputs[key] = self.dict_to_device(values)
@@ -63,7 +64,7 @@ class AbstractExecutor(metaclass=ABCMeta):
             if type(v) is dict:
                 new_dict[k] = self.dict_to_device(v)
             else:
-                if v == torch.Tensor:
+                if v == torch.Tensor or issubclass(type(values), Data):
                     new_dict[k] = v.to(self._device)
                 else:
                     new_dict[k] = v

@@ -228,7 +228,7 @@ class ProteinPerturbationBaggedAugmentation(ProteinPertubationAugmentation):
 
         return combinations
 
-    def __call__(self, data: dict, seed=None) -> torch.FloatTensor:
+    def __call__(self, data: dict, seed=None) -> dict:
         target_sequence = data[self._input]
         target_sequence = self._perturb(target_sequence)
 
@@ -259,7 +259,7 @@ class ProteinPerturbationSequenceAugmentation(ProteinPertubationAugmentation):
 
         return to_index_dict
 
-    def __call__(self, data: dict, seed=None) -> torch.LongTensor:
+    def __call__(self, data: dict, seed=None) -> dict:
         target_sequence = data[self._input]
         target_sequence = self._perturb(target_sequence)
         data[self._output] = [self._to_index_dict[amino_acid] for amino_acid in target_sequence]
