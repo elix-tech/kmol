@@ -33,10 +33,11 @@ echo
 echo " -o-  Launch examples -o- "
 echo
 echo "   - Simplest command (start kmol {job} {path_to_config} in a container)"
-echo "     docker run --rm -ti --gpus=all -v ./data:/opt/elix/kmol/data elix-kmol:1.1.5 {job} {path_to_config}"
+echo "     docker run --rm -ti --gpus=all --user \$(id -u):\$(id -g) -v ./data:/opt/elix/kmol/data elix-kmol:1.1.5 {job} {path_to_config}"
 echo
 echo "   - Running an interactive shell in the same environment"
-echo "     docker run --rm -ti --gpus=all -v ./data:/opt/elix/kmol/data elix-kmol:1.1.5"
+echo "     docker run --rm -ti --gpus=all --user \$(id -u):\$(id -g) -v ./data:/opt/elix/kmol/data elix-kmol:1.1.5"
 echo
+echo "   Remove the --user option to run as root in the container"
 echo " -o-o-o-o-o-o-o-o-o-o-o-o-"
 echo

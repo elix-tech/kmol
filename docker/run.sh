@@ -1,8 +1,10 @@
-#!/bin/bash
+#!/bin/env bash
+
+export SHELL=$(which bash)
 
 if [[ $# -eq 0 ]]; then
-  exec /bin/bash --login
+  exec ${SHELL} --init-file <(echo "source /etc/profile; conda activate kmol") -i
 else
   params="$@"
-  /bin/bash --login -i -c "kmol ${params}"
+  exec ${SHELL} --init-file <(echo "source /etc/profile; conda activate kmol") -i -c "kmol ${params}"
 fi
