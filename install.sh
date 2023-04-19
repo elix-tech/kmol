@@ -1,6 +1,12 @@
 #!/bin/bash
+
 eval "$(conda 'shell.bash' 'hook' 2> /dev/null)"
-conda deactivate
+conda activate base
+
+# Workaround cuda path prepended to conda on gcp instances
+unset LD_LIBRARY_PATH
+export PATH="$(dirname $(which python)):${PATH}"
+
 ENV_NAME=$(grep "name:" environment.yml | cut -d: -f2)
 LOCATION=${1:-""}
 
@@ -22,15 +28,30 @@ conda env create -f environment.yml $LOCATION
 # Set PYTHONNOUSERSITE to true for our environment, this allow the conda environnment
 # effective insulation from Python packages installed at user-level.
 conda activate $ENV_NAME
-
-mkdir -p $CONDA_PREFIX/etc/conda/activate.d
-echo 'export PYTHONNOUSERSITE=True' > $CONDA_PREFIX/etc/conda/activate.d/env_vars.sh
-
-mkdir -p $CONDA_PREFIX/etc/conda/deactivate.d
-echo 'unset PYTHONNOUSERSITE' > $CONDA_PREFIX/etc/conda/deactivate.d/env_vars.sh
-
-# Deactivate / activate to set PYTHONNOUSERSITE=True
+VENV_CONDA_PREFIX="$CONDA_PREFIX"
 conda deactivate
+
+mkdir -p $VENV_CONDA_PREFIX/etc/conda/activate.d
+(
+    echo 'export KMOL_ORIG_LD="${LD_LIBRARY_PATH:-none}"';
+    echo 'unset LD_LIBRARY_PATH';
+
+    echo 'export KMOL_ADDED_PATH="$(dirname $(which python)):"';
+    echo 'export PATH="${KMOL_ADDED_PATH}${PATH}"';
+
+    echo 'export PYTHONNOUSERSITE=True'
+) > $VENV_CONDA_PREFIX/etc/conda/activate.d/env_vars.sh
+
+mkdir -p $VENV_CONDA_PREFIX/etc/conda/deactivate.d
+(
+    echo '[ "${KMOL_ORIG_LD}" != "none" ] && export LD_LIBRARY_PATH="${KMOL_ORIG_LD}"';
+    echo 'unset KMOL_ORIG_LD';
+
+    echo 'export PATH="$(echo "${PATH}"|sed "s,${KMOL_ADDED_PATH},,")"';
+    echo 'unset KMOL_ADDED_PATH';
+
+    echo 'unset PYTHONNOUSERSITE'
+) > $VENV_CONDA_PREFIX/etc/conda/deactivate.d/env_vars.sh
 
 conda activate $ENV_NAME
 
