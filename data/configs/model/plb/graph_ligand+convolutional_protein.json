@@ -3,6 +3,7 @@
         "type": "protein_ligand",
         "protein_module": {
             "type": "convolutional",
+            "in_lenght": 3011,
             "in_features": 21,
             "hidden_features": 64,
             "out_features": 16
@@ -91,5 +92,6 @@
 
     "observers": {},
     "target_metric": "roc_auc",
-    "optuna_trials": 1000
+    "optuna_trials": 1000,
+    "online_preprocessing": true
 }
