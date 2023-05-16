@@ -4,7 +4,7 @@ conda deactivate
 ENV_NAME=$(grep "name:" environment.yml | cut -d: -f2)
 LOCATION=${1:-""}
 
-if (conda env list | grep -q "${ENV_NAME}$") && [ "$LOCATION" == "" ] ; then
+if (conda env list | cut -d ' ' -f1 | grep -q "^${ENV_NAME}$") && [ "$LOCATION" == "" ] ; then
     echo "The environment ${ENV_NAME} already created, stopping the generation"
     echo "If needed delete and recreate the environment to delete a conda env use: "
     echo "conda env remove -n ${ENV_NAME}"
