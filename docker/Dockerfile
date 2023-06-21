@@ -77,8 +77,6 @@ RUN mkdir -p /opt/envs /opt/elix/kmol
 COPY environment.yml /opt/elix/kmol
 RUN conda env create -f environment.yml
 
-RUN cd && (echo; echo "conda activate kmol") >> .bashrc
-
 ADD kmol.tar.gz /opt/elix/kmol
 RUN chown -R root:root /opt/elix/kmol
 
