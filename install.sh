@@ -55,5 +55,6 @@ mkdir -p $VENV_CONDA_PREFIX/etc/conda/deactivate.d
 
 conda activate $ENV_NAME
 
+rm src/*.so
 # Install local package
 pip install --no-build-isolation -e .
