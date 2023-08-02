@@ -21,7 +21,7 @@ from ..core.logger import LOGGER as logging
 from ..vendor.openfold.data import templates, data_pipeline, feature_pipeline
 from ..vendor.openfold.config import model_config
 from ..vendor.openfold.utils.tensor_utils import tensor_tree_map
-from ..model.architectures import MsaExtractor
+from ..model.architectures import AlphaFold
 from .loaders import ListLoader
 
 import algos
@@ -550,26 +550,28 @@ class MsaFeaturizer(AbstractFeaturizer):
         @param name_config: Name of the openfold configuration to load
             One can view the various possible name in
             `src/kmol/vendor/openfold/config.py` in the method `model_config`
-        @param msa_extrator_cfg: Config for MsaExtractor model.
+        @param msa_extrator_cfg: Config for Alphafold model.
         """
 
         super().__init__(inputs, outputs, should_cache, rewrite)
 
         self.msa_extrator_cfg = msa_extrator_cfg
         if msa_extrator_cfg is not None:
+            torch.multiprocessing.set_start_method('spawn')
             assert not msa_extrator_cfg.get("finetune", False), "In featurizer mode the extractor can't be finetune"
-            self.msa_extrator = MsaExtractor(**msa_extrator_cfg)
+            self.msa_extrator = AlphaFold(**msa_extrator_cfg)
             self.msa_extrator.eval()
+            self.msa_extrator.to("cuda")
 
         if msa_extrator_cfg is not None:
             self.config = self.msa_extrator.cfg
         else:
             self.config = model_config(name_config)
 
-        self.config.data.predict.crop_size = crop_size
+        # self.config.data.predict.crop_size = crop_size
 
         template_featurizer = templates.TemplateHitFeaturizer(
-            mmcif_dir=template_mmcif_dir, max_template_date="2022-11-03", max_hits=4, kalign_binary_path=""
+            mmcif_dir=template_mmcif_dir, max_template_date="2022-11-03", max_hits=self.config.data.predict.max_template_hits, kalign_binary_path=""
         )
 
         self.data_processor = data_pipeline.DataPipeline(
@@ -617,9 +619,8 @@ class MsaFeaturizer(AbstractFeaturizer):
         if self.msa_extrator_cfg is not None:
             features = []
             with torch.no_grad():
-                for i in range(processed_feature_dict["aatype"].shape[-1]):
-                    fetch_cur_batch = lambda t: t[..., i].unsqueeze(0)  # noqa: E731
-                    features.append(self.msa_extrator(tensor_tree_map(fetch_cur_batch, processed_feature_dict)))
+                processed_feature_dict
+                features = self.msa_extrator(tensor_tree_map(lambda x: x.to("cuda"), processed_feature_dict))
                 return features
         return processed_feature_dict
 
