@@ -17,6 +17,7 @@ from ...vendor.openfold.model.template import (
     embed_templates_average,
     embed_templates_offload,
 )
+from ...vendor.openfold.model.primitives import LayerNorm, Linear
 from ...vendor.openfold.utils.tensor_utils import add, tensor_tree_map
 from ...vendor.openfold.utils.feats import (
     pseudo_beta_fn,
@@ -28,27 +29,64 @@ from ...vendor.openfold.utils.feats import (
 from ...vendor.openfold.config import model_config
 from ...vendor.openfold.np import residue_constants
 from .abstract_network import AbstractNetwork
+from ..layers.global_attention_pooling_layers import GlobalAttentionPooling, GlobalAttentionPooling2D
 
 
 class MsaEmbedderNetwork(AbstractNetwork):
-    def __init__(self, out_features, reduce, crop_size, num_reduction, msa_extrator_cfg=None) -> None:
+    def __init__(self, out_features, msa_extrator_cfg=None, c_s: int = 384, c_z: int = 128, attention_pooling_dim: int = 512) -> None:
         super().__init__()
         if msa_extrator_cfg is not None:
             self.msa_extractor = AlphaFold(**msa_extrator_cfg)
         self.msa_extrator_cfg = msa_extrator_cfg
 
         self.global_average = torch.nn.AdaptiveAvgPool2d(1)
-        self.crop_size = crop_size
-        c_s = 384 # single representation dim
-        self.out_linear = torch.nn.Linear(int(crop_size * c_s / (num_reduction*2)**2), out_features)
+        self.c_s = c_s # single representation dim
+        self.c_z = c_z
         self.relu = torch.nn.ReLU()
         self.out_features = out_features
+
+        self.layer_norm_s = LayerNorm(self.c_s)
+        self.layer_norm_z = LayerNorm(self.c_z)
+
+        self.conv_s = torch.nn.Conv1d(self.c_s, self.c_s, 3, padding=1)
+        self.conv_z = torch.nn.Conv2d(self.c_z, self.c_z, 3, padding=1)
+
+        self.global_pooling_s = GlobalAttentionPooling(self.c_s, attention_pooling_dim)
+        self.global_pooling_z = GlobalAttentionPooling2D(128, attention_pooling_dim)
+
+        self.linear_1 = Linear(self.c_s + self.c_z, self.c_s + self.c_z)
+        self.linear_2 = Linear(self.c_s + self.c_z, out_features)
 
     def get_requirements(self) -> List[str]:
         return ["protein"]
 
     def forward(self, data: Dict[str, Any]):
-        pass
+        evoformer_output_dict = data[self.get_requirements()[0]]
+        s = evoformer_output_dict["single"]
+        z = evoformer_output_dict["pair"]
+        del evoformer_output_dict
+
+        # [*, N, C_s]
+        s = self.layer_norm_s(s)
+        # [*, N, N, C_z]
+        z = self.layer_norm_z(z)
+
+        # [*, N, N, C_z]
+        s = self.relu(self.conv_s(s.permute(0, 2, 1)))
+        z = self.relu(self.conv_z(z.permute(0, 3, 1, 2)))
+
+        # [*, C_s]
+        s = self.global_pooling_s(s.permute(0, 2, 1))
+        # [*, C_z]
+        z = self.global_pooling_z(z.permute(0, 3, 1, 2))
+
+        # [*, C_s + C_z]
+        out = torch.column_stack([s,z])
+
+        out = self.relu(self.linear_1(out))
+
+        # [*, out_features]
+        return self.linear_2(out)
 
 
 class AlphaFold(torch.nn.Module):
@@ -433,18 +471,18 @@ class AlphaFold(torch.nn.Module):
         del z
 
         # Predict 3D structure
-        outputs["sm"] = self.structure_module(
-            outputs,
-            feats["aatype"],
-            mask=feats["seq_mask"].to(dtype=s.dtype),
-            inplace_safe=inplace_safe,
-            _offload_inference=self.globals.offload_inference,
-        )
-        outputs["final_atom_positions"] = atom14_to_atom37(
-            outputs["sm"]["positions"][-1], feats
-        )
-        outputs["final_atom_mask"] = feats["atom37_atom_exists"]
-        outputs["final_affine_tensor"] = outputs["sm"]["frames"][-1]
+        # outputs["sm"] = self.structure_module(
+        #     outputs,
+        #     feats["aatype"],
+        #     mask=feats["seq_mask"].to(dtype=s.dtype),
+        #     inplace_safe=inplace_safe,
+        #     _offload_inference=self.globals.offload_inference,
+        # )
+        # outputs["final_atom_positions"] = atom14_to_atom37(
+        #     outputs["sm"]["positions"][-1], feats
+        # )
+        # outputs["final_atom_mask"] = feats["atom37_atom_exists"]
+        # outputs["final_affine_tensor"] = outputs["sm"]["frames"][-1]
 
         # Save embeddings for use during the next recycling iteration
 

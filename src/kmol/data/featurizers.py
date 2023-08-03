@@ -568,7 +568,7 @@ class MsaFeaturizer(AbstractFeaturizer):
         else:
             self.config = model_config(name_config)
 
-        # self.config.data.predict.crop_size = crop_size
+        self.config.data.predict.crop_size = crop_size
 
         template_featurizer = templates.TemplateHitFeaturizer(
             mmcif_dir=template_mmcif_dir, max_template_date="2022-11-03", max_hits=self.config.data.predict.max_template_hits, kalign_binary_path=""
