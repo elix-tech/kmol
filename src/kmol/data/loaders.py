@@ -6,6 +6,7 @@ import pandas as pd
 import dask.dataframe as dd
 from torch.utils.data import Dataset as TorchDataset
 import multiprocessing
+import pickle
 
 from .resources import DataPoint
 
@@ -175,3 +176,18 @@ class ListLoader(AbstractLoader):
 
     def get_labels(self) -> List[str]:
         return self._dataset[0].labels
+
+
+class PickleLoader(AbstractLoader):
+    def __init__(self, input_path: str):
+        self._dataset = self._load_dataset(input_path)
+
+    def _load_dataset(self, input_path: str) -> List[Any]:
+        with open(input_path, "rb") as file:
+            pickle.load(file)
+
+    def __getitem__(self, id_: str) -> DataPoint:
+        return DataPoint(
+            id_=id_,
+            **self._dataset[id_]
+        ) 

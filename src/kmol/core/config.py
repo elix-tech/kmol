@@ -57,8 +57,7 @@ class Config(AbstractConfiguration):
     enabled_gpus: List[int] = field(default_factory=lambda: [0])
     num_workers: int = 0
     featurization_jobs: int = 4
-    preprocessing_use_disk: bool = False
-    preprocessing_disk_dir: Optional[str] = None
+    preprocessor: DefaultDict[str, Any] = field(default_factory=lambda: {"type": "cached"})
 
     cache_location: str = "/tmp/federated/"
     clear_cache: bool = False
@@ -79,7 +78,6 @@ class Config(AbstractConfiguration):
 
     augmentations: List[Dict[str, Any]] = None
     static_augmentations: List[Dict[str, Any]] = None
-    online_preprocessing: bool = False
     seed: int = 42
 
     def should_parallelize(self) -> bool:

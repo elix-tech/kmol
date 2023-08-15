@@ -7,12 +7,13 @@ from typing import List, Dict, Union
 
 from torch.utils.data import DataLoader, Subset
 
-from .preprocessor import CachePreprocessor, OnlinePreprocessor
+from .preprocessor import AbstractPreprocessor, OnlinePreprocessor
 from .datasets import DatasetAugment, DatasetOnline
 from .resources import DataPoint, AbstractCollater, LoadedContent
 from .splitters import AbstractSplitter
 from ..core.config import Config
 from ..core.helpers import SuperFactory
+
 
 class AbstractStreamer(metaclass=ABCMeta):
     @property
@@ -31,10 +32,11 @@ class GeneralStreamer(AbstractStreamer):
 
     def __init__(self, config: Config):
         self._config = config
-        if self._config.online_preprocessing:
-            self._preprocessor = OnlinePreprocessor(self._config)
-        else:
-            self._preprocessor = CachePreprocessor(self._config)
+        self._preprocessor: AbstractPreprocessor = SuperFactory.create(
+            AbstractPreprocessor, self._config.preprocessor, loaded_parameters={"config": self._config}
+        )
+
+        self._collater = SuperFactory.create(AbstractCollater, self._config.collater)
 
         self._dataset = self._preprocessor._load_dataset()
         self._preprocessor._load_augmented_data()
@@ -78,17 +80,15 @@ class GeneralStreamer(AbstractStreamer):
         return splits
 
     def _generate_partial_dataset_object(self) -> Subset:
-        if self._config.online_preprocessing:
+        if isinstance(self._preprocessor, OnlinePreprocessor):
             return partial(DatasetOnline, augmentations=self._config.augmentations, preprocessor=self._preprocessor)
         else:
             return partial(DatasetAugment, augmentations=self._config.augmentations)
 
     def get(self, split_name: str, batch_size: int, shuffle: bool, mode: Mode, **kwargs) -> LoadedContent:
-        collater = SuperFactory.create(AbstractCollater, self._config.collater)
-
         data_loader = DataLoader(
             dataset=self._get_subset(split_name, mode, **kwargs),
-            collate_fn=collater.apply,
+            collate_fn=self._collater.apply,
             batch_size=batch_size,
             shuffle=shuffle,
             num_workers=self._config.num_workers,

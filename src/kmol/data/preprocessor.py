@@ -9,6 +9,8 @@ from concurrent.futures import ProcessPoolExecutor
 import multiprocessing
 from tqdm import tqdm
 from dask.distributed import Client
+from pathlib import Path
+import pickle
 
 from torch.utils.data import Subset
 
@@ -28,11 +30,11 @@ class AbstractPreprocessor(metaclass=ABCMeta):
     def __init__(self, config: Config) -> None:
         self._config = config
 
-        self.online = self._config.online_preprocessing
-        self._use_disk = self._config.preprocessing_use_disk
         self._cache_manager = CacheManager(cache_location=self._config.cache_location)
 
         self._featurizers = [SuperFactory.create(AbstractFeaturizer, featurizer) for featurizer in self._config.featurizers]
+
+        [f.set_device(self._config.get_device()) for f in self._featurizers]
 
         self._transformers = [
             SuperFactory.create(AbstractTransformer, transformer) for transformer in self._config.transformers
@@ -199,6 +201,11 @@ class OnlinePreprocessor(AbstractPreprocessor):
 
 
 class CachePreprocessor(AbstractPreprocessor):
+    def __init__(self, config, use_disk, disk_dir) -> None:
+        super().__init__(config)
+        self._use_disk = use_disk
+        self._disk_dir = disk_dir
+
     def _load_dataset(self) -> AbstractLoader:
         dataset = self._cache_manager.execute_cached_operation(
             processor=self._prepare_dataset,
@@ -224,7 +231,7 @@ class CachePreprocessor(AbstractPreprocessor):
         return ListLoader(dataset, ids)
 
     def _prepare_chunk(self, progress, task_id, loader) -> List[DataPoint]:
-        dataset = CacheDiskList(tmp_dir=self._config.preprocessing_disk_dir) if self._use_disk else []
+        dataset = CacheDiskList(tmp_dir=self._disk_dir) if self._use_disk else []
         for n, sample in enumerate(loader):
             smiles = sample.inputs["smiles"] if "smiles" in sample.inputs else ""
             try:
@@ -276,3 +283,43 @@ class CachePreprocessor(AbstractPreprocessor):
         for a in self._static_augmentations:
             tmp_dataset += a.aug_dataset
         return ListLoader(tmp_dataset, range(len(tmp_dataset)))
+
+
+class FilePreprocessor(AbstractPreprocessor):
+    """
+    This preprocessor is made to be used with the featurize job. The goal is to compute 
+    and save complex or heavy featurization to file and then load them with LoaderFeaturizer.
+    """
+    def __init__(self, config, folder_path, outputs_to_save: List, input_to_use_has_filename: List) -> None:
+        super().__init__(config)
+        self.folder_name = Path(folder_path)
+        self.outputs_to_save = outputs_to_save
+        self.input_to_use_has_filename = input_to_use_has_filename
+        for input_field_filename in self.input_to_use_has_filename:
+            folder = self.folder_name / input_field_filename
+            folder.mkdir(exist_ok=True, parents=True)
+
+    def _load_dataset(self) -> AbstractLoader:
+        loader = SuperFactory.create(AbstractLoader, self._config.loader)
+        with progress_bar() as progress:
+            task_id = progress.add_task("File preprocessing:", total=len(loader))
+            for n, sample in enumerate(loader):
+                smiles = sample.inputs["smiles"] if "smiles" in sample.inputs else ""
+                filenames = []
+                for input_field_filename in self.input_to_use_has_filename:
+                    filenames.append(self.folder_name / input_field_filename / f"{sample.inputs[input_field_filename]}.pkl")
+                if all([filename.exists() for filename in filenames]):
+                    continue
+                try:
+                    outputs = self.preprocess(sample)
+                    for output_name, filename in zip(self.outputs_to_save, filenames):
+                        with open(filename, "wb") as file:
+                            pickle.dump(outputs.inputs[output_name], file)
+                except FeaturizationError as e:
+                    logging.warning(e)
+                except Exception as e:
+                    logging.debug(f"{sample} {smiles} - {e}") 
+                progress.update(task_id, completed=n+1, total=len(loader))
+    
+    def _load_augmented_data(self):
+        return

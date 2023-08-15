@@ -33,14 +33,16 @@ from ..layers.global_attention_pooling_layers import GlobalAttentionPooling, Glo
 
 
 class MsaEmbedderNetwork(AbstractNetwork):
-    def __init__(self, out_features, msa_extrator_cfg=None, c_s: int = 384, c_z: int = 128, attention_pooling_dim: int = 512) -> None:
+    def __init__(
+        self, out_features, msa_extrator_cfg=None, c_s: int = 384, c_z: int = 128, attention_pooling_dim: int = 256
+    ) -> None:
         super().__init__()
         if msa_extrator_cfg is not None:
             self.msa_extractor = AlphaFold(**msa_extrator_cfg)
         self.msa_extrator_cfg = msa_extrator_cfg
 
         self.global_average = torch.nn.AdaptiveAvgPool2d(1)
-        self.c_s = c_s # single representation dim
+        self.c_s = c_s  # single representation dim
         self.c_z = c_z
         self.relu = torch.nn.ReLU()
         self.out_features = out_features
@@ -52,7 +54,7 @@ class MsaEmbedderNetwork(AbstractNetwork):
         self.conv_z = torch.nn.Conv2d(self.c_z, self.c_z, 3, padding=1)
 
         self.global_pooling_s = GlobalAttentionPooling(self.c_s, attention_pooling_dim)
-        self.global_pooling_z = GlobalAttentionPooling2D(128, attention_pooling_dim)
+        self.global_pooling_z = GlobalAttentionPooling2D(128, int(attention_pooling_dim))
 
         self.linear_1 = Linear(self.c_s + self.c_z, self.c_s + self.c_z)
         self.linear_2 = Linear(self.c_s + self.c_z, out_features)
@@ -78,10 +80,11 @@ class MsaEmbedderNetwork(AbstractNetwork):
         # [*, C_s]
         s = self.global_pooling_s(s.permute(0, 2, 1))
         # [*, C_z]
-        z = self.global_pooling_z(z.permute(0, 3, 1, 2))
+        z = self.global_pooling_z(z)
 
         # [*, C_s + C_z]
-        out = torch.column_stack([s,z])
+        out = torch.column_stack([s, z])
+        del s, z
 
         out = self.relu(self.linear_1(out))
 
@@ -140,7 +143,7 @@ class AlphaFold(torch.nn.Module):
             self.extra_msa_stack = ExtraMSAStack(
                 **self.extra_msa_config["extra_msa_stack"],
             )
-        
+
         self.evoformer = EvoformerStack(
             **self.config["evoformer_stack"],
         )
@@ -275,7 +278,7 @@ class AlphaFold(torch.nn.Module):
         # This needs to be done manually for DeepSpeed's sake
         dtype = next(self.parameters()).dtype
         for k in feats:
-            if(feats[k].dtype == torch.float32):
+            if feats[k].dtype == torch.float32:
                 feats[k] = feats[k].to(dtype=dtype)
 
         # Grab some data about the input
@@ -284,7 +287,7 @@ class AlphaFold(torch.nn.Module):
         n = feats["target_feat"].shape[-2]
         n_seq = feats["msa_feat"].shape[-3]
         device = feats["target_feat"].device
-        
+
         # Controls whether the model uses in-place operations throughout
         # The dual condition accounts for activation checkpoints
         inplace_safe = not (self.training or torch.is_grad_enabled())
@@ -293,7 +296,7 @@ class AlphaFold(torch.nn.Module):
         seq_mask = feats["seq_mask"]
         pair_mask = seq_mask[..., None] * seq_mask[..., None, :]
         msa_mask = feats["msa_mask"]
-        
+
         ## Initialize the MSA and pair representations
 
         # m: [*, S_c, N, C_m]
@@ -305,7 +308,7 @@ class AlphaFold(torch.nn.Module):
             inplace_safe=inplace_safe,
         )
 
-        # Unpack the recycling embeddings. Removing them from the list allows 
+        # Unpack the recycling embeddings. Removing them from the list allows
         # them to be freed further down in this function, saving memory
         m_1_prev, z_prev, x_prev = reversed([prevs.pop() for _ in range(3)])
 
@@ -314,7 +317,7 @@ class AlphaFold(torch.nn.Module):
                 (*batch_dims, n, residue_constants.atom_type_num, 3),
                 requires_grad=False,
             )
-        # Initialize the recycling embeddings, if needs be 
+        # Initialize the recycling embeddings, if needs be
         if None in [m_1_prev, z_prev, x_prev]:
             # [*, N, C_m]
             m_1_prev = m.new_zeros(
@@ -334,12 +337,10 @@ class AlphaFold(torch.nn.Module):
                 requires_grad=False,
             )
 
-        x_prev = pseudo_beta_fn(
-            feats["aatype"], x_prev, None
-        ).to(dtype=z.dtype)
+        x_prev = pseudo_beta_fn(feats["aatype"], x_prev, None).to(dtype=z.dtype)
 
         # The recycling embedder is memory-intensive, so we offload first
-        if(self.globals.offload_inference and inplace_safe):
+        if self.globals.offload_inference and inplace_safe:
             m = m.cpu()
             z = z.cpu()
 
@@ -352,7 +353,7 @@ class AlphaFold(torch.nn.Module):
             inplace_safe=inplace_safe,
         )
 
-        if(self.globals.offload_inference and inplace_safe):
+        if self.globals.offload_inference and inplace_safe:
             m = m.to(m_1_prev_emb.device)
             z = z.to(z_prev.device)
 
@@ -368,10 +369,8 @@ class AlphaFold(torch.nn.Module):
         del m_1_prev, z_prev, x_prev, m_1_prev_emb, z_prev_emb
 
         # Embed the templates + merge with MSA/pair embeddings
-        if self.config.template.enabled: 
-            template_feats = {
-                k: v for k, v in feats.items() if k.startswith("template_")
-            }
+        if self.config.template.enabled:
+            template_feats = {k: v for k, v in feats.items() if k.startswith("template_")}
             template_embeds = self.embed_templates(
                 template_feats,
                 z,
@@ -381,36 +380,31 @@ class AlphaFold(torch.nn.Module):
             )
 
             # [*, N, N, C_z]
-            z = add(z,
+            z = add(
+                z,
                 template_embeds.pop("template_pair_embedding"),
                 inplace_safe,
             )
 
             if "template_angle_embedding" in template_embeds:
                 # [*, S = S_c + S_t, N, C_m]
-                m = torch.cat(
-                    [m, template_embeds["template_angle_embedding"]], 
-                    dim=-3
-                )
+                m = torch.cat([m, template_embeds["template_angle_embedding"]], dim=-3)
 
                 # [*, S, N]
                 torsion_angles_mask = feats["template_torsion_angles_mask"]
-                msa_mask = torch.cat(
-                    [feats["msa_mask"], torsion_angles_mask[..., 2]], 
-                    dim=-2
-                )
+                msa_mask = torch.cat([feats["msa_mask"], torsion_angles_mask[..., 2]], dim=-2)
 
         # Embed extra MSA features + merge with pairwise embeddings
         if self.config.extra_msa.enabled:
             # [*, S_e, N, C_e]
             a = self.extra_msa_embedder(build_extra_msa_feat(feats))
 
-            if(self.globals.offload_inference):
+            if self.globals.offload_inference:
                 # To allow the extra MSA stack (and later the evoformer) to
                 # offload its inputs, we remove all references to them here
                 input_tensors = [a, z]
                 del a, z
-    
+
                 # [*, N, N, C_z]
                 z = self.extra_msa_stack._forward_offload(
                     input_tensors,
@@ -420,12 +414,13 @@ class AlphaFold(torch.nn.Module):
                     pair_mask=pair_mask.to(dtype=m.dtype),
                     _mask_trans=self.config._mask_trans,
                 )
-    
+
                 del input_tensors
             else:
                 # [*, N, N, C_z]
                 z = self.extra_msa_stack(
-                    a, z,
+                    a,
+                    z,
                     msa_mask=feats["extra_msa_mask"].to(dtype=m.dtype),
                     chunk_size=self.globals.chunk_size,
                     use_lma=self.globals.use_lma,
@@ -437,8 +432,8 @@ class AlphaFold(torch.nn.Module):
         # Run MSA + pair embeddings through the trunk of the network
         # m: [*, S, N, C_m]
         # z: [*, N, N, C_z]
-        # s: [*, N, C_s]          
-        if(self.globals.offload_inference):
+        # s: [*, N, C_s]
+        if self.globals.offload_inference:
             input_tensors = [m, z]
             del m, z
             m, z, s = self.evoformer._forward_offload(
@@ -449,7 +444,7 @@ class AlphaFold(torch.nn.Module):
                 use_lma=self.globals.use_lma,
                 _mask_trans=self.config._mask_trans,
             )
-    
+
             del input_tensors
         else:
             m, z, s = self.evoformer(
@@ -557,7 +552,7 @@ class AlphaFold(torch.nn.Module):
 
         # Main recycling loop
         num_iters = batch["aatype"].shape[-1]
-        for cycle_no in range(num_iters): 
+        for cycle_no in range(num_iters):
             # Select the features for the current recycling cycle
             fetch_cur_batch = lambda t: t[..., cycle_no]
             feats = tensor_tree_map(fetch_cur_batch, batch)
@@ -571,13 +566,9 @@ class AlphaFold(torch.nn.Module):
                         torch.clear_autocast_cache()
 
                 # Run the next iteration of the model
-                outputs, m_1_prev, z_prev, x_prev = self.iteration(
-                    feats,
-                    prevs,
-                    _recycle=(num_iters > 1)
-                )
+                outputs, m_1_prev, z_prev, x_prev = self.iteration(feats, prevs, _recycle=(num_iters > 1))
 
-                if(not is_final_iter):
+                if not is_final_iter:
                     del outputs
                     prevs = [m_1_prev, z_prev, x_prev]
                     del m_1_prev, z_prev, x_prev
@@ -585,4 +576,5 @@ class AlphaFold(torch.nn.Module):
         # Run auxiliary heads
         # outputs.update(self.aux_heads(outputs))
         del m_1_prev, z_prev, x_prev
+        # del outputs["msa"]
         return outputs

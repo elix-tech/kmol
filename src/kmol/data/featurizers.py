@@ -1,10 +1,13 @@
 import os
+import io
 import itertools
 import pyximport
 from abc import ABCMeta, abstractmethod
 from functools import partial
 from itertools import chain
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from pathlib import Path
+import pickle
 
 import random
 import numpy as np
@@ -49,6 +52,9 @@ class AbstractFeaturizer(metaclass=ABCMeta):
             return self.__cache[data]
         else:
             return self._process(data, entry)
+
+    def set_device(self, device: torch.device):
+        self.device = device
 
     def run(self, data: DataPoint) -> None:
         try:
@@ -366,7 +372,12 @@ class OneHotEncoderFeaturizer(AbstractFeaturizer):
     """One-Hot encode a single string"""
 
     def __init__(
-        self, inputs: List[str], outputs: List[str], classes: List[str], should_cache: bool = False, rewrite: bool = True
+        self,
+        inputs: List[str],
+        outputs: List[str],
+        classes: List[str],
+        should_cache: bool = False,
+        rewrite: bool = True,
     ):
         super().__init__(inputs, outputs, should_cache, rewrite)
 
@@ -422,7 +433,6 @@ class BagOfWordsFeaturizer(AbstractFeaturizer):
         should_cache: bool = False,
         rewrite: bool = True,
     ):
-
         super().__init__(inputs, outputs, should_cache, rewrite)
         self._vocabulary = self._get_combinations(vocabulary, max_length)
         self._max_length = max_length
@@ -458,7 +468,6 @@ class PerturbedBagOfWordsFeaturizer(BagOfWordsFeaturizer):
         perturbation: bool = False,
         bernoulli_prob: float = 0.2,
     ):
-
         super().__init__(inputs, outputs, vocabulary, max_length, should_cache, rewrite)
         self._original_vocabulary = vocabulary
         self._perturbation = perturbation
@@ -498,7 +507,9 @@ class TransposeFeaturizer(AbstractFeaturizer):
 
 
 class FixedFeaturizer(AbstractFeaturizer):
-    def __init__(self, inputs: List[str], outputs: List[str], value: float, should_cache: bool = False, rewrite: bool = True):
+    def __init__(
+        self, inputs: List[str], outputs: List[str], value: float, should_cache: bool = False, rewrite: bool = True
+    ):
         super().__init__(inputs, outputs, should_cache, rewrite)
         self._value = value
 
@@ -557,11 +568,11 @@ class MsaFeaturizer(AbstractFeaturizer):
 
         self.msa_extrator_cfg = msa_extrator_cfg
         if msa_extrator_cfg is not None:
-            torch.multiprocessing.set_start_method('spawn')
+            torch.multiprocessing.set_start_method("spawn")
             assert not msa_extrator_cfg.get("finetune", False), "In featurizer mode the extractor can't be finetune"
             self.msa_extrator = AlphaFold(**msa_extrator_cfg)
             self.msa_extrator.eval()
-            self.msa_extrator.to("cuda")
+            # self.msa_extrator.to("cuda")
 
         if msa_extrator_cfg is not None:
             self.config = self.msa_extrator.cfg
@@ -571,7 +582,10 @@ class MsaFeaturizer(AbstractFeaturizer):
         self.config.data.predict.crop_size = crop_size
 
         template_featurizer = templates.TemplateHitFeaturizer(
-            mmcif_dir=template_mmcif_dir, max_template_date="2022-11-03", max_hits=self.config.data.predict.max_template_hits, kalign_binary_path=""
+            mmcif_dir=template_mmcif_dir,
+            max_template_date="2022-11-03",
+            max_hits=self.config.data.predict.max_template_hits,
+            kalign_binary_path="",
         )
 
         self.data_processor = data_pipeline.DataPipeline(
@@ -593,7 +607,9 @@ class MsaFeaturizer(AbstractFeaturizer):
                 fp.write(f">{tag}\n{seq}")
 
             local_alignment_dir = os.path.join(self.alignment_dir, tag)
-            feature_dict = self.data_processor.process_fasta(fasta_path=tmp_fasta_path, alignment_dir=local_alignment_dir)
+            feature_dict = self.data_processor.process_fasta(
+                fasta_path=tmp_fasta_path, alignment_dir=local_alignment_dir
+            )
         else:
             with open(tmp_fasta_path, "w") as fp:
                 fp.write("\n".join([f">{tag}\n{seq}" for tag, seq in zip(tags, seqs)]))
@@ -617,10 +633,11 @@ class MsaFeaturizer(AbstractFeaturizer):
         )
 
         if self.msa_extrator_cfg is not None:
+            self.msa_extrator.to(self.device)
             features = []
             with torch.no_grad():
                 processed_feature_dict
-                features = self.msa_extrator(tensor_tree_map(lambda x: x.to("cuda"), processed_feature_dict))
+                features = self.msa_extrator(tensor_tree_map(lambda x: x.to(self.device), processed_feature_dict))
                 return features
         return processed_feature_dict
 
@@ -634,7 +651,9 @@ class MsaFeaturizer(AbstractFeaturizer):
         except KeyError:
             pass
         data_source = loader._dataset.reset_index()
-        unique_indices = list(data_source.groupby(self.sequence_column).apply(lambda x: x.iloc[0]).loc[:, "index"].values)
+        unique_indices = list(
+            data_source.groupby(self.sequence_column).apply(lambda x: x.iloc[0]).loc[:, "index"].values
+        )
         return Subset(loader, unique_indices)
 
 
@@ -723,3 +742,27 @@ class GraphormerFeaturizer(GraphFeaturizer):
 
     def reverse(self, data: DataPoint) -> None:
         pass
+
+
+class LoadFeaturizer(AbstractFeaturizer):
+    def __init__(
+        self, inputs: List[str], outputs: List[str], folder_path: str, rewrite: bool = True, suffix: str = None
+    ):
+        super().__init__(inputs, outputs, should_cache=False, rewrite=rewrite)
+        self.folder_path = Path(folder_path)
+        self.suffix = suffix
+
+    def _process(self, data: str, entry: DataPoint) -> Any:
+        path = self.folder_path / data
+        if self.suffix is not None:
+            path = path.parent / (path.name + self.suffix)
+        with open(path, "rb") as file:
+            return CPU_Unpickler(file).load()
+
+
+class CPU_Unpickler(pickle.Unpickler):
+    def find_class(self, module, name):
+        if module == "torch.storage" and name == "_load_from_bytes":
+            return lambda b: torch.load(io.BytesIO(b), map_location="cpu")
+        else:
+            return super().find_class(module, name)
