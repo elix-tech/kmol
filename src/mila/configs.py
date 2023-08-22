@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from typing import NamedTuple, List, Tuple, Any, Dict, Optional
 
 @dataclass
-class GrcpConfiguration:
+class GrpcConfiguration:
     target: str = "localhost:8024"
 
     options: List[Tuple[str, Any]] = field(default_factory=lambda: [
@@ -52,7 +52,7 @@ class ServerConfiguration:
     whitelist: List[str] = field(default_factory=lambda: [])
     use_whitelist: bool = False
 
-    grcp_configuration: GrcpConfiguration = None
+    grpc_configuration: GrpcConfiguration = None
     box_configuration: BoxConfiguration = None
 
     @classmethod
@@ -82,7 +82,7 @@ class ClientConfiguration:
         "epochs": 5
     })
 
-    grcp_configuration: GrcpConfiguration = None
+    grpc_configuration: GrpcConfiguration = None
     box_configuration: BoxConfiguration = None
 
 
@@ -99,8 +99,8 @@ class ClientConfiguration:
 def common_post_init(self):
     if self.box_configuration is not None:
             self.box_configuration = BoxConfiguration(**self.box_configuration)
-    if self.grcp_configuration is not None:
-        self.grcp_configuration = GrcpConfiguration(**self.grcp_configuration)
+    if self.grpc_configuration is not None:
+        self.grpc_configuration = GrpcConfiguration(**self.grpc_configuration)
     
     save_path = Path(self.save_path)
     save_path = save_path / datetime.now().strftime('%Y-%m-%d_%H-%M')
