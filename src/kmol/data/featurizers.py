@@ -1,17 +1,19 @@
 import os
 import io
 import itertools
+from pathlib import Path
 import pyximport
 from abc import ABCMeta, abstractmethod
 from functools import partial
 from itertools import chain
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
-from pathlib import Path
 import pickle
+import yaml
 
 import random
 import numpy as np
 import torch
+import pandas as pd
 from torch.utils.data import Subset
 from rdkit import Chem
 from torch_geometric.data import Data as TorchGeometricData
@@ -787,3 +789,219 @@ class NumpyLoadFeaturizer(LoadFeaturizer):
             return {file: np_archive[file] for file in np_archive.files if file not in self.skip_npz_file}
         if path.suffix == ".npy":
             return np.load(path)
+
+
+class PdbqtFeaturizer(AbstractFeaturizer):
+    def __init__(
+        self,
+        input_path: str,
+        output_path: str,
+        inputs: List[str],
+        outputs: List[str],
+        should_cache: bool = False,
+        rewrite: bool = True,
+        distance: float = 8.0,
+        solvent_name: str = "HOH",
+        param_path: str = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), os.pardir, "vendor/riken/intDesc/sample/ligand/param.yaml")
+        ),
+        vdw_radius_path: str = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), os.pardir, "vendor/riken/intDesc/sample/ligand/vdw_radius.yaml")
+        ),
+        priority_path: str = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), os.pardir, "vendor/riken/intDesc/sample/ligand/priority.yaml")
+        ),
+        water_definition_path: str = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), os.pardir, "vendor/riken/intDesc/water_definition.txt")
+        ),
+        interaction_group_path: str = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), os.pardir, "vendor/riken/intDesc/group.yaml")
+        ),
+        allow_mediate_pos: Union[None, int] = None,
+        on_14: bool = False,
+        dup: bool = False,
+        no_mediate: bool = False,
+        no_out_total: bool = False,
+        no_out_pml: bool = False,
+        switch_ch_pi: bool = False,
+    ):
+        super().__init__(inputs, outputs, should_cache, rewrite)
+
+        from ..vendor.riken.intDesc.interaction_descriptor import calculate
+        from openbabel import openbabel as ob, pybel
+        from moleculekit.molecule import Molecule
+        import subprocess
+
+        self._input_path = input_path
+        self._output_path = output_path
+        self._distance = distance
+        self._solvent_name = solvent_name
+        self._param_path = param_path
+        self._vdw_radius_path = vdw_radius_path
+        self._priority_path = priority_path
+        self._water_definition_path = water_definition_path
+        self._interaction_group_path = interaction_group_path
+        self._allow_mediate_pos = allow_mediate_pos
+        self._on_14 = on_14
+        self._dup = dup
+        self._no_mediate = no_mediate
+        self._no_out_total = no_out_total
+        self._no_out_pml = no_out_pml
+        self._switch_ch_pi = switch_ch_pi
+
+        self._ob = ob
+        self._pybel = pybel
+        self._molecule = Molecule
+        self._subprocess = subprocess
+        self._intdesc_calculate = calculate
+
+        output_path = Path(self._output_path)
+        if not output_path.exists():
+            output_path.mkdir(parents=True, exist_ok=True)
+
+        # default naming convention
+        # PROTEIN-ID_drug_id-DRUG-ID_best_model.pdbqt
+        # i.e Q60805-drug_id-503404_best_model.pdbqt
+
+    def _get_bonded_atom_in_cutoff_distance(self, atom_id_of_interest, atom_ids_in_cutoff, bond_id):
+        atom_id_bond_of_interest = bond_id[
+            np.isin(bond_id[:, 0], atom_id_of_interest) | np.isin(bond_id[:, 1], atom_id_of_interest)
+        ].ravel()
+        new_atom_ids = atom_id_bond_of_interest[np.invert(np.isin(atom_id_bond_of_interest, atom_id_of_interest))]
+        new_atom_ids_in_cutoff = new_atom_ids[np.isin(new_atom_ids, atom_ids_in_cutoff)]
+        return new_atom_ids_in_cutoff
+
+    def _process(self, data: Any, entry: DataPoint) -> torch.FloatTensor:
+        pdbqt_filepath = Path(entry["path"]) if "path" in entry.inputs else None
+
+        if pdbqt_filepath is None:
+            if "target_accession" in entry.inputs and "drug_id" in entry.inputs:
+                filename = f"{entry.inputs['target_accession']}-drug_id-{entry.inputs['drug_id']}_best_model"
+                pdbqt_filepath = Path(f"{self._input_path}/{filename}.pdbqt")
+            else:
+                raise FeaturizationError("No target_accession or drug_id found in data")
+
+        if not pdbqt_filepath.exists():
+            raise FeaturizationError(f"File {pdbqt_filepath} does not exist")
+
+        pdb_filepath = Path(f"{self._output_path}/{filename}.pdb")
+        mol2_filepath = Path(f"{self._output_path}/{filename}.mol2")
+        molcular_select_filepath = Path(f"{self._output_path}/{filename}_molecular_select.yaml")
+        intdesc_filepath = Path(f"{self._output_path}/{filename}_intdesc")
+
+        # Convert PDBQT to PDB
+        conv = self._ob.OBConversion()
+        conv.SetInAndOutFormats("pdbqt", "pdb")
+        ob_mol = self._ob.OBMol()
+        conv.ReadFile(ob_mol, str(pdbqt_filepath))
+        conv.WriteFile(ob_mol, str(pdb_filepath))
+
+        # Protonize the complex and convert it from pdb -> mol2
+        ob_mol.CorrectForPH(7.0)
+        ob_mol.AddHydrogens()
+        conv.SetInAndOutFormats("pdb", "mol2")
+        conv.WriteFile(ob_mol, str(mol2_filepath))
+
+        # Generates the parameter for IntDesc
+        mol = self._molecule(str(mol2_filepath))
+        uniq_resid = np.unique(
+            mol.get("resid", sel=f"protein and not (resname UNL) and within {self._distance} of (resname UNL and noh)")
+        )
+        # uniq_chain = np.unique(mol.get("chain", sel=f"protein and not (resname UNL) and within {self._distance} of (resname UNL and noh)"))
+
+        protein = mol.copy()
+        protein.deleteBonds("all")
+        protein.filter("protein and not resname UNL")
+        # protein.write("protein.pdb")
+
+        ligand = mol.copy()
+        protein.deleteBonds("all")
+        ligand.filter("resname UNL")
+        # ligand.write("ligand.pdb")
+
+        # Write out yaml configuration
+        param = {"ligand": {"name": "UNL"}, "protein": {"num": uniq_resid.tolist()}, "solvent": {"name": self._solvent_name}}
+        with open(molcular_select_filepath, "w") as file:
+            yaml.dump(param, file, indent=4)
+
+        # Run IntDesc
+        self._intdesc_calculate(
+            exec_type="Lig",
+            mol2=str(mol2_filepath),
+            molcular_select_file=str(molcular_select_filepath),
+            parametar_file=self._param_path,
+            vdw_file=self._vdw_radius_path,
+            priority_file=self._priority_path,
+            water_definition_file=self._water_definition_path,
+            interaction_group_file=self._interaction_group_path,
+            output=str(intdesc_filepath),
+            allow_mediate_position=self._allow_mediate_pos,
+            on_14=self._on_14,
+            dup=self._dup,
+            no_mediate=self._no_mediate,
+            no_out_total=self._no_out_total,
+            no_out_pml=self._no_out_pml,
+            switch_ch_pi=self._switch_ch_pi,
+        )
+
+        # Read IntDesc output
+        lp_desc = pd.read_csv(str(intdesc_filepath) + "_one_hot_list.csv")
+
+        # if we want to specify the coordinate of the atoms close to ligand
+        atom_coordinates = mol.get("coords", sel=f"protein and within {self._distance} of (resname UNL and noh)")
+        # if we want to specify atom id of the atoms close to ligand
+        protein_atom_ids = mol.get(
+            "index", sel=f"protein and not (resname UNL) and within {self._distance} of (resname UNL and noh) "
+        )
+        ligand_atom_ids = mol.get("index", sel="resname UNL")
+
+        protein_atom_with_desc = np.unique(lp_desc["partner_atom_number"].values)
+
+        neighbor_atoms = self._get_bonded_atom_in_cutoff_distance(protein_atom_with_desc, protein_atom_ids, mol.bonds)
+        filter_protein_atom_ids = protein_atom_with_desc.tolist()
+        while len(neighbor_atoms) != 0:
+            neighbor_atoms = np.unique(neighbor_atoms[np.invert(np.isin(neighbor_atoms, filter_protein_atom_ids))])
+            filter_protein_atom_ids += neighbor_atoms.tolist()
+            neighbor_atoms = self._get_bonded_atom_in_cutoff_distance(neighbor_atoms, protein_atom_ids, protein.bonds)
+
+        # Retrieve coordinates of protein and ligand
+        filter_protein_atom_ids = sorted(filter_protein_atom_ids)
+        graph_mol_index = {i: j for (i, j) in zip(range(len(filter_protein_atom_ids)), filter_protein_atom_ids)}
+        protein_coordinate = mol.coords[filter_protein_atom_ids]
+
+        ligand_atom_ids = sorted(ligand_atom_ids)
+        graph_mol_index = graph_mol_index | {
+            i: j
+            for (i, j) in zip(
+                range(len(filter_protein_atom_ids), len(filter_protein_atom_ids) + len(ligand_atom_ids)), ligand_atom_ids
+            )
+        }
+        ligand_coordinate = mol.coords[ligand_atom_ids]
+
+        # Protein Ligand features
+        # edge index generation
+        mol_lp_edge_index = lp_desc[["atom_number", "partner_atom_number"]].values
+        mol_lp_edge_index = np.unique(mol_lp_edge_index, axis=0)
+        graph_lp_edge_index = mol_lp_edge_index.copy()
+        for graph_index, mol_index in graph_mol_index.items():
+            graph_lp_edge_index[graph_lp_edge_index == mol_index] = graph_index
+
+        # Retrieve all possible interaction between ligand and protein
+        int_desc_sum = pd.read_csv(str(intdesc_filepath) + "_interaction_count_list.csv", header=None)
+        interaction_labels = int_desc_sum[~int_desc_sum[0].str.contains("#S")][0].values
+        for i in range(len(interaction_labels)):
+            interaction_labels[i] = interaction_labels[i].replace("#Pro", "")
+            interaction_labels[i] = interaction_labels[i].replace("#", "P_")
+
+        # Create edge_features num_bonds x interaction_labels.
+        edge_feature = np.zeros((mol_lp_edge_index.shape[0], len(interaction_labels)))
+        for i, (atom_number, partner_atom_number) in enumerate(mol_lp_edge_index):
+            for j, interaction_label in enumerate(interaction_labels):
+                if interaction_label in lp_desc.columns:
+                    edge_feature[i, j] = lp_desc[
+                        (lp_desc.atom_number == atom_number) & (lp_desc.partner_atom_number == partner_atom_number)
+                    ][interaction_label].sum()
+
+        # Run antechamber and obtain features with subprocess
+
+        return
