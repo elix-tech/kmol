@@ -355,6 +355,7 @@ class Executor(AbstractExecutor):
             logits = outputs.logits
             variance = getattr(outputs, "logits_var", None)
             softmax_score = getattr(outputs, "softmax_score", None)
+            belief_mass = getattr(outputs, "belief_mass", None)
             protein_gradients = getattr(outputs, "protein_gd_mean", None)
             ligand_gradients = getattr(outputs, "ligand_gd_mean", None)
             hidden_layer_output = getattr(outputs, "hidden_layer", None)
@@ -376,6 +377,8 @@ class Executor(AbstractExecutor):
                 results["variance"].extend(variance.cpu().numpy())
             if softmax_score is not None:
                 results["softmax_score"].extend(softmax_score.cpu().numpy())
+            if belief_mass is not None:
+                results["belief_mass"].extend(belief_mass.cpu().numpy())
             if protein_gradients is not None:
                 results["protein_gd"].extend(protein_gradients.cpu().numpy())
             if ligand_gradients is not None:
@@ -391,6 +394,8 @@ class Executor(AbstractExecutor):
             results["variance"] = np.vstack(results["variance"])
         if "softmax_score" in results:
             results["softmax_score"] = np.vstack(results["softmax_score"])
+        if "belief_mass" in results:
+            results["belief_mass"] = np.vstack(results["belief_mass"])
         if "protein_gd" in results:
             results["protein_gd"] = np.vstack(results["protein_gd"])
         if "ligand_gd" in results:
@@ -419,6 +424,9 @@ class Executor(AbstractExecutor):
             if "softmax_score" in results:
                 results[f"{label}_softmax"] = results["softmax_score"][:, i]
                 columns.append(f"{label}_softmax")
+            if "belief_mass" in results:
+                results[f"{label}_belief_mass"] = results["belief_mass"][:, i]
+                columns.append(f"{label}_belief_mass")
             if "protein_gd" in results:
                 results[f"{label}_protein_gd"] = results["protein_gd"][:, i]
                 columns.append(f"{label}_protein_gd")

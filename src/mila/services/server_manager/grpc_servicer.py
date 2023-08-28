@@ -10,7 +10,7 @@ from ...protocol_buffers import mila_pb2, mila_pb2_grpc
 from .server_manager import ServerManager, Participant
 
 
-class GrcpServicer(ServerManager, mila_pb2_grpc.MilaServicer):
+class GrpcServicer(ServerManager, mila_pb2_grpc.MilaServicer):
 
     def __init__(self, config: ServerConfiguration) -> None:
         super().__init__(config=config)

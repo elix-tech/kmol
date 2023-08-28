@@ -104,13 +104,13 @@ class AbstractNetwork(torch.nn.Module, metaclass=ABCMeta):
         # logic is reversed as 0 is true and 1 is false
         prediction = torch.argmin(out, dim=-1)
         
-        #softmax_out = torch.softmax(out, dim=-1)
-        #softmax_score, max_indice = torch.max(softmax_out, dim=-1)
+        softmax_out = torch.softmax(out, dim=-1)
+        softmax_score, max_indice = torch.max(softmax_out, dim=-1)
         
         prob = alpha / torch.sum(alpha, dim=-1, keepdim=True)
         max_prob, max_indice = torch.max(prob, dim=-1)
 
-        return {"logits": prediction, "logits_var": uncertainty, "softmax_score": max_prob}
+        return {"logits": prediction, "logits_var": uncertainty, "softmax_score": softmax_score, "belief_mass": max_prob}
 
     def evidential_classification(self, data):
         outputs = self.forward(data)
