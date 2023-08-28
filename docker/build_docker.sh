@@ -27,16 +27,16 @@ IMAGE_ID=$(docker commit -a "Kmol image builder" -m "Install kmol runtime" "${CO
 docker rm ${CONTAINER_ID}
 echo "   => Image id: ${IMAGE_ID}"
 
-docker tag "${IMAGE_ID}" "elix-kmol:1.1.6"
+docker tag "${IMAGE_ID}" "elix-kmol:1.1.7"
 
 echo
 echo " -o-  Launch examples -o- "
 echo
 echo "   - Simplest command (start kmol {job} {path_to_config} in a container)"
-echo "     docker run --rm -ti --gpus=all --user \$(id -u):\$(id -g) -e MPLCONFIGDIR=/opt/elix/kmol/data/.mplconfig -v ./data:/opt/elix/kmol/data elix-kmol:1.1.6 {job} {path_to_config}"
+echo "     docker run --rm -ti --gpus=all --user \$(id -u):\$(id -g) -e MPLCONFIGDIR=/opt/elix/kmol/data/.mplconfig -v ./data:/opt/elix/kmol/data elix-kmol:1.1.7 {job} {path_to_config}"
 echo
 echo "   - Running an interactive shell in the same environment"
-echo "     docker run --rm -ti --gpus=all --user \$(id -u):\$(id -g) -e MPLCONFIGDIR=/opt/elix/kmol/data/.mplconfig -v ./data:/opt/elix/kmol/data elix-kmol:1.1.6"
+echo "     docker run --rm -ti --gpus=all --user \$(id -u):\$(id -g) -e MPLCONFIGDIR=/opt/elix/kmol/data/.mplconfig -v ./data:/opt/elix/kmol/data elix-kmol:1.1.7"
 echo
 echo "   Remove the --user option to run as root in the container."
 echo "   Matplot will use the MPLCONFIGDIR in the container as its workspace, it is recommended to set it to a ./data subfolder or add another volume."
