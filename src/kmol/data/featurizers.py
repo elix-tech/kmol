@@ -1023,27 +1023,28 @@ class IntdescFeaturizer(AbstractFeaturizer):
         }
 
         molcular_select_filepath = Path(f"{self.outdir}/{mol2_filepath.stem}/molecular_select.yaml")
+        molcular_select_filepath.parent.mkdir(parents=True, exist_ok=True)
 
-        with open(molcular_select_filepath, "w") as file:
+        with open(str(molcular_select_filepath), "w") as file:
             yaml.dump(param, file, indent=4)
 
-        output_intdesc_dir = Path(f"{self.outdir}/{mol2_filepath.stem}/output_intdesc")
+        output_intdesc_prefix = Path(f"{self.outdir}/{mol2_filepath.stem}/output_intdesc")
 
         # Run IntDesc
         self._intdesc_calculate(
             exec_type="Lig",
             mol2=str(mol2_filepath),
             molcular_select_file=str(molcular_select_filepath.absolute()),
-            output=str(output_intdesc_dir),
+            output=str(output_intdesc_prefix),
             **self.intdesc_params,
         )
 
-        intdesc = pd.read_csv(output_intdesc_dir + "_one_hot_list.csv")
+        intdesc = pd.read_csv(str(output_intdesc_prefix) + "_one_hot_list.csv")
 
         ligand_atom_ids = mol_complex.get("index", sel=f"resname {self.ligand_res}")
         protein_atom_ids = self.filter_protein_atom_of_interest(mol_complex, intdesc)
 
-        mol_edge_index, edge_index = self.compute_edge_index(intdesc, ligand_atom_ids, protein_atom_ids)
+        mol_edge_index, edge_index = self.compute_edge_index(intdesc, ligand_atom_ids.tolist(), protein_atom_ids)
         edge_features = self.compute_edge_features(intdesc, mol_edge_index, edge_index)
 
         coords = np.vstack([mol_complex.coords[ligand_atom_ids], mol_complex.coords[protein_atom_ids]])
