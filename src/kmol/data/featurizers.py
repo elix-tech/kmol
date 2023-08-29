@@ -11,6 +11,9 @@ import pickle
 import yaml
 import subprocess
 
+from contextlib import redirect_stdout
+from io import StringIO
+
 
 import random
 import numpy as np
@@ -20,20 +23,26 @@ from torch.utils.data import Subset
 from rdkit import Chem
 from torch_geometric.data import Data as TorchGeometricData
 from scipy.stats import bernoulli
+import logging
+
+from moleculekit.molecule import Molecule
+from openbabel import openbabel, pybel
 
 from kmol.data.resources import DataPoint
-
 from .resources import DataPoint
 from ..core.exceptions import FeaturizationError
 from ..core.helpers import SuperFactory
-from ..core.logger import LOGGER as logging
+from ..core.logger import LOGGER as logger
 from ..vendor.openfold.data import templates, data_pipeline, feature_pipeline
 from ..vendor.openfold.config import model_config
 from ..vendor.openfold.utils.tensor_utils import tensor_tree_map
 from ..model.architectures import AlphaFold
+from ..vendor.riken.intDesc.interaction_descriptor import calculate
 from .loaders import ListLoader
 
 import algos
+
+logging.getLogger("moleculekit").setLevel(logging.WARNING)
 
 
 class AbstractFeaturizer(metaclass=ABCMeta):
@@ -421,7 +430,7 @@ class TokenFeaturizer(AbstractFeaturizer):
 
         for index, token in enumerate(tokens):
             if index == self._max_length:
-                logging.warning("[CAUTION] Input is out of bounds. Features will be trimmed. --- {}".format(data))
+                logger.warning("[CAUTION] Input is out of bounds. Features will be trimmed. --- {}".format(data))
                 break
 
             features[index][self._vocabulary.index(token)] = 1
@@ -538,12 +547,8 @@ class ConverterFeaturizer(AbstractFeaturizer):
         self._source_format = source_format
         self._target_format = target_format
 
-        from openbabel import pybel
-
-        self._pybel = pybel
-
     def _process(self, data: str, entry: DataPoint) -> str:
-        return self._pybel.readstring(self._source_format, data).write(self._target_format).strip()
+        return pybel.readstring(self._source_format, data).write(self._target_format).strip()
 
 
 class MsaFeaturizer(AbstractFeaturizer):
@@ -811,9 +816,6 @@ class PdbqtToPdbFeaturizer(AbstractFeaturizer):
     ):
         super().__init__(inputs, outputs, should_cache, rewrite)
 
-        from openbabel import openbabel as ob
-
-        self._ob = ob
         self.outdir = Path(dir_to_save)
         if not self.outdir.exists():
             self.outdir.mkdir(parents=True)
@@ -821,33 +823,23 @@ class PdbqtToPdbFeaturizer(AbstractFeaturizer):
         self.protonize = protonize
         self.ph = ph
 
-    def get_pdqt_filepath(self, entry: DataPoint) -> Path:
-        pdbqt_filepath = Path(entry["path"]) if "path" in entry.inputs else None
-
-        if pdbqt_filepath is None:
-            if "target_accession" in entry.inputs and "drug_id" in entry.inputs:
-                filename = f"{entry.inputs['target_accession']}-drug_id-{entry.inputs['drug_id']}_best_model"
-                pdbqt_filepath = Path(f"{self.pdqt_dir}/{filename}.pdbqt")
-            else:
-                raise FeaturizationError("No target_accession or drug_id found in data")
-
-        if not pdbqt_filepath.exists():
-            raise FeaturizationError(f"File {pdbqt_filepath} does not exist")
-
-        return pdbqt_filepath
-
     def _process(self, data: str, entry: DataPoint) -> str:
-        pdbqt_filepath = self.get_pdqt_filepath(entry)
+        pdbqt_filepath = Path(f"{self.pdqt_dir}/{data}")
         pdb_filepath = Path(f"{self.outdir}/{pdbqt_filepath.stem}.pdb")
 
         # Convert PDBQT to PDB
-        conv = self._ob.OBConversion()
+        conv = openbabel.OBConversion()
         conv.SetInAndOutFormats("pdbqt", "pdb")
-        ob_mol = self._ob.OBMol()
+        ob_mol = openbabel.OBMol()
+        # Avoid warning for kekulize aromatic bonds
+        openbabel.obErrorLog.SetOutputLevel(0)
         conv.ReadFile(ob_mol, str(pdbqt_filepath))
+        openbabel.obErrorLog.SetOutputLevel(1)
+
         if self.protonize:
             ob_mol.CorrectForPH(self.ph)
             ob_mol.AddHydrogens()
+
         if conv.WriteFile(ob_mol, str(pdb_filepath)):
             return str(pdb_filepath)
         else:
@@ -859,80 +851,145 @@ class PdbToMol2Featurizer(AbstractFeaturizer):
         self,
         inputs: List[str],
         outputs: List[str],
-        protein_atom_type: List[str] = ["SYBYL"],
-        ligand_atom_type: List[str] = ["SYBYL"],
         dir_to_save: str = "/tmp/kmol/mol2",
         should_cache: bool = False,
         rewrite: bool = True,
     ):
         super().__init__(inputs, outputs, should_cache, rewrite)
 
-        from openbabel import openbabel as ob
-        from moleculekit.molecule import Molecule
-
-        self._ob = ob
-        self._molecule = Molecule
-
         self.outdir = Path(dir_to_save)
         if not self.outdir.exists():
             self.outdir.mkdir(parents=True)
 
-        self.protein_atom_type = [s.upper() for s in protein_atom_type]
-        self.ligand_atom_type = [s.upper() for s in ligand_atom_type]
-        self.at = {"AM1-BCC": "bcc", "GAFF": "gaff"}
-        self.need_antechamber = any([at in self.at for at in protein_atom_type])
-
-    def _process(self, data: Any, entry: DataPoint) -> str:
-        pdb_filepath = Path(data)
+    def pdb_to_mol2(self, pdb_filepath):
         mol2_filepath = Path(f"{self.outdir}/{pdb_filepath.stem}.mol2")
-
-        ob_mol = self._ob.OBMol()
-        conv = self._ob.OBConversion()
+        ob_mol = openbabel.OBMol()
+        conv = openbabel.OBConversion()
         conv.SetInAndOutFormats("pdb", "mol2")
         conv.ReadFile(ob_mol, str(pdb_filepath))
         conv.WriteFile(ob_mol, str(mol2_filepath))
 
-        if self.need_antechamber:
-            mol_complex = self._molecule(str(mol2_filepath))
-            ligand = mol_complex.copy()
-            ligand.filter("resname UNL")
-            ligand_file_path = f"{self.outdir}/{pdb_filepath.stem}_ligand.mol2"
-            ligand.write(ligand_file_path)
-
-            for atom_type in self.protein_atom_type:
-                if atom_type in self.at:
-                    antechamber_filepath = self.run_antechamber(ligand_file_path, atom_type)
-                    mol_complex = self.replace_atom_type(mol_complex, antechamber_filepath)
-
-            mol_complex.write(str(mol2_filepath))
-
         return str(mol2_filepath)
 
-    def run_antechamber(self, filepath: Path, atom_type: str) -> str:
-        antechamber_filepath = Path(f"{self.outdir}/{filepath.stem}_{self.at[atom_type]}.mol2")
-        cmd_str = f"antechamber -i {str(filepath)} -fi mol2 -o {antechamber_filepath} -fo mol2 -at {self.at[atom_type]}"
+    def _process(self, data: Any, entry: DataPoint) -> str:
+        return self.pdb_to_mol2(data)
+
+
+class AtomTypeExtensionPdbFeaturizer(PdbToMol2Featurizer):
+    def __init__(
+        self,
+        inputs: List[str],
+        outputs: List[str],
+        ligand_residue: str = "UNL",
+        protein_atom_type: List[str] = ["SYBYL"],
+        ligand_atom_type: List[str] = ["SYBYL"],
+        tokenize_atom_type: bool = True,
+        dir_to_save: str = "/tmp/kmol/antechamber",
+        should_cache: bool = False,
+        rewrite: bool = True,
+    ):
+        super().__init__(inputs, outputs, should_cache, rewrite)
+
+        self.ligand_residue = ligand_residue
+        self.protein_atom_type = [s.upper() for s in protein_atom_type]
+        self.ligand_atom_type = [s.upper() for s in ligand_atom_type]
+        self.at = {"AM1-BCC": "bcc", "GAFF": "gaff"}
+        self.need_antechamber = any([at in self.at for at in ligand_atom_type])
+        self.tokenize_atom_type = tokenize_atom_type
+        self.outdir = Path(dir_to_save)
+        if not self.outdir.exists():
+            self.outdir.mkdir(parents=True)
+
+        self.ligand_filter = f"resname {self.ligand_residue}"
+        self.protein_filter = f"protein and not resname {self.ligand_residue}"
+
+        # fmt: off
+        # Taken from https://emleddin.github.io/comp-chem-website/AMBERguide-AMBER-atom-types.html
+        self.gaff_vocabulary = {v: k for k,v in enumerate(["br","c1","c","c2","c3","ca","cc(cd)","ce(cf)","cl","cp(cq)","cu","cv","cx","cy","f","h1","h2","h3","h4","h5","ha","hc","hn","ho","hp","hs","i","n","n","n1","n2","n3","n4","na","nb","nc(nd)","nh","no","o","oh","os","p2","p3","p4","p5","pb","pc(pd)","pe(pf)","px","py","s2","s4","s6","sh","ss","sx","sy"])}
+        self.bcc_vocabulary = []
+        self.at_vocabulary = {
+            "AM1-BCC": self.bcc_vocabulary,
+            "GAFF": self.gaff_vocabulary,
+        }
+        # Taken from http://chemyang.ccnu.edu.cn/ccb/server/AIMMS/mol2.pdf
+        self.sybyl_vocabulary = {v: k for k,v in enumerate(["C.3","C.2","C.1","C.ar","C.cat","N.3","N.2","N.1","N.ar","N.am","N.pl3","N.4","Na","O.3","O.2","O.co2","O.spc","O.t3p","S.3","S.2","S.O","S.O2","P.3","F","H","H.spc","H.t3p","LP","Du","Du.C","Any","Hal","Het","Hev","Li","Na","Mg","Al","Si","K","Ca","Cr.th","Cr.oh","Mn","Fe","Co.oh","Cu","Cl","Br","I","Zn","Se","Mo","Sn"])}
+        self.pdb_vocabulary = {"H": 1, "He": 2, "Li": 3, "Be": 4, "B": 5, "C": 6, "N": 7, "O": 8, "F": 9, "Ne": 10, "Na": 11, "Mg": 12, "Al": 13, "Si": 14, "P": 15, "S": 16, "Cl": 17, "Ar": 18, "K": 19, "Ca": 20, "Sc": 21, "Ti": 22, "V": 23, "Cr": 24, "Mn": 25, "Fe": 26, "Co": 27, "Ni": 28, "Cu": 29, "Zn": 30, "Ga": 31, "Ge": 32, "As": 33, "Se": 34, "Br": 35, "Kr": 36, "Rb": 37, "Sr": 38, "Y": 39, "Zr": 40, "Nb": 41, "Mo": 42, "Tc": 43, "Ru": 44, "Rh": 45, "Pd": 46, "Ag": 47, "Cd": 48, "In": 49, "Sn": 50, "Sb": 51, "Te": 52, "I": 53, "Xe": 54, "Cs": 55, "Ba": 56, "La": 57, "Ce": 58, "Pr": 59, "Nd": 60, "Pm": 61, "Sm": 62, "Eu": 63, "Gd": 64, "Tb": 65, "Dy": 66, "Ho": 67, "Er": 68, "Tm": 69, "Yb": 70, "Lu": 71, "Hf": 72, "Ta": 73, "W": 74, "Re": 75, "Os": 76, "Ir": 77, "Pt": 78, "Au": 79, "Hg": 80, "Tl": 81, "Pb": 82, "Bi": 83, "Th": 90, "At": 85, "Rn": 86, "Fr": 87, "Ra": 88, "Ac": 89, "Pa": 91, "U": 92, "Np": 93, "Pu": 94, "Am": 95, "Cm": 96, "Bk": 97, "Cf": 98, "Es": 99, "Fm": 100, "Md": 101, "No": 102, "Lr": 103, "Rf": 104, "Db": 105, "Sg": 106, "Bh": 107, "Hs": 108, "Mt": 109, "Ds": 110, "Rg": 111, "Cn": 112, "Nh": 113, "Fl": 114, "Mc": 115, "Lv": 116, "Ts": 117, "Og": 118}
+        # fmt: on
+
+        self.get_atom_type_func = {"PDB": self.get_pdb_atom_type}
+
+    def _process(self, data: Any, entry: DataPoint) -> Any:
+        pdb_filepath = data
+        mol2_filepath = self.pdb_to_mol2(data)
+        mol_complex = Molecule(str(mol2_filepath))
+
+        self.compute_gaff_or_bcc_atom_type(mol_complex, pdb_filepath)
+
+        # Update ligand atom type
+        overwrite = "SYBYL" not in self.ligand_atom_type
+        for i, atom_type in enumerate(self.ligand_atom_type):
+            if "SYBYL" == atom_type:
+                continue
+            atom_types = self.get_antechamber_atom_type(mol2_filepath, atom_type)
+            mol_complex = self.update_atom_type(mol_complex, atom_types, self.ligand_filter, overwrite)
+
+        # Update protein atom type
+        overwrite = "SYBYL" not in self.protein_atom_type
+        if "PDB" in self.protein_atom_type:
+            atom_type = self.get_pdb_atom_type(mol_complex)
+            mol_complex = self.update_atom_type(mol_complex, atom_type, self.protein_filter, overwrite)
+
+        mol_complex.write(str(pdb_filepath))
+        # mol2_filepath = self.pdb_to_mol2(data)
+        # mol_complex = Molecule(str(mol2_filepath))
+
+        return str(pdb_filepath)
+
+    def compute_gaff_or_bcc_atom_type(self, mol_complex, pdb_filepath):
+        if self.need_antechamber:
+            with redirect_stdout(StringIO()):
+                ligand_file_path = self.create_ligand_pdb_file(mol_complex, pdb_filepath)
+            for atom_type in self.ligand_atom_type:
+                if atom_type in self.at:
+                    mol_antechamber = self.run_antechamber(ligand_file_path, atom_type, mol_complex)
+                    mol_antechamber.write(self.get_antechamber_filepath(pdb_filepath, atom_type))
+
+    def run_antechamber(self, ligand_filepath_pdb: str, atom_type: str, mol_complex: Molecule) -> Molecule:
+        antechamber_filepath = self.get_antechamber_filepath(ligand_filepath_pdb, atom_type)
+        cmd_str = f"antechamber -i {ligand_filepath_pdb} -fi pdb -o {antechamber_filepath} -fo mol2 -at {self.at[atom_type]}"
         cmd = cmd_str.split(" ")
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode != 0:
             error_msg = result.stderr or result.stdout or "Unknown error"
             raise FeaturizationError(f"Something went wrong with antechamber cmd: {cmd_str}, error: {error_msg}")
+        mol_complex = self.replace_atom_type(mol_complex, antechamber_filepath)
+        return mol_complex
 
-        return str(antechamber_filepath)
+    def get_antechamber_filepath(self, filepath_pdb: str, atom_type: str):
+        return str(Path(self.outdir) / f"{Path(filepath_pdb).stem}_{self.at[atom_type]}.mol2")
 
-    def replace_atom_type(self, mol_complex, antechamber_filepath: str):
-        ligand = self._molecule(antechamber_filepath)
+    def create_ligand_pdb_file(self, mol_complex: Molecule, pdb_filepath: str) -> str:
+        ligand = mol_complex.copy()
+        ligand.filter(self.ligand_filter)
+        ligand_file_path = Path(self.outdir) / f"{Path(pdb_filepath).stem}_ligand.pdb"
+        ligand.write(str(ligand_file_path))
+        return str(ligand_file_path)
+
+    def replace_atom_type(self, mol: Molecule, antechamber_filepath: str):
+        mol_complex = mol.copy()
+        ligand = Molecule(antechamber_filepath)
         for atom_id in range(ligand.numAtoms):
-            atom_name = ligand.name[atom_id]
             res_name = ligand.resname[atom_id]
             res_id = ligand.resid[atom_id]
             chain = ligand.chain[atom_id]
+            coords = ligand.coords[atom_id].reshape(-1, 1)
             atom_type = ligand.atomtype[atom_id]
 
             mask = (
-                (mol_complex.name == atom_name)
-                & (mol_complex.resname == res_name)
+                (mol_complex.resname == res_name)
                 & (mol_complex.resid == res_id)
                 & (mol_complex.chain == chain)
+                & ((mol_complex.coords == coords).any(axis=1)[:, 0])
             )
 
             matching_indices = np.where(mask)[0]
@@ -941,6 +998,30 @@ class PdbToMol2Featurizer(AbstractFeaturizer):
             else:
                 raise FeaturizationError("Error in the update of the atom type")
         return mol_complex
+
+    def update_atom_type(self, mol_complex, additional_atom_type, sel, overwrite):
+        index = mol_complex.get("index", sel=sel)
+        if overwrite:
+            mol_complex.atomtype[index] = additional_atom_type
+        else:
+            updated_atom_type = [f"{a}_{b}" for a, b in zip(mol_complex.atomtype[index], additional_atom_type)]
+            mol_complex.atomtype[index] = updated_atom_type
+        return mol_complex
+
+    def get_pdb_atom_type(self, mol_complex):
+        atom_type = mol_complex.get("element", sel=self.protein_filter)
+        if self.tokenize_atom_type:
+            return [self.pdb_vocabulary[z] for z in atom_type]
+        else:
+            return atom_type
+
+    def get_antechamber_atom_type(self, pdb_filepath: str, atom_type: str):
+        filepath = self.get_antechamber_filepath(pdb_filepath, atom_type)
+        new_atom_type = Molecule(filepath).get("atomtype", sel=self.ligand_filter)
+        if self.tokenize_atom_type:
+            return [self.at_vocabulary[atom_type][z] for z in new_atom_type]
+        else:
+            return new_atom_type
 
 
 class IntdescFeaturizer(AbstractFeaturizer):
@@ -975,12 +1056,6 @@ class IntdescFeaturizer(AbstractFeaturizer):
         """
         super().__init__(inputs, outputs, should_cache, rewrite)
 
-        from moleculekit.molecule import Molecule
-        from ..vendor.riken.intDesc.interaction_descriptor import calculate
-
-        self._molecule = Molecule
-        self._intdesc_calculate = calculate
-
         self.outdir = Path(dir_to_save) if dir_to_save is not None else Path("/tmp/kmol/intdesc")
         self.distance = distance
         self.ligand_res = ligand_residue
@@ -1008,7 +1083,7 @@ class IntdescFeaturizer(AbstractFeaturizer):
     def _process(self, data: Any, entry: DataPoint) -> Any:
         mol2_filepath = Path(data)
 
-        mol_complex = self._molecule(str(mol2_filepath))
+        mol_complex = Molecule(str(mol2_filepath))
         uniq_resid = np.unique(
             mol_complex.get(
                 "resid",
@@ -1031,13 +1106,16 @@ class IntdescFeaturizer(AbstractFeaturizer):
         output_intdesc_prefix = Path(f"{self.outdir}/{mol2_filepath.stem}/output_intdesc")
 
         # Run IntDesc
-        self._intdesc_calculate(
-            exec_type="Lig",
-            mol2=str(mol2_filepath),
-            molcular_select_file=str(molcular_select_filepath.absolute()),
-            output=str(output_intdesc_prefix),
-            **self.intdesc_params,
-        )
+        intdesc_output = StringIO()
+        with redirect_stdout(intdesc_output):
+            calculate(
+                exec_type="Lig",
+                mol2=str(mol2_filepath),
+                molcular_select_file=str(molcular_select_filepath.absolute()),
+                output=str(output_intdesc_prefix),
+                **self.intdesc_params,
+            )
+        logger.debug(intdesc_output)
 
         intdesc = pd.read_csv(str(output_intdesc_prefix) + "_one_hot_list.csv")
 
@@ -1047,10 +1125,15 @@ class IntdescFeaturizer(AbstractFeaturizer):
         mol_edge_index, edge_index = self.compute_edge_index(intdesc, ligand_atom_ids.tolist(), protein_atom_ids)
         edge_features = self.compute_edge_features(intdesc, mol_edge_index, edge_index)
 
-        coords = np.vstack([mol_complex.coords[ligand_atom_ids], mol_complex.coords[protein_atom_ids]])
+        coords = np.vstack([mol_complex.coords[ligand_atom_ids], mol_complex.coords[protein_atom_ids]]).squeeze()
         atomtype = np.hstack([mol_complex.atomtype[ligand_atom_ids], mol_complex.atomtype[protein_atom_ids]])
         protein_mask = np.hstack([np.zeros(len(ligand_atom_ids)), np.ones(len(protein_atom_ids))])
 
+        atomtype = atomtype
+        coords = torch.from_numpy(coords)
+        protein_mask = torch.from_numpy(protein_mask).bool()
+        edge_index = torch.from_numpy(edge_index).long()
+        edge_features = torch.from_numpy(edge_features)
         return [atomtype, coords, protein_mask, edge_index, edge_features]
 
     def filter_protein_atom_of_interest(self, mol_complex, intdesc):
