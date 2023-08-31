@@ -208,20 +208,3 @@ class ProteinCFConv(MessagePassing):
 
     def message(self, x_j: Tensor, W: Tensor) -> Tensor:
         return x_j * W
-
-
-if __name__ == "__main__":
-    import pickle
-
-    with open("test_data.pkl", "rb") as file:
-        data = pickle.load(file)
-
-    model = ProteinSchnet(out_feature=128)
-    r = model(
-        torch.hstack([torch.Tensor(data["z"]), torch.Tensor(data["z_protein"])]).long(),
-        torch.vstack([torch.Tensor(data["pos"]), torch.Tensor(data["pos_protein"])]).squeeze(),
-        protein_mask=torch.hstack([torch.zeros(len(data["z"])), torch.ones(len(data["z_protein"]))]).bool(),
-        lp_edge_index=torch.Tensor(data["lp_edge_index"].tolist()).T,
-        lp_edge_attr=torch.Tensor(data["lp_edge_feature"].tolist()),
-    )
-    a = 0
