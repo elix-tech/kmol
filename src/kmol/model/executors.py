@@ -4,6 +4,7 @@ from copy import copy
 from functools import partial
 from pathlib import Path
 from typing import List, Optional, Tuple
+import gc
 
 import numpy as np
 import torch
@@ -125,7 +126,6 @@ class Trainer(AbstractExecutor):
         logging.debug(self.network)
 
     def _initialize_scheduler(self, optimizer: AbstractOptimizer, training_examples: int) -> AbstractLearningRateScheduler:
-
         return SuperFactory.create(
             AbstractLearningRateScheduler,
             self.config.scheduler,
@@ -136,7 +136,6 @@ class Trainer(AbstractExecutor):
         )
 
     def run(self, data_loader: LoadedContent, val_loader: Optional[LoadedContent] = None):
-
         self._setup(training_examples=data_loader.samples)
 
         initial_payload = Namespace(trainer=self, data_loader=data_loader)
@@ -161,6 +160,10 @@ class Trainer(AbstractExecutor):
         EventManager.dispatch_event(event_name="before_criterion", payload=payload)
 
         loss = self.criterion(payload.logits, payload.features.outputs, *payload.extras)
+        # del payload
+        # del batch.inputs
+        # gc.collect()
+        # torch.cuda.empty_cache()
         loss.backward()
 
         self.optimizer.step()
@@ -216,6 +219,9 @@ class Trainer(AbstractExecutor):
                     logits.append(inference_mode(batch.inputs)["logits"])
                 else:
                     logits.append(self.network(batch.inputs))
+                    # del batch
+                    # gc.collect()
+                    # torch.cuda.empty_cache()
 
             metrics = self._metric_computer.compute_metrics(ground_truth, logits)
             averages = self._metric_computer.compute_statistics(metrics, (np.mean,))
@@ -447,7 +453,6 @@ class LearningRareFinder(Trainer):
     MINIMUM_LEARNING_RATE = 1e-5
 
     def _initialize_scheduler(self, optimizer: AbstractOptimizer, training_examples: int) -> AbstractLearningRateScheduler:
-
         gamma = max(training_examples // self.config.batch_size, 1)
         gamma = np.log(self.MAXIMUM_LEARNING_RATE / self.MINIMUM_LEARNING_RATE) / gamma
         gamma = float(np.exp(gamma))
@@ -455,7 +460,6 @@ class LearningRareFinder(Trainer):
         return ExponentialLR(optimizer=optimizer, gamma=gamma)
 
     def run(self, data_loader: LoadedContent) -> None:
-
         self._setup(training_examples=data_loader.samples)
 
         payload = Namespace(trainer=self, data_loader=data_loader)

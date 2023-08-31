@@ -607,9 +607,7 @@ class MsaFeaturizer(AbstractFeaturizer):
                 fp.write(f">{tag}\n{seq}")
 
             local_alignment_dir = os.path.join(self.alignment_dir, tag)
-            feature_dict = self.data_processor.process_fasta(
-                fasta_path=tmp_fasta_path, alignment_dir=local_alignment_dir
-            )
+            feature_dict = self.data_processor.process_fasta(fasta_path=tmp_fasta_path, alignment_dir=local_alignment_dir)
         else:
             with open(tmp_fasta_path, "w") as fp:
                 fp.write("\n".join([f">{tag}\n{seq}" for tag, seq in zip(tags, seqs)]))
@@ -651,9 +649,7 @@ class MsaFeaturizer(AbstractFeaturizer):
         except KeyError:
             pass
         data_source = loader._dataset.reset_index()
-        unique_indices = list(
-            data_source.groupby(self.sequence_column).apply(lambda x: x.iloc[0]).loc[:, "index"].values
-        )
+        unique_indices = list(data_source.groupby(self.sequence_column).apply(lambda x: x.iloc[0]).loc[:, "index"].values)
         return Subset(loader, unique_indices)
 
 
@@ -750,9 +746,7 @@ class LoadFeaturizer(AbstractFeaturizer):
     This is an abstract class.
     """
 
-    def __init__(
-        self, inputs: List[str], outputs: List[str], folder_path: str, rewrite: bool = True, suffix: str = None
-    ):
+    def __init__(self, inputs: List[str], outputs: List[str], folder_path: str, rewrite: bool = True, suffix: str = None):
         super().__init__(inputs, outputs, should_cache=False, rewrite=rewrite)
         self.folder_path = Path(folder_path)
         self.suffix = suffix
@@ -777,7 +771,7 @@ class CPU_Unpickler(pickle.Unpickler):
 
 
 class PickleLoadFeaturizer(LoadFeaturizer):
-    def load(path):
+    def load(self, path):
         with open(path, "rb") as file:
             return CPU_Unpickler(file).load()
 
