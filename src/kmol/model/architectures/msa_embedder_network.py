@@ -63,7 +63,11 @@ class MsaEmbedderNetwork(AbstractNetwork):
         return ["protein"]
 
     def forward(self, data: Dict[str, Any]):
-        evoformer_output_dict = data[self.get_requirements()[0]]
+        if self.msa_extrator_cfg is not None:
+            alphafold_inputs = data[self.get_requirements()[0]]
+            evoformer_output_dict = self.msa_extractor(alphafold_inputs)
+        else:
+            evoformer_output_dict = data[self.get_requirements()[0]]
         s = evoformer_output_dict["single"]
         z = evoformer_output_dict["pair"]
         del evoformer_output_dict
