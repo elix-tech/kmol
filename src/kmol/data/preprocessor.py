@@ -90,8 +90,9 @@ class AbstractPreprocessor(metaclass=ABCMeta):
                 overall_progress_task = progress.add_task("[green]All jobs progress:")
                 for n, chunk in enumerate(chunks, 1):
                     task_id = progress.add_task(f"featurizer {n}", visible=False)
-                    big_future = client.scatter(chunk)
-                    futures.append(client.submit(func, _progress, task_id, big_future, pure=False))
+                    # big_future = client.scatter(chunk)
+                    # futures.append(client.submit(func, _progress, task_id, big_future, pure=False))
+                    futures.append(client.submit(func, _progress, task_id, chunk, pure=False))
 
                 warnings.resetwarnings()
                 n_finished = 0
@@ -300,11 +301,14 @@ class FilePreprocessor(AbstractPreprocessor):
     and save complex or heavy featurization to file and then load them with LoaderFeaturizer.
     """
 
-    def __init__(self, config, folder_path, outputs_to_save: List, input_to_use_has_filename: List) -> None:
+    def __init__(
+        self, config, folder_path, outputs_to_save: List, input_to_use_has_filename: List, overwrite: bool = False
+    ) -> None:
         super().__init__(config)
         self.folder_name = Path(folder_path)
         self.outputs_to_save = outputs_to_save
         self.input_to_use_has_filename = input_to_use_has_filename
+        self.overwrite = overwrite
         for input_field_filename in self.input_to_use_has_filename:
             folder = self.folder_name / input_field_filename
             folder.mkdir(exist_ok=True, parents=True)
@@ -318,7 +322,7 @@ class FilePreprocessor(AbstractPreprocessor):
                 filenames = []
                 for input_field_filename in self.input_to_use_has_filename:
                     filenames.append(self.folder_name / input_field_filename / f"{sample.inputs[input_field_filename]}.pkl")
-                if all([filename.exists() for filename in filenames]):
+                if not self.overwrite and all([filename.exists() for filename in filenames]):
                     continue
                 try:
                     outputs = self.preprocess(sample)

@@ -42,7 +42,7 @@ from .loaders import ListLoader
 
 import algos
 
-logging.getLogger("moleculekit").setLevel(logging.WARNING)
+[l.setLevel(logging.WARNING) for l in logging.root.handlers]
 logging.getLogger("src.kmol.vendor.riken.intDesc").setLevel(logging.ERROR)
 
 
