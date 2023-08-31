@@ -29,6 +29,8 @@ class ProteinSchnetNetwork(AbstractNetwork, SchNet):
         std: Union[float, None] = None,
         atomref: OptTensor = None,
         num_lp_interactions: int = 52,
+        num_atomtype_ligand: int = 1,
+        num_atomtype_protein: int = 1,
     ):
         """
         See pytorch documentation for base parameters.
@@ -48,8 +50,18 @@ class ProteinSchnetNetwork(AbstractNetwork, SchNet):
             std,
             atomref,
         )
+        embedding_channel = hidden_channels // num_atomtype_ligand
+        protein_embedding_channel = hidden_channels // num_atomtype_protein
+        if (
+            embedding_channel * num_atomtype_ligand != hidden_channels
+            or protein_embedding_channel * num_atomtype_protein != hidden_channels
+        ):
+            raise ValueError("The hidden channel needs to be divisible by num_atomtype_ligand and num_atomtype_protein")
 
-        self.protein_embedding = Embedding(100, hidden_channels, padding_idx=0)
+        self.embedding = ModuleList([Embedding(100, embedding_channel, padding_idx=0) for i in range(num_atomtype_ligand)])
+        self.protein_embedding = ModuleList(
+            [Embedding(100, protein_embedding_channel, padding_idx=0) for i in range(num_atomtype_protein)]
+        )
         self.interactions = ModuleList()
         for _ in range(num_interactions):
             block = ProteinInteractionBlock(hidden_channels, num_gaussians, num_filters, cutoff, num_lp_interactions)
@@ -83,13 +95,19 @@ class ProteinSchnetNetwork(AbstractNetwork, SchNet):
                 a separate molecule with shape :obj:`[num_atoms]`.
                 (default: :obj:`None`),
         """
-        z, pos, protein_mask, lp_edge_index, lp_edge_attr, batch = data[self.get_requirements()[0]]
-        batch = torch.zeros_like(z) if batch is None else batch
+        data_batch = data[self.get_requirements()[0]]
+        z = data_batch.z
+        z_protein = data_batch.z_protein
+        pos = data_batch.coords
+        protein_mask = data_batch.protein_mask
+        lp_edge_index = data_batch.edge_index
+        lp_edge_attr = data_batch.edge_attr
+        batch = torch.zeros_like(z) if data_batch.get("batch") is None else data_batch.get("batch")
         self.has_lp_interaction = protein_mask.sum() > 0 and lp_edge_index is not None
 
-        h = torch.Tensor(z.shape[0], self.hidden_channels)
-        h[~protein_mask] = self.embedding(z[~protein_mask])
-        h[protein_mask] = self.protein_embedding(z[protein_mask])
+        h = torch.zeros([len(batch), self.hidden_channels], device=z.device)
+        h[~protein_mask] = torch.hstack([emb(i) for emb, i in zip(self.embedding, z.T)])
+        h[protein_mask] = torch.hstack([emb(i) for emb, i in zip(self.protein_embedding, z_protein.T)])
         # Create a mask so that protein and atoms are considered a different molecule.
         # There won't be bond between a protein and ligand outside of the
         mask_ligand_protein_batch = batch.clone()

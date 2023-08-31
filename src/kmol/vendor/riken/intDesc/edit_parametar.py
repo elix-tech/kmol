@@ -4,6 +4,9 @@ import sys
 from argparse import RawTextHelpFormatter
 
 import yaml
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def write_param(param_dict: dict, output: str):
@@ -50,22 +53,16 @@ def write_param(param_dict: dict, output: str):
         with open(output, "w") as wf:
             for interaction_type in interaction_type_list:
                 if interaction_type == "HB_OH_(N,O)":
-                    wf.write(
-                        "# interaction_type dist(Ang) angle1(deg) angle2_min(deg) angle2_max(deg)\n"
-                    )
+                    wf.write("# interaction_type dist(Ang) angle1(deg) angle2_min(deg) angle2_max(deg)\n")
 
                 elif interaction_type == "HB_OH_OH":
                     wf.write("\n# interaction_type dist(Ang) angle1(deg) angle2(deg) angle3(deg)\n")
 
                 elif interaction_type == "HB_NH_(N,O)":
-                    wf.write(
-                        "\n# interaction_type dist(Ang) angle1(deg) angle1_N4(deg) angle2_min(deg) angle2_max(deg)\n"
-                    )
+                    wf.write("\n# interaction_type dist(Ang) angle1(deg) angle1_N4(deg) angle2_min(deg) angle2_max(deg)\n")
 
                 elif interaction_type == "HB_NH_OH":
-                    wf.write(
-                        "\n# interaction_type dist(Ang) angle1(deg) angle1_N4(deg) angle2(deg) angle3(deg)\n"
-                    )
+                    wf.write("\n# interaction_type dist(Ang) angle1(deg) angle1_N4(deg) angle2(deg) angle3(deg)\n")
 
                 elif interaction_type == "vdW":
                     wf.write("\n# interaction_type buffer(Ang)\n")
@@ -87,9 +84,7 @@ def write_param(param_dict: dict, output: str):
                     )
 
                 elif interaction_type == "Dipo":
-                    wf.write(
-                        "\n# interaction_type buffer(Ang) angle1(Ang) angle2(Ang) angle3(Ang) charge hydro\n"
-                    )
+                    wf.write("\n# interaction_type buffer(Ang) angle1(Ang) angle2(Ang) angle3(Ang) charge hydro\n")
 
                 elif interaction_type == "CH_PI":
                     wf.write(
@@ -109,14 +104,10 @@ def write_param(param_dict: dict, output: str):
                 elif interaction_type == "S_F":
                     wf.write("\n# interaction_type buffer(Ang) angle1(deg)\n")
 
-                wf.write(
-                    "{key}: {val}\n".format(
-                        key=interaction_type, val=" ".join(param_dict[interaction_type])
-                    )
-                )
+                wf.write("{key}: {val}\n".format(key=interaction_type, val=" ".join(param_dict[interaction_type])))
 
     except Exception as e:
-        print(e, file=sys.stderr)
+        logger.error(e)
         sys.exit(1)
 
 
@@ -174,14 +165,12 @@ def edit_param(parameter_file: str, buffer_dist: float) -> dict:
         return param_dict
 
     except Exception as e:
-        print(e, file=sys.stderr)
+        logger.error(e)
         sys.exit(1)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description='edit "parameter.txt".', formatter_class=RawTextHelpFormatter
-    )
+    parser = argparse.ArgumentParser(description='edit "parameter.txt".', formatter_class=RawTextHelpFormatter)
     parser.add_argument("parameter_file", help="File to edit.", type=str)
     parser.add_argument("output", help="File to edit.", type=str)
     parser.add_argument("buffer", help="buffer distance parameter", type=float)

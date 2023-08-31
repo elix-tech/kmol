@@ -43,6 +43,7 @@ from .loaders import ListLoader
 import algos
 
 logging.getLogger("moleculekit").setLevel(logging.WARNING)
+logging.getLogger("src.kmol.vendor.riken.intDesc").setLevel(logging.ERROR)
 
 
 class AbstractFeaturizer(metaclass=ABCMeta):
@@ -833,7 +834,8 @@ class PdbqtToPdbFeaturizer(AbstractFeaturizer):
         ob_mol = openbabel.OBMol()
         # Avoid warning for kekulize aromatic bonds
         openbabel.obErrorLog.SetOutputLevel(0)
-        conv.ReadFile(ob_mol, str(pdbqt_filepath))
+        if not conv.ReadFile(ob_mol, str(pdbqt_filepath)):
+            raise FeaturizationError(f"Error while reading the pdb file for {str(pdbqt_filepath)}")
         openbabel.obErrorLog.SetOutputLevel(1)
 
         if self.protonize:
@@ -861,13 +863,15 @@ class PdbToMol2Featurizer(AbstractFeaturizer):
         if not self.outdir.exists():
             self.outdir.mkdir(parents=True)
 
-    def pdb_to_mol2(self, pdb_filepath):
-        mol2_filepath = Path(f"{self.outdir}/{pdb_filepath.stem}.mol2")
+    def pdb_to_mol2(self, pdb_filepath: str) -> str:
+        mol2_filepath = Path(f"{self.outdir}/{Path(pdb_filepath).stem}.mol2")
         ob_mol = openbabel.OBMol()
         conv = openbabel.OBConversion()
         conv.SetInAndOutFormats("pdb", "mol2")
-        conv.ReadFile(ob_mol, str(pdb_filepath))
-        conv.WriteFile(ob_mol, str(mol2_filepath))
+        if not conv.ReadFile(ob_mol, str(pdb_filepath)):
+            raise FeaturizationError(f"Error while reading {str(pdb_filepath)} in OpenBabel")
+        if not conv.WriteFile(ob_mol, str(mol2_filepath)):
+            raise FeaturizationError(f"Error while writing {str(mol2_filepath)} in OpenBabel")
 
         return str(mol2_filepath)
 
@@ -888,7 +892,7 @@ class AtomTypeExtensionPdbFeaturizer(PdbToMol2Featurizer):
         should_cache: bool = False,
         rewrite: bool = True,
     ):
-        super().__init__(inputs, outputs, should_cache, rewrite)
+        super().__init__(inputs, outputs, dir_to_save, should_cache, rewrite)
 
         self.ligand_residue = ligand_residue
         self.protein_atom_type = [s.upper() for s in protein_atom_type]
@@ -896,17 +900,14 @@ class AtomTypeExtensionPdbFeaturizer(PdbToMol2Featurizer):
         self.at = {"AM1-BCC": "bcc", "GAFF": "gaff"}
         self.need_antechamber = any([at in self.at for at in ligand_atom_type])
         self.tokenize_atom_type = tokenize_atom_type
-        self.outdir = Path(dir_to_save)
-        if not self.outdir.exists():
-            self.outdir.mkdir(parents=True)
 
         self.ligand_filter = f"resname {self.ligand_residue}"
         self.protein_filter = f"protein and not resname {self.ligand_residue}"
 
         # fmt: off
-        # Taken from https://emleddin.github.io/comp-chem-website/AMBERguide-AMBER-atom-types.html
-        self.gaff_vocabulary = {v: k for k,v in enumerate(["br","c1","c","c2","c3","ca","cc(cd)","ce(cf)","cl","cp(cq)","cu","cv","cx","cy","f","h1","h2","h3","h4","h5","ha","hc","hn","ho","hp","hs","i","n","n","n1","n2","n3","n4","na","nb","nc(nd)","nh","no","o","oh","os","p2","p3","p4","p5","pb","pc(pd)","pe(pf)","px","py","s2","s4","s6","sh","ss","sx","sy"])}
-        self.bcc_vocabulary = []
+        # Taken from https://github.com/choderalab/ambermini/tree/master/share/amber/dat/antechamber
+        self.gaff_vocabulary = {v: k for k,v in enumerate(["Ac", "Ag", "Al", "Am", "Ar", "As", "At", "Au", "B", "Ba", "Be", "Bh", "Bi", "Bk", "Ca", "Cd", "Ce", "Cf", "Cm", "Co", "Cr", "Cs", "Cu", "DU", "Db", "Ds", "Dy", "Er", "Es", "Eu", "Fe", "Fm", "Fr", "Ga", "Gd", "Ge", "He", "Hf", "Hg", "Ho", "Hs", "In", "Ir", "K", "Kr", "LP", "La", "Li", "Lr", "Lu", "Md", "Mg", "Mn", "Mo", "Mt", "Na", "Nb", "Nd", "Ne", "Ni", "No", "Np", "Os", "Pa", "Pb", "Pd", "Pm", "Po", "Pr", "Pt", "Pu", "Ra", "Rb", "Re", "Rf", "Rh", "Rn", "Ru", "Sb", "Sc", "Se", "Sg", "Si", "Sm", "Sn", "Sr", "Ta", "Tb", "Tc", "Te", "Th", "Ti", "Tl", "Tm", "U", "V", "W", "Xe", "Y", "Yb", "Zn", "Zr", "br", "c", "c1", "c2", "c3", "ca", "cc", "ce", "cg", "cl", "cp", "cu", "cv", "cx", "cy", "cz", "f", "h1", "h2", "h3", "h4", "h5", "ha", "hc", "hn", "ho", "hp", "hs", "hw", "hx", "i", "lp", "n", "n1", "n2", "n3", "n4", "na", "nb", "nc", "ne", "nh", "no", "o", "oh", "os", "p2", "p3", "p4", "p5", "pb", "pc", "pe", "px", "py", "s", "s2", "s4", "s6", "sh", "ss", "sx", "sy"])}
+        self.bcc_vocabulary = {v: k for k,v in enumerate(["11", "12", "13", "14", "15", "16", "17", "21", "22", "23", "24", "25", "31", "32", "33", "42", "41", "51", "52", "53", "61", "71", "72", "73", "74", "91"])}
         self.at_vocabulary = {
             "AM1-BCC": self.bcc_vocabulary,
             "GAFF": self.gaff_vocabulary,
@@ -927,10 +928,13 @@ class AtomTypeExtensionPdbFeaturizer(PdbToMol2Featurizer):
 
         # Update ligand atom type
         overwrite = "SYBYL" not in self.ligand_atom_type
+        if self.tokenize_atom_type:
+            mol_complex.atomtype = [str(self.sybyl_vocabulary[z]) for z in mol_complex.atomtype]
+            mol_complex.atomtype = np.array(mol_complex.atomtype, dtype="object")
         for i, atom_type in enumerate(self.ligand_atom_type):
             if "SYBYL" == atom_type:
                 continue
-            atom_types = self.get_antechamber_atom_type(mol2_filepath, atom_type)
+            atom_types = self.get_antechamber_atom_type(pdb_filepath, atom_type)
             mol_complex = self.update_atom_type(mol_complex, atom_types, self.ligand_filter, overwrite)
 
         # Update protein atom type
@@ -939,11 +943,10 @@ class AtomTypeExtensionPdbFeaturizer(PdbToMol2Featurizer):
             atom_type = self.get_pdb_atom_type(mol_complex)
             mol_complex = self.update_atom_type(mol_complex, atom_type, self.protein_filter, overwrite)
 
-        mol_complex.write(str(pdb_filepath))
-        # mol2_filepath = self.pdb_to_mol2(data)
-        # mol_complex = Molecule(str(mol2_filepath))
+        molecule_kit_mol2_filepath = Path(mol2_filepath).with_suffix(".moleculekit.mol2")
+        mol_complex.write(str(molecule_kit_mol2_filepath))
 
-        return str(pdb_filepath)
+        return str(mol2_filepath)
 
     def compute_gaff_or_bcc_atom_type(self, mol_complex, pdb_filepath):
         if self.need_antechamber:
@@ -989,7 +992,7 @@ class AtomTypeExtensionPdbFeaturizer(PdbToMol2Featurizer):
                 (mol_complex.resname == res_name)
                 & (mol_complex.resid == res_id)
                 & (mol_complex.chain == chain)
-                & ((mol_complex.coords == coords).any(axis=1)[:, 0])
+                & ((mol_complex.coords == coords).all(axis=1)[:, 0])
             )
 
             matching_indices = np.where(mask)[0]
@@ -1004,8 +1007,8 @@ class AtomTypeExtensionPdbFeaturizer(PdbToMol2Featurizer):
         if overwrite:
             mol_complex.atomtype[index] = additional_atom_type
         else:
-            updated_atom_type = [f"{a}_{b}" for a, b in zip(mol_complex.atomtype[index], additional_atom_type)]
-            mol_complex.atomtype[index] = updated_atom_type
+            updated_atom_type = [f"{a},{b}" for a, b in zip(mol_complex.atomtype[index], additional_atom_type)]
+            mol_complex.atomtype[index] = np.array(updated_atom_type)
         return mol_complex
 
     def get_pdb_atom_type(self, mol_complex):
@@ -1118,6 +1121,7 @@ class IntdescFeaturizer(AbstractFeaturizer):
         logger.debug(intdesc_output)
 
         intdesc = pd.read_csv(str(output_intdesc_prefix) + "_one_hot_list.csv")
+        intdesc[["atom_number", "partner_atom_number"]] = intdesc[["atom_number", "partner_atom_number"]] - 1
 
         ligand_atom_ids = mol_complex.get("index", sel=f"resname {self.ligand_res}")
         protein_atom_ids = self.filter_protein_atom_of_interest(mol_complex, intdesc)
@@ -1126,15 +1130,21 @@ class IntdescFeaturizer(AbstractFeaturizer):
         edge_features = self.compute_edge_features(intdesc, mol_edge_index, edge_index)
 
         coords = np.vstack([mol_complex.coords[ligand_atom_ids], mol_complex.coords[protein_atom_ids]]).squeeze()
-        atomtype = np.hstack([mol_complex.atomtype[ligand_atom_ids], mol_complex.atomtype[protein_atom_ids]])
+        # Retrieve tokenized atom type, the order is the same so we can use the same indexes.
+        raw_atom_types = Molecule(str(Path(mol2_filepath).with_suffix(".moleculekit.mol2")), validateElements=False).atomtype
+        ligand_atom_types = np.array([a.split(",") for a in raw_atom_types[ligand_atom_ids]]).astype("int")
+        protein_atom_types = np.array([a.split(",") for a in raw_atom_types[protein_atom_ids]]).astype("int")
         protein_mask = np.hstack([np.zeros(len(ligand_atom_ids)), np.ones(len(protein_atom_ids))])
 
-        atomtype = atomtype
-        coords = torch.from_numpy(coords)
-        protein_mask = torch.from_numpy(protein_mask).bool()
-        edge_index = torch.from_numpy(edge_index).long()
-        edge_features = torch.from_numpy(edge_features)
-        return [atomtype, coords, protein_mask, edge_index, edge_features]
+        return TorchGeometricData(
+            z=torch.from_numpy(ligand_atom_types).long(),
+            z_protein=torch.from_numpy(protein_atom_types).long(),
+            edge_index=torch.from_numpy(edge_index).long().T,
+            edge_attr=torch.from_numpy(edge_features).float(),
+            coords=torch.from_numpy(coords),
+            protein_mask=torch.from_numpy(protein_mask).bool(),
+            num_nodes=len(protein_mask),  # avoids warning
+        )
 
     def filter_protein_atom_of_interest(self, mol_complex, intdesc):
         """
@@ -1170,7 +1180,7 @@ class IntdescFeaturizer(AbstractFeaturizer):
 
         edge_index = mol_edge_index.copy()
         for new_index, mol_index in graph_mol_index_mapping.items():
-            edge_index[edge_index == mol_index] = new_index
+            edge_index[mol_edge_index == mol_index] = new_index
 
         return mol_edge_index, edge_index
 

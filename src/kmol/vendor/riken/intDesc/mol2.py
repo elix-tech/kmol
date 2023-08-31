@@ -7,8 +7,11 @@ import yaml
 import networkx as nx
 import numpy as np
 import pandas as pd
+import logging
 
 from biopandas.mol2 import PandasMol2
+
+logger = logging.getLogger(__name__)
 
 
 class Mol2:
@@ -45,9 +48,7 @@ class Mol2:
         self.df_bond = pd.DataFrame(columns=["atom_id", "bond_atom_id", "bond_type"])
 
         # 「@<TRIPOS>SUBSTRUCTURE」情報を保持するメンバ
-        self.df_subst = pd.DataFrame(
-            columns=["subst_id", "subst_name", "root_atom", "subst_type", "dict_type", "chain"]
-        )
+        self.df_subst = pd.DataFrame(columns=["subst_id", "subst_name", "root_atom", "subst_type", "dict_type", "chain"])
 
         if interaction_type not in ["Lig", "Mut", "Med"]:
             msg = f"'interaction_type' must be 'Lig' or 'Mut' or 'Med' :{interaction_type}"
@@ -90,11 +91,7 @@ class Mol2:
         else:
             bond_section = re.search(pattern=bond_section_pattern, string=f_text).group(1)
             bonds = np.array(
-                [
-                    record.strip().split()[0:4]
-                    for record in bond_section.splitlines()
-                    if re.match(bonds_pattern, record)
-                ]
+                [record.strip().split()[0:4] for record in bond_section.splitlines() if re.match(bonds_pattern, record)]
             )
             self.df_bond = pd.concat(
                 [
@@ -102,42 +99,27 @@ class Mol2:
                     pd.DataFrame(bonds[:, [2, 1, 3]], columns=self.df_bond.columns),
                 ]
             )
-            self.df_bond.drop_duplicates(
-                subset=["atom_id", "bond_atom_id"], keep="first", inplace=True
-            )
-            self.df_bond = self.df_bond.astype(
-                {"atom_id": int, "bond_atom_id": int, "bond_type": str}
-            )
+            self.df_bond.drop_duplicates(subset=["atom_id", "bond_atom_id"], keep="first", inplace=True)
+            self.df_bond = self.df_bond.astype({"atom_id": int, "bond_atom_id": int, "bond_type": str})
             self.df_bond = self.df_bond.replace("nan", np.nan)
             self.df_bond.reset_index(inplace=True, drop=True)
 
         subst_section_pattern = r"@<TRIPOS>SUBSTRUCTURE\s([a-zA-Z0-9\s\-\*]*)(@|\s+|)"
         substs_pattern = r"^\s*$"
         if re.search(subst_section_pattern, f_text) is None:
-            print(
-                f'"[WARNING] @<TRIPOS>SUBSTRUCTURE" Section not Found in {mol2_file}',
-                file=sys.stderr,
-            )
+            logger.warning(f'"@<TRIPOS>SUBSTRUCTURE" Section not Found in {mol2_file}')
 
         else:
             subst_section = re.search(pattern=subst_section_pattern, string=f_text).group(1)
             substs = np.array(
-                [
-                    record.strip().split()[:6]
-                    for record in subst_section.splitlines()
-                    if not re.match(substs_pattern, record)
-                ]
+                [record.strip().split()[:6] for record in subst_section.splitlines() if not re.match(substs_pattern, record)]
             )
             self.df_subst = pd.DataFrame(substs[0:, :6], columns=self.df_subst.columns)
 
         # 原子の骨格情報（主鎖 or 側鎖）を付与
-        df_atom["bone"] = df_atom["atom_name"].apply(
-            lambda x: "main" if x in ["C", "N", "CA", "O", "H", "HA"] else "side"
-        )
+        df_atom["bone"] = df_atom["atom_name"].apply(lambda x: "main" if x in ["C", "N", "CA", "O", "H", "HA"] else "side")
 
-        df_atom["resi"] = df_atom["subst_name"].apply(
-            lambda x: re.search(r"([\-0-9]+)", x).group(0)
-        )
+        df_atom["resi"] = df_atom["subst_name"].apply(lambda x: re.search(r"([\-0-9]+)", x).group(0))
         df_atom["resn"] = df_atom["subst_name"].apply(lambda x: re.search(r"([A-Z]+)", x).group(0))
 
         # Chain 情報の付与
@@ -207,14 +189,8 @@ class Mol2:
 
         if self.interaction_type == "Lig":
             for mol_name in subst.keys():
-                if (
-                    "protein" not in mol_name
-                    and "ligand" not in mol_name
-                    and "solvent" not in mol_name
-                ):
-                    raise ValueError(
-                        f'Only "protein", "ligand", and "solvnet" in {molcular_select_file}'
-                    )
+                if "protein" not in mol_name and "ligand" not in mol_name and "solvent" not in mol_name:
+                    raise ValueError(f'Only "protein", "ligand", and "solvnet" in {molcular_select_file}')
 
         elif self.interaction_type == "Mut":
             for mol_name in subst.keys():
@@ -224,9 +200,7 @@ class Mol2:
                     and "antibody" not in mol_name
                     and "solvent" not in mol_name
                 ):
-                    raise ValueError(
-                        f'Only "mutant", "antibody", "antigen" "solvent" in {molcular_select_file}'
-                    )
+                    raise ValueError(f'Only "mutant", "antibody", "antigen" "solvent" in {molcular_select_file}')
 
         elif self.interaction_type == "Med":
             for mol_name in subst.keys():
@@ -240,8 +214,7 @@ class Mol2:
                     ]
                 ):
                     raise ValueError(
-                        'Only "protein", "ligand", "peptide", "membrane", "solvent" '
-                        f"in {molcular_select_file}"
+                        'Only "protein", "ligand", "peptide", "membrane", "solvent" ' f"in {molcular_select_file}"
                     )
 
         assigned_molcular_type = {}
@@ -273,17 +246,13 @@ class Mol2:
                     if isinstance(subst[mol_name]["num"], list):
                         for num_str in subst[mol_name]["num"]:
                             if isinstance(num_str, str):
-                                for num in range(
-                                    int(num_str.split(":")[0]), int(num_str.split(":")[1]) + 1
-                                ):
+                                for num in range(int(num_str.split(":")[0]), int(num_str.split(":")[1]) + 1):
                                     resi_list.append(num)
                             else:
                                 resi_list.append(num_str)
                     elif isinstance(subst[mol_name]["num"], str):
                         num_str = subst[mol_name]["num"]
-                        for num in range(
-                            int(num_str.split(":")[0]), int(num_str.split(":")[1]) + 1
-                        ):
+                        for num in range(int(num_str.split(":")[0]), int(num_str.split(":")[1]) + 1):
                             resi_list.append(num)
 
                     else:
@@ -338,8 +307,4 @@ class Mol2:
         for mol_name, molcular_type in assigned_molcular_type.items():
             df = self.df_atom.loc[self.df_atom["molcular_type"] == molcular_type]
             if df.empty:
-                print(
-                    f"Warning: No atoms were assigned to '{mol_name}' "
-                    f"specified by '{molcular_select_file}'.",
-                    file=sys.stderr,
-                )
+                logger.warning(f"No atoms were assigned to '{mol_name}' " f"specified by '{molcular_select_file}'.")

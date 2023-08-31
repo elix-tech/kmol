@@ -106,7 +106,6 @@ class Config(AbstractConfiguration):
 
         logging.add_file_log(Path(self.output_path))
         logging.stdout_handler.setLevel(self.log_level.upper())
-        logging.parent.handlers = []
         EventManager.flush()
         for event_name, event_handlers in self.observers.items():
             for event_handler_definition in event_handlers:

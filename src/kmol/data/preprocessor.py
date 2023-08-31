@@ -5,12 +5,12 @@ from abc import ABCMeta, abstractmethod
 from functools import partial
 from typing import List, Dict, Tuple
 from copy import deepcopy
-from concurrent.futures import ProcessPoolExecutor
 import multiprocessing
 from tqdm import tqdm
 from dask.distributed import Client
 from pathlib import Path
 import pickle
+import logging
 
 from torch.utils.data import Subset
 
@@ -22,8 +22,10 @@ from .transformers import AbstractTransformer
 from ..core.config import Config
 from ..core.exceptions import FeaturizationError
 from ..core.helpers import CacheDiskList, SuperFactory, CacheManager
-from ..core.logger import LOGGER as logging
+from ..core.logger import LOGGER as logger
 from ..core.utils import progress_bar
+
+logging.getLogger("distributed").setLevel(logging.WARNING)
 
 
 class AbstractPreprocessor(metaclass=ABCMeta):
@@ -62,11 +64,17 @@ class AbstractPreprocessor(metaclass=ABCMeta):
         for transformer in reversed(self._transformers):
             transformer.reverse(sample)
 
+    def _init_logging_worker(self):
+        logger.add_file_log(self._config.output_path)
+        logger.stdout_handler.setLevel(self._config.log_level.upper())
+
     def _get_chunks(self, dataset):
         n_jobs = self._config.featurization_jobs
         chunk_size = len(dataset) // n_jobs
         range_list = list(range(0, len(dataset)))
-        chunks = [range_list[i * chunk_size:(i + 1) * chunk_size] for i in range((len(dataset) + chunk_size - 1) // chunk_size)]
+        chunks = [
+            range_list[i * chunk_size : (i + 1) * chunk_size] for i in range((len(dataset) + chunk_size - 1) // chunk_size)
+        ]
         return [Subset(dataset, chunk) for chunk in chunks]
 
     def _run_parrallel(self, func, dataset, use_disk=False):
@@ -77,11 +85,13 @@ class AbstractPreprocessor(metaclass=ABCMeta):
                 _progress = manager.dict()
 
                 client = Client(n_workers=self._config.featurization_jobs)
-                warnings.simplefilter('ignore')
+                client.run(self._init_logging_worker)
+                warnings.simplefilter("ignore")
                 overall_progress_task = progress.add_task("[green]All jobs progress:")
                 for n, chunk in enumerate(chunks, 1):
                     task_id = progress.add_task(f"featurizer {n}", visible=False)
-                    futures.append(client.submit(func, _progress, task_id, chunk, pure=False))
+                    big_future = client.scatter(chunk)
+                    futures.append(client.submit(func, _progress, task_id, big_future, pure=False))
 
                 warnings.resetwarnings()
                 n_finished = 0
@@ -94,7 +104,7 @@ class AbstractPreprocessor(metaclass=ABCMeta):
                     progress.update(overall_progress_task, completed=n_finished, total=len(futures))
 
         if use_disk:
-            logging.info("Merging cache files...")
+            logger.info("Merging cache files...")
             disk_lists = [future.result() for future in futures]
             dataset = disk_lists[0]
             with progress_bar() as progress:
@@ -159,7 +169,7 @@ class OnlinePreprocessor(AbstractPreprocessor):
     def _load_augmented_data(self):
         loader = SuperFactory.create(AbstractLoader, self._config.loader)
         for i, a in enumerate(self._static_augmentations):
-            logging.info(f"Starting {type(a)} augmentation...")
+            logger.info(f"Starting {type(a)} augmentation...")
             self._static_augmentations[i] = self._cache_manager.execute_cached_operation(
                 processor=partial(a.generate_augmented_data, loader),
                 clear_cache=self._config.clear_cache,
@@ -222,9 +232,8 @@ class CachePreprocessor(AbstractPreprocessor):
         return dataset
 
     def _prepare_dataset(self) -> ListLoader:
-
         loader = SuperFactory.create(AbstractLoader, self._config.loader)
-        logging.info("Starting featurization...")
+        logger.info("Starting featurization...")
         dataset = self._run_parrallel(self._prepare_chunk, loader, self._use_disk)
 
         ids = [sample.id_ for sample in dataset]
@@ -239,9 +248,9 @@ class CachePreprocessor(AbstractPreprocessor):
                 dataset.append(sample)
 
             except FeaturizationError as e:
-                logging.warning(e)
+                logger.warning(e)
             except Exception as e:
-                logging.debug(f"{sample} {smiles} - {e}")
+                logger.debug(f"{sample} {smiles} - {e}")
 
             progress[task_id] = {"progress": n + 1, "total": len(loader)}
 
@@ -270,11 +279,11 @@ class CachePreprocessor(AbstractPreprocessor):
                 i += 1
 
     def _apply_deterministic_augmentation(self, a: AbstractStaticAugmentation, loader: AbstractLoader) -> ListLoader:
-        logging.info(f"Starting {type(a)} augmentation...")
+        logger.info(f"Starting {type(a)} augmentation...")
         a.generate_augmented_data(loader)
-        logging.info(f"Starting Featurization of  {type(a)} augmented data...")
+        logger.info(f"Starting Featurization of  {type(a)} augmented data...")
         # a.aug_dataset = self._prepare_chunk(a.aug_dataset)
-        logging.info("Starting featurization...")
+        logger.info("Starting featurization...")
         a.aug_dataset = self._run_parrallel(self._prepare_chunk, a.aug_dataset)
         return a
 
@@ -287,9 +296,10 @@ class CachePreprocessor(AbstractPreprocessor):
 
 class FilePreprocessor(AbstractPreprocessor):
     """
-    This preprocessor is made to be used with the featurize job. The goal is to compute 
+    This preprocessor is made to be used with the featurize job. The goal is to compute
     and save complex or heavy featurization to file and then load them with LoaderFeaturizer.
     """
+
     def __init__(self, config, folder_path, outputs_to_save: List, input_to_use_has_filename: List) -> None:
         super().__init__(config)
         self.folder_name = Path(folder_path)
@@ -318,8 +328,8 @@ class FilePreprocessor(AbstractPreprocessor):
                 except FeaturizationError as e:
                     logging.warning(e)
                 except Exception as e:
-                    logging.debug(f"{sample} {smiles} - {e}") 
-                progress.update(task_id, completed=n+1, total=len(loader))
-    
+                    logging.debug(f"{sample} {smiles} - {e}")
+                progress.update(task_id, completed=n + 1, total=len(loader))
+
     def _load_augmented_data(self):
         return
