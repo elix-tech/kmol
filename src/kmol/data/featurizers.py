@@ -880,6 +880,15 @@ class PdbToMol2Featurizer(AbstractFeaturizer):
 
 
 class AtomTypeExtensionPdbFeaturizer(PdbToMol2Featurizer):
+    """
+    From a pdb file generate two files a `.mol2` file generated with openbabel
+    without any change in the atom type. And a second file `.moleculekit.mol2`
+    with atom types modified.
+    Since saving and loading a mol2 file with MoleculeKit make it lose the residue
+    information, there is a need for saving those 2 different file.
+    If multiple atom type are used they will be separated with a `,`.
+    """
+
     def __init__(
         self,
         inputs: List[str],
@@ -892,6 +901,9 @@ class AtomTypeExtensionPdbFeaturizer(PdbToMol2Featurizer):
         should_cache: bool = False,
         rewrite: bool = True,
     ):
+        """
+        tokenize_atom_type: Turn atom type to integer base on each atom type vocabulary.
+        """
         super().__init__(inputs, outputs, dir_to_save, should_cache, rewrite)
 
         self.ligand_residue = ligand_residue
@@ -1028,6 +1040,12 @@ class AtomTypeExtensionPdbFeaturizer(PdbToMol2Featurizer):
 
 
 class IntdescFeaturizer(AbstractFeaturizer):
+    """
+    Run the interaction descriptor (IntDesc) program on a mol2 file and generate
+    all inputs necessary for the Schnet Model.
+    It needs a .moleculekit.mol2 file as well with the same path as the mol2 file.
+    """
+
     int_desc_location = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, "vendor/riken/intDesc/"))
 
     def __init__(
@@ -1054,7 +1072,8 @@ class IntdescFeaturizer(AbstractFeaturizer):
         rewrite: bool = True,
     ):
         """
-        There are 5 outputs generated in this featurizer:
+        There are 5 outputs generated in this featurizer and regroup in a pytorch
+        geometric Data object:
         atom_ids, coords, protein_mask, edge_index, edge_features
         """
         super().__init__(inputs, outputs, should_cache, rewrite)

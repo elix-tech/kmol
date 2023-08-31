@@ -152,9 +152,9 @@ class AlphaFold(torch.nn.Module):
             **self.config["evoformer_stack"],
         )
 
-        self.structure_module = StructureModule(
-            **self.config["structure_module"],
-        )
+        # self.structure_module = StructureModule(
+        #     **self.config["structure_module"],
+        # )
         # self.aux_heads = AuxiliaryHeads(
         #     self.config["heads"],
         # )

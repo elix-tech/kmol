@@ -35,6 +35,8 @@ class ProteinSchnetNetwork(AbstractNetwork, SchNet):
         """
         See pytorch documentation for base parameters.
         num_lp_interactions: Number of possible interaction
+        num_atomtype_ligand: Number should match config in the IntDescFeaturizer
+        num_atomtype_protein: Number should match config in the IntDescFeaturizer
         """
         super().__init__(
             hidden_channels,

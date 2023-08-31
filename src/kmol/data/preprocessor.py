@@ -25,8 +25,6 @@ from ..core.helpers import CacheDiskList, SuperFactory, CacheManager
 from ..core.logger import LOGGER as logger
 from ..core.utils import progress_bar
 
-logging.getLogger("distributed").setLevel(logging.WARNING)
-
 
 class AbstractPreprocessor(metaclass=ABCMeta):
     def __init__(self, config: Config) -> None:
@@ -130,6 +128,12 @@ class AbstractPreprocessor(metaclass=ABCMeta):
 
 
 class OnlinePreprocessor(AbstractPreprocessor):
+    """
+    Will run the featurization at each step of the training. No features will be
+    saved. Ideal when the dataset is very large and can't be kept in memory but
+    the featurization is not a bottleneck.
+    """
+
     def __init__(self, config) -> None:
         super().__init__(config)
 
@@ -212,7 +216,18 @@ class OnlinePreprocessor(AbstractPreprocessor):
 
 
 class CachePreprocessor(AbstractPreprocessor):
-    def __init__(self, config, use_disk, disk_dir) -> None:
+    """
+    Run the featurization before the start of the training and keep all feature in
+    memory. Enabling fast training.
+    Ideal when the featurization is time consuming but the final dataset fit in
+    memory.
+    """
+
+    def __init__(self, config, use_disk: bool, disk_dir: str) -> None:
+        """
+        use_disk: if True, save the featurization to a cache list on the disk.
+        disk_dir: where the cache list is saved
+        """
         super().__init__(config)
         self._use_disk = use_disk
         self._disk_dir = disk_dir
@@ -297,16 +312,29 @@ class CachePreprocessor(AbstractPreprocessor):
 
 class FilePreprocessor(AbstractPreprocessor):
     """
-    This preprocessor is made to be used with the featurize job. The goal is to compute
-    and save complex or heavy featurization to file and then load them with LoaderFeaturizer.
+    This preprocessor is made to be used with the featurize task.
+    It is a 2 step process, first run the featurization task with this preprocessor.
+    Then use OnlinePreprocessor and load the generated feature with PickleLoadFeaturizer.
+    The goal is to compute and save complex featurization. Ideal for large dataset with
+    a time consuming featurization.
+    If there is no need to access the featurization files it is also possible to use
+    the Cached dataset with the `use_disk` option.
     """
 
     def __init__(
-        self, config, folder_path, outputs_to_save: List, input_to_use_has_filename: List, overwrite: bool = False
+        self, config, folder_path: str, feature_to_save: List, input_to_use_has_filename: List, overwrite: bool = False
     ) -> None:
+        """
+        folder_path: Folder where the features will be save. Additional folder will be created
+            based on the name of the feature to save.
+        feature_to_save: Name after the featurization of which field to save.
+            Will be used as additional folder name.
+        input_to_use_has_filename: unique name for each file generated. This field
+            can be used to skip the processing of identical feature and so speed up the preprocessing.
+        """
         super().__init__(config)
         self.folder_name = Path(folder_path)
-        self.outputs_to_save = outputs_to_save
+        self.feature_to_save = feature_to_save
         self.input_to_use_has_filename = input_to_use_has_filename
         self.overwrite = overwrite
         for input_field_filename in self.input_to_use_has_filename:
@@ -326,7 +354,7 @@ class FilePreprocessor(AbstractPreprocessor):
                     continue
                 try:
                     outputs = self.preprocess(sample)
-                    for output_name, filename in zip(self.outputs_to_save, filenames):
+                    for output_name, filename in zip(self.feature_to_save, filenames):
                         with open(filename, "wb") as file:
                             pickle.dump(outputs.inputs[output_name], file)
                 except FeaturizationError as e:
