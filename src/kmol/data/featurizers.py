@@ -745,6 +745,11 @@ class GraphormerFeaturizer(GraphFeaturizer):
 
 
 class LoadFeaturizer(AbstractFeaturizer):
+    """
+    This class is used to load a set of feature computed outside kmol.
+    This is an abstract class.
+    """
+
     def __init__(
         self, inputs: List[str], outputs: List[str], folder_path: str, rewrite: bool = True, suffix: str = None
     ):
@@ -756,8 +761,11 @@ class LoadFeaturizer(AbstractFeaturizer):
         path = self.folder_path / data
         if self.suffix is not None:
             path = path.parent / (path.name + self.suffix)
-        with open(path, "rb") as file:
-            return CPU_Unpickler(file).load()
+        return self.load(path)
+
+    @abstractmethod
+    def load(self, path) -> Any:
+        raise NotImplementedError()
 
 
 class CPU_Unpickler(pickle.Unpickler):
@@ -766,3 +774,22 @@ class CPU_Unpickler(pickle.Unpickler):
             return lambda b: torch.load(io.BytesIO(b), map_location="cpu")
         else:
             return super().find_class(module, name)
+
+
+class PickleLoadFeaturizer(LoadFeaturizer):
+    def load(path):
+        with open(path, "rb") as file:
+            return CPU_Unpickler(file).load()
+
+
+class NumpyLoadFeaturizer(LoadFeaturizer):
+    def __init__(self, skip_npz_file: List[str] = None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.skip_npz_file = skip_npz_file if skip_npz_file is not None else []
+
+    def load(self, path):
+        if path.suffix == ".npz":
+            np_archive = np.load(path)
+            return {file: np_archive[file] for file in np_archive.files if file not in self.skip_npz_file}
+        if path.suffix == ".npy":
+            return np.load(path)
