@@ -57,7 +57,7 @@ class Config(AbstractConfiguration):
     enabled_gpus: List[int] = field(default_factory=lambda: [0])
     num_workers: int = 0
     featurization_jobs: int = 4
-    preprocessor: DefaultDict[str, Any] = field(default_factory=lambda: {"type": "cached"})
+    preprocessor: DefaultDict[str, Any] = field(default_factory=lambda: {"type": "cache", "use_disk": False, "disk_dir": ""})
 
     cache_location: str = "/tmp/federated/"
     clear_cache: bool = False
