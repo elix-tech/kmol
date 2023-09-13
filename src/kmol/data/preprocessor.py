@@ -82,6 +82,7 @@ class AbstractPreprocessor(metaclass=ABCMeta):
             with multiprocessing.Manager() as manager:
                 _progress = manager.dict()
 
+                warnings.simplefilter("ignore")
                 client = Client(n_workers=self._config.featurization_jobs)
                 client.run(self._init_logging_worker)
                 overall_progress_task = progress.add_task("[green]All jobs progress:")
