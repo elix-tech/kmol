@@ -808,7 +808,7 @@ class PdbqtToPdbFeaturizer(AbstractFeaturizer):
         self,
         inputs: List[str],
         outputs: List[str],
-        pdqt_dir: str,
+        pdqt_dir: str = None,
         dir_to_save: str = "/tmp/kmol/pdb",
         protonize: bool = False,
         ph: float = 7.0,
@@ -825,7 +825,10 @@ class PdbqtToPdbFeaturizer(AbstractFeaturizer):
         self.ph = ph
 
     def _process(self, data: str, entry: DataPoint) -> str:
-        pdbqt_filepath = Path(f"{self.pdqt_dir}/{data}")
+        if self.pdqt_dir is not None:
+            pdbqt_filepath = Path(f"{self.pdqt_dir}/{data}")
+        else:
+            pdbqt_filepath = Path(data)
         pdb_filepath = Path(f"{self.outdir}/{pdbqt_filepath.stem}.pdb")
 
         # Convert PDBQT to PDB
@@ -853,6 +856,7 @@ class PdbToMol2Featurizer(AbstractFeaturizer):
         self,
         inputs: List[str],
         outputs: List[str],
+        pdb_dir: str = None,
         dir_to_save: str = "/tmp/kmol/mol2",
         should_cache: bool = False,
         rewrite: bool = True,
@@ -860,6 +864,7 @@ class PdbToMol2Featurizer(AbstractFeaturizer):
         super().__init__(inputs, outputs, should_cache, rewrite)
 
         self.outdir = Path(dir_to_save)
+        self.pdb_dir = pdb_dir
         if not self.outdir.exists():
             self.outdir.mkdir(parents=True)
 
@@ -875,8 +880,14 @@ class PdbToMol2Featurizer(AbstractFeaturizer):
 
         return str(mol2_filepath)
 
+    def get_filepath(self, data: Any):
+        if self.pdb_dir is not None:
+            return Path(self.pdb_dir) / data
+        else:
+            return data
+
     def _process(self, data: Any, entry: DataPoint) -> str:
-        return self.pdb_to_mol2(data)
+        return self.pdb_to_mol2(self.get_filepath(data))
 
 
 class AtomTypeExtensionPdbFeaturizer(PdbToMol2Featurizer):
@@ -893,6 +904,7 @@ class AtomTypeExtensionPdbFeaturizer(PdbToMol2Featurizer):
         self,
         inputs: List[str],
         outputs: List[str],
+        pdb_dir: str = None,
         ligand_residue: str = "UNL",
         protein_atom_type: List[str] = ["SYBYL"],
         ligand_atom_type: List[str] = ["SYBYL"],
@@ -904,7 +916,7 @@ class AtomTypeExtensionPdbFeaturizer(PdbToMol2Featurizer):
         """
         tokenize_atom_type: Turn atom type to integer base on each atom type vocabulary.
         """
-        super().__init__(inputs, outputs, dir_to_save, should_cache, rewrite)
+        super().__init__(inputs, outputs, pdb_dir, dir_to_save, should_cache, rewrite)
 
         self.ligand_residue = ligand_residue
         self.protein_atom_type = [s.upper() for s in protein_atom_type]
@@ -932,8 +944,8 @@ class AtomTypeExtensionPdbFeaturizer(PdbToMol2Featurizer):
         self.get_atom_type_func = {"PDB": self.get_pdb_atom_type}
 
     def _process(self, data: Any, entry: DataPoint) -> Any:
-        pdb_filepath = data
-        mol2_filepath = self.pdb_to_mol2(data)
+        pdb_filepath = self.get_filepath(data)
+        mol2_filepath = self.pdb_to_mol2(pdb_filepath)
         mol_complex = Molecule(str(mol2_filepath))
 
         self.compute_gaff_or_bcc_atom_type(mol_complex, pdb_filepath)
