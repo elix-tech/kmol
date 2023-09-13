@@ -84,15 +84,11 @@ class AbstractPreprocessor(metaclass=ABCMeta):
 
                 client = Client(n_workers=self._config.featurization_jobs)
                 client.run(self._init_logging_worker)
-                warnings.simplefilter("ignore")
                 overall_progress_task = progress.add_task("[green]All jobs progress:")
                 for n, chunk in enumerate(chunks, 1):
                     task_id = progress.add_task(f"featurizer {n}", visible=False)
-                    # big_future = client.scatter(chunk)
-                    # futures.append(client.submit(func, _progress, task_id, big_future, pure=False))
                     futures.append(client.submit(func, _progress, task_id, chunk, pure=False))
 
-                warnings.resetwarnings()
                 n_finished = 0
                 while n_finished < len(futures):
                     for task_id, update_data in _progress.items():
@@ -101,6 +97,7 @@ class AbstractPreprocessor(metaclass=ABCMeta):
                         progress.update(task_id, completed=latest, total=total, visible=latest < total)
                     n_finished = sum([future.done() for future in futures])
                     progress.update(overall_progress_task, completed=n_finished, total=len(futures))
+                warnings.resetwarnings()
 
         if use_disk:
             logger.info("Merging cache files...")
