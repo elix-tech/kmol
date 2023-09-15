@@ -43,7 +43,7 @@ from .loaders import ListLoader
 import algos
 
 [l.setLevel(logging.WARNING) for l in logging.root.handlers]
-logging.getLogger("src.kmol.vendor.riken.intDesc").setLevel(logging.ERROR)
+logging.getLogger("kmol.vendor.riken.intDesc").setLevel(logging.ERROR)
 
 
 class AbstractFeaturizer(metaclass=ABCMeta):
