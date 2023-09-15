@@ -1,3 +1,4 @@
+import os
 import datetime
 import hashlib
 import importlib
@@ -79,7 +80,6 @@ class SuperFactory:
 
         dynamic_parameters = dynamic_parameters.copy()
         if "type" in dynamic_parameters:
-
             dependency_type = dynamic_parameters.pop("type")
 
             if "." in dependency_type:
@@ -258,7 +258,6 @@ class Namespace:
 @dataclass
 @total_ordering
 class ConfidenceInterval:
-
     mean: float
     deviation: float
     confidence: float
@@ -360,6 +359,8 @@ class CacheDiskList(DiskList):
         self.cache = []
         self.cache_size = cache_size
         self.cache_index = 0
+        if not os.path.exists(tmp_dir):
+            os.makedirs(tmp_dir)
 
         self.delete = delete
         self.tempfile = tempfile.NamedTemporaryFile(dir=tmp_dir, delete=delete) if not init_temp_file else init_temp_file
