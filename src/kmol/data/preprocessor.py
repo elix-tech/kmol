@@ -7,10 +7,11 @@ from typing import List, Dict, Tuple
 from copy import deepcopy
 import multiprocessing
 from tqdm import tqdm
-from dask.distributed import Client
 from pathlib import Path
 import pickle
 import logging
+import traceback
+import concurrent.futures
 
 from torch.utils.data import Subset
 
@@ -62,9 +63,10 @@ class AbstractPreprocessor(metaclass=ABCMeta):
         for transformer in reversed(self._transformers):
             transformer.reverse(sample)
 
-    def _init_logging_worker(self):
+    def _init_logging_worker(self, func, *args):
         logger.add_file_log(self._config.output_path)
         logger.stdout_handler.setLevel(self._config.log_level.upper())
+        return func(*args)
 
     def _get_chunks(self, dataset):
         n_jobs = self._config.featurization_jobs
@@ -78,17 +80,14 @@ class AbstractPreprocessor(metaclass=ABCMeta):
     def _run_parrallel(self, func, dataset, use_disk=False):
         chunks = self._get_chunks(dataset)
         futures = []
+        func = partial(self._init_logging_worker, func)
         with progress_bar() as progress:
-            with multiprocessing.Manager() as manager:
+            with multiprocessing.Manager() as manager, concurrent.futures.ProcessPoolExecutor() as executor:
                 _progress = manager.dict()
-
-                warnings.simplefilter("ignore")
-                client = Client(n_workers=self._config.featurization_jobs)
-                client.run(self._init_logging_worker)
                 overall_progress_task = progress.add_task("[green]All jobs progress:")
                 for n, chunk in enumerate(chunks, 1):
                     task_id = progress.add_task(f"featurizer {n}", visible=False)
-                    futures.append(client.submit(func, _progress, task_id, chunk, pure=False))
+                    futures.append(executor.submit(func, _progress, task_id, chunk))
 
                 n_finished = 0
                 while n_finished < len(futures):
@@ -221,7 +220,7 @@ class CachePreprocessor(AbstractPreprocessor):
     memory.
     """
 
-    def __init__(self, config, use_disk: bool, disk_dir: str) -> None:
+    def __init__(self, config, use_disk: bool = False, disk_dir: str = "") -> None:
         """
         use_disk: if True, save the featurization to a cache list on the disk.
         disk_dir: where the cache list is saved
@@ -262,9 +261,11 @@ class CachePreprocessor(AbstractPreprocessor):
                 dataset.append(sample)
 
             except FeaturizationError as e:
-                logger.warning(e)
+                tb_str = traceback.format_exc()
+                logger.warning(f"{e}\n{tb_str}")
             except Exception as e:
-                logger.debug(f"{sample} {smiles} - {e}")
+                tb_str = traceback.format_exc()
+                logger.error(f"{sample} {smiles} - {e}\n{tb_str}")
 
             progress[task_id] = {"progress": n + 1, "total": len(loader)}
 

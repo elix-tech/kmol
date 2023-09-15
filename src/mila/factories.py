@@ -107,17 +107,20 @@ class AbstractConfiguration(metaclass=ABCMeta):
     def _support_old_configuration(cls, cfg):
         # Fix version 1.1.8
         if "online_preprocessing" in cfg:
-            if cfg["online_preprocessing"]:
+            if cfg.pop("online_preprocessing"):
                 cfg["preprocessor"] = {"type": "online"}
             else:
                 cfg["preprocessor"] = {
                     "type": "cache",
-                    "use_disk": cfg.get("preprocessing_use_disk", False),
-                    "disk_dir": cfg.get("preprocessing_disk_dir", ""),
+                    "use_disk": cfg.pop("preprocessing_use_disk", False),
+                    "disk_dir": cfg.pop("preprocessing_disk_dir", ""),
                 }
-            cfg.pop("online_preprocessing")
-            cfg.pop("preprocessing_use_disk", None)
-            cfg.pop("preprocessing_disk_dir", None)
+        elif "preprocessing_use_disk" in cfg:
+            cfg["preprocessor"] = {
+                "type": "cache",
+                "use_disk": cfg.pop("preprocessing_use_disk"),
+                "disk_dir": cfg.pop("preprocessing_disk_dir", ""),
+            }
         return cfg
 
 
