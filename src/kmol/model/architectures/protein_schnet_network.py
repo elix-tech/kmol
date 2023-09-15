@@ -110,18 +110,13 @@ class ProteinSchnetNetwork(AbstractNetwork, SchNet):
         h = torch.zeros([len(batch), self.hidden_channels], device=z.device)
         h[~protein_mask] = torch.hstack([emb(i) for emb, i in zip(self.embedding, z.T)])
         h[protein_mask] = torch.hstack([emb(i) for emb, i in zip(self.protein_embedding, z_protein.T)])
-        # Create a mask so that protein and atoms are considered a different molecule.
-        # There won't be bond between a protein and ligand outside of the
-        mask_ligand_protein_batch = batch.clone()
-        mask_ligand_protein_batch[protein_mask] += torch.max(batch) + 1
 
-        edge_index, edge_weight = self.interaction_graph(pos, mask_ligand_protein_batch)
+        edge_index, edge_weight = self.interaction_graph(pos, batch)
+        edge_index, edge_weight, mask_lp_edge_index = self.get_mask_lp_indice(edge_index, edge_weight, lp_edge_index)
         edge_attr = self.distance_expansion(edge_weight)
 
-        edge_index = torch.hstack([edge_index, lp_edge_index]).long()
-
         for interaction in self.interactions:
-            h = h + interaction(h, edge_index, edge_weight, edge_attr, lp_edge_attr)
+            h = h + interaction(h, edge_index, edge_weight, edge_attr, mask_lp_edge_index, lp_edge_attr)
 
         h = self.lin1(h)
         h = self.act(h)
@@ -150,6 +145,30 @@ class ProteinSchnetNetwork(AbstractNetwork, SchNet):
 
         return out
 
+    def get_mask_lp_indice(self, edge_index: torch.Tensor, edge_weight: torch.Tensor, lp_interaction_edge: torch.Tensor):
+        """
+        Retrieve the indice of the lp edge in the distance edge_index and update it
+        if some are missing.
+        """
+        matching_indices = torch.tensor([], device=edge_index.device, dtype=torch.long)
+
+        for edge in lp_interaction_edge.T:
+            # Compare each edge from the subset with all edges in the original
+            match = (edge_index == edge.unsqueeze(1)).all(dim=0)
+
+            if match.any():
+                # If match found, append the index to the matching_indices list.
+                matching_indices = torch.concat([matching_indices, match.nonzero(as_tuple=True)[0]])
+            else:
+                # If no match found, append the edge to the original and get its index
+                edge_index = torch.cat([edge_index, edge.unsqueeze(1)], dim=1)
+                edge_weight = torch.cat(
+                    [edge_weight, torch.tensor([self.cutoff], device=edge_index.device, dtype=torch.long)]
+                )
+                last_index = torch.tensor([edge_index.size(1) - 1], device=edge_index.device, dtype=torch.long)
+                matching_indices = torch.concat([matching_indices, last_index])
+        return edge_index, edge_weight, matching_indices
+
 
 class ProteinInteractionBlock(InteractionBlock):
     def __init__(self, hidden_channels: int, num_gaussians: int, num_filters: int, cutoff: float, num_lp_interactions: int):
@@ -170,8 +189,16 @@ class ProteinInteractionBlock(InteractionBlock):
             torch.nn.init.xavier_uniform_(self.mlp_protein[2].weight)
             self.mlp_protein[2].bias.data.fill_(0)
 
-    def forward(self, x: Tensor, edge_index: Tensor, edge_weight: Tensor, edge_attr: Tensor, lp_edge_attr: Tensor) -> Tensor:
-        x = self.conv(x, edge_index, edge_weight, edge_attr, lp_edge_attr)
+    def forward(
+        self,
+        x: Tensor,
+        edge_index: Tensor,
+        edge_weight: Tensor,
+        edge_attr: Tensor,
+        mask_lp_edge_index: Tensor,
+        lp_edge_attr: Tensor,
+    ) -> Tensor:
+        x = self.conv(x, edge_index, edge_weight, edge_attr, mask_lp_edge_index, lp_edge_attr)
         x = self.act(x)
         x = self.lin(x)
         return x
@@ -199,14 +226,22 @@ class ProteinCFConv(MessagePassing):
         C = 0.5 * (torch.cos(edge_weight * PI / self.cutoff) + 1.0)
         return self.nn_ligand(edge_attr) * C.view(-1, 1)
 
-    def forward(self, x: Tensor, edge_index: Tensor, edge_weight: Tensor, edge_attr: Tensor, lp_edge_attr: Tensor) -> Tensor:
-        w_ligand = self.compute_weight_edge_ligand(edge_weight, edge_attr)
-        w_protein = self.nn_protein(lp_edge_attr)
-        W = torch.vstack([w_ligand, w_protein])
+    def forward(
+        self,
+        x: Tensor,
+        edge_index: Tensor,
+        edge_weight: Tensor,
+        edge_attr: Tensor,
+        mask_lp_edge_index: Tensor,
+        lp_edge_attr: Tensor,
+    ) -> Tensor:
+        w_distance = self.compute_weight_edge_ligand(edge_weight, edge_attr)
+        w_lp_interaction = torch.zeros_like(w_distance, device=w_distance.device)
+        w_lp_interaction[mask_lp_edge_index, :] = self.nn_protein(lp_edge_attr)
         x = self.lin1(x)
-        x = self.propagate(edge_index, x=x, W=W)
+        x = self.propagate(edge_index, x=x, w_distance=w_distance, w_lp_interaction=w_lp_interaction)
         x = self.lin2(x)
         return x
 
-    def message(self, x_j: Tensor, W: Tensor) -> Tensor:
-        return x_j * W
+    def message(self, x_j: Tensor, w_distance, w_lp_interaction) -> Tensor:
+        return x_j * w_distance + x_j * w_lp_interaction
