@@ -445,7 +445,7 @@ class BagOfWordsFeaturizer(AbstractFeaturizer):
 
         return torch.FloatTensor(list(sample.values()))
 
-class ToIndexFeaturizer(AbstractFeaturizer):
+class IndexFeaturizer(AbstractFeaturizer):
     def __init__(
         self,
         inputs: List[str],
@@ -456,14 +456,7 @@ class ToIndexFeaturizer(AbstractFeaturizer):
     ):
         super().__init__(inputs, outputs, should_cache, rewrite)
         self._vocabulary = vocabulary
-        self._to_index_dict = self._create_index_dict()
-
-    def _create_index_dict(self):
-        to_index_dict = {}
-        for index, amino_acid in enumerate(self._vocabulary):
-            to_index_dict[amino_acid] = index
-
-        return to_index_dict
+        self._to_index_dict = {v: k for k, v in enumerate(vocabulary)}
 
     def _process(self, data: str, entry: DataPoint) -> torch.FloatTensor:
         sample = [self._to_index_dict[amino_acid] for amino_acid in data]

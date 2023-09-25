@@ -4,12 +4,14 @@ import torch
 
 from ...core.helpers import SuperFactory
 from .abstract_network import AbstractNetwork
+from ...core.observers import EventManager, AddLossInfoHandler
 
 
 class EnsembleNetwork(AbstractNetwork):
     def __init__(self, model_configs: List[Dict[str, Any]]):
         super().__init__()
         self.models = torch.nn.ModuleList([SuperFactory.create(AbstractNetwork, config) for config in model_configs])
+        EventManager.add_event_listener(event_name="before_predict", handler=AddLossInfoHandler())
 
     def load_checkpoint(self, checkpoint_paths: List[str], device: Optional[torch.device] = None):
         n_models = len(self.models)
@@ -25,16 +27,7 @@ class EnsembleNetwork(AbstractNetwork):
     def get_requirements(self):
         return list(set(sum([model.get_requirements() for model in self.models], [])))
 
-    def forward(self, data: Dict[str, Any]) -> Dict[str, torch.Tensor]:
-        outs = [model.forward(data) for model in self.models]
-        outputs = torch.stack(outs, dim=0)
-
-        return {
-            "logits": torch.mean(outputs, dim=0),
-            "logits_var": torch.var(outputs, dim=0),
-        }
-
-    def loss_aware_forward(self, data: Dict[str, Any], loss_type: str) -> Dict[str, torch.Tensor]:
+    def forward(self, data: Dict[str, Any], loss_type: str = None) -> Dict[str, torch.Tensor]:
         outs = [model.forward(data) for model in self.models]
         outputs = torch.stack(outs, dim=0)
 

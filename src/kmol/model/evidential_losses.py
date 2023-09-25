@@ -3,117 +3,53 @@ import torch.nn.functional as F
 import numpy as np
 
 
-def exp_evidence(y):
-    return torch.exp(torch.clamp(y, -10, 10))
-
-
-def kl_divergence(alpha, num_classes):
-    ones = torch.ones([1, num_classes], dtype=torch.float32, device=alpha.get_device())
-    sum_alpha = torch.sum(alpha, dim=1, keepdim=True)
-    first_term = (
-        torch.lgamma(sum_alpha)
-        - torch.lgamma(alpha).sum(dim=1, keepdim=True)
-        + torch.lgamma(ones).sum(dim=1, keepdim=True)
-        - torch.lgamma(ones.sum(dim=1, keepdim=True))
-    )
-    second_term = (alpha - ones).mul(torch.digamma(alpha) - torch.digamma(sum_alpha)).sum(dim=1, keepdim=True)
-    kl = first_term + second_term
-    return kl
-
-
-def loglikelihood_loss(y, alpha):
-    S = torch.sum(alpha, dim=1, keepdim=True)
-    loglikelihood_err = torch.sum((y - (alpha / S)) ** 2, dim=1, keepdim=True)
-    loglikelihood_var = torch.sum(alpha * (S - alpha) / (S * S * (S + 1)), dim=1, keepdim=True)
-    loglikelihood = loglikelihood_err + loglikelihood_var
-    return loglikelihood
-
-
-def mse_loss(y, alpha, num_classes):
-    loglikelihood = loglikelihood_loss(y, alpha)
-    kl_alpha = (alpha - 1) * (1 - y) + 1
-    kl_div = 1.0 * kl_divergence(kl_alpha, num_classes)
-    return loglikelihood + kl_div
-
-
-def edl_loss(func, y, alpha, num_classes):
-    S = torch.sum(alpha, dim=1, keepdim=True)
-    A = torch.sum(y * (func(S) - func(alpha)), dim=1, keepdim=True)
-
-    kl_alpha = (alpha - 1) * (1 - y) + 1
-    kl_div = 1.0 * kl_divergence(kl_alpha, num_classes)
-    return A + kl_div
-
-
-def edl_mse_loss(output, target, num_classes):
-    evidence = F.relu(output)
-    alpha = evidence + 1
-    loss = torch.mean(mse_loss(target, alpha, num_classes))
-    return loss
-
-
-def edl_log_loss(output, target):
-    num_classes = output.size()[-1]
-    mask = torch.isnan(target)
-    target[mask] = 0.0
-    target = torch.cat((target, 1 - target), -1)
-    evidence = F.relu(output)
-    alpha = evidence + 1
-    loss = torch.mean(edl_loss(torch.log, target, alpha, num_classes))
-    return loss
-
-
-def edl_log_loss_multilabel_logits(output, target):
-    mask = torch.isnan(target)
-    target[mask] = 0.0
-    output = torch.sigmoid(output)
-    output = torch.unsqueeze(output, dim=-1)
-    output = torch.cat((output, 1 - output), -1)
-    target = torch.unsqueeze(target, dim=-1)
-    target = torch.cat((target, 1 - target), -1)
-    alpha = output + 1
-    loss = torch.mean(edl_loss_multilabel(torch.log, target, alpha))
-    return loss
-
-
-# expects double the number of ouputs
-def edl_log_loss_multilabel_nologits(output, target):
-    mask = torch.isnan(target)
-    target[mask] = 0.0
-
-    # More complicated way to preserve accuracy metrics, non aligned outputs
+def prepare_edl_classification_output(output):
+    """
+    Prepares output for edl classification.
+    """
     true_logits, false_logits = torch.chunk(output, 2, dim=-1)
     true_logits = torch.unsqueeze(true_logits, dim=-1)
     false_logits = torch.unsqueeze(false_logits, dim=-1)
     output = torch.cat((true_logits, false_logits), dim=-1)
 
+    evidence = F.softplus(output)
+    alpha = evidence + 1
+
+    return output, alpha
+
+def prepare_edl_classification_target(target):
+    """
+    Prepares target for edl classification
+    """
     target = torch.unsqueeze(target, dim=-1)
     target = torch.cat((target, 1 - target), -1)
 
-    evidence = F.relu(output)
-    alpha = evidence + 1
+    return target
 
-    loss = torch.mean(edl_loss_multilabel(torch.log, target, alpha))
+
+def edl_classification(output, target, epoch=0, loss_annealing=True):
+    """
+    Computes the EDL loss for classification. The use of EDL with the current implementation is suitable for multitask and can used instead of BCE
+    """
+    mask = torch.isnan(target)
+    target[mask] = 0.0
+
+    output, alpha = prepare_edl_classification_output(output)
+    target = prepare_edl_classification_target(target)
+
+    loss = torch.mean(edl_loss(torch.log, target, alpha, epoch, loss_annealing))
     return loss
 
 
-def edl_log_loss_multilabel_nologits_masked_weighted(output, target):
+def edl_classification_masked(output, target, epoch=0, loss_annealing=True):
     mask = target == target
     labels_copy = target.clone()
     labels_copy[~mask] = 0
 
-    true_logits, false_logits = torch.chunk(output, 2, dim=-1)
-    true_logits = torch.unsqueeze(true_logits, dim=-1)
-    false_logits = torch.unsqueeze(false_logits, dim=-1)
-    output = torch.cat((true_logits, false_logits), dim=-1)
+    output, alpha = prepare_edl_classification_output(output)
+    target = prepare_edl_classification_target(target)
 
-    target = torch.unsqueeze(target, dim=-1)
-    target = torch.cat((target, 1 - target), -1)
-
-    evidence = F.relu(output)
-    alpha = evidence + 1
-
-    loss = edl_loss_multilabel(torch.log, target, alpha)
+    loss = edl_loss(torch.log, target, alpha, epoch, loss_annealing)
     loss = loss.squeeze()
     mask = mask.squeeze()
     loss *= mask
@@ -125,17 +61,20 @@ def edl_log_loss_multilabel_nologits_masked_weighted(output, target):
     return loss.mean()
 
 
-def edl_loss_multilabel(func, y, alpha):
+def edl_loss(func, y, alpha, epoch, annealing=True):
     S = torch.sum(alpha, dim=-1, keepdim=True)
     A = torch.sum(y * (func(S) - func(alpha)), dim=-1, keepdim=True)
 
     kl_alpha = (alpha - 1) * (1 - y) + 1
-    kl_div = 1.0 * kl_divergence_multilabel(kl_alpha)
+    annealing_lambda = 1.0
+    if annealing:
+        annealing_lambda = min(1.0, epoch/10.0)
+    kl_div = annealing_lambda * kl_divergence(kl_alpha)
 
     return A + kl_div
 
 
-def kl_divergence_multilabel(alpha):
+def kl_divergence(alpha):
     ones = torch.ones([1, 2], dtype=torch.float32, device=alpha.get_device())
     sum_alpha = torch.sum(alpha, dim=-1, keepdim=True)
     first_term = (
@@ -147,31 +86,6 @@ def kl_divergence_multilabel(alpha):
     second_term = (alpha - ones).mul(torch.digamma(alpha) - torch.digamma(sum_alpha)).sum(dim=-1, keepdim=True)
     kl = first_term + second_term
     return kl
-
-
-def edl_digamma_loss(output, target, num_classes):
-    evidence = F.relu(output)
-    alpha = evidence + 1
-    loss = torch.mean(edl_loss(torch.digamma, target, alpha, num_classes))
-    return loss
-
-
-def gaussian_nll(y, mu, sigma, reduce=True):
-    ax = list(range(1, len(y.shape)))
-
-    logprob = -torch.log(sigma) - 0.5 * torch.log(2 * np.pi) - 0.5 * ((y - mu) / sigma) ** 2
-    loss = torch.mean(-logprob, dim=ax)
-    return torch.mean(loss) if reduce else loss
-
-
-def gaussian_nll_logvar(y, mu, logvar, reduce=True):
-    ax = list(range(1, len(y.shape)))
-
-    log_liklihood = 0.5 * (
-        -torch.exp(-logvar) * (mu - y) ** 2 - torch.log(2 * torch.tensor(np.pi, dtype=logvar.dtype)) - logvar
-    )
-    loss = torch.mean(-log_liklihood, dim=ax)
-    return torch.mean(loss) if reduce else loss
 
 
 def nig_nll(y, gamma, v, alpha, beta, reduce=True):
@@ -215,7 +129,7 @@ def nig_reg(y, gamma, v, alpha, beta, omega=0.01, reduce=True, kl=False):
     return torch.mean(reg) if reduce else reg
 
 
-def edl_reg_log(evidential_output, y_true, coeff=1.0):
+def edl_regression(evidential_output, y_true, coeff=1.0, **kwargs):
     evidential_output = torch.relu(evidential_output)
 
     targets = y_true.view(-1)

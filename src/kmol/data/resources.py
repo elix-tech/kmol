@@ -94,16 +94,15 @@ class PaddedCollater(GeneralCollater):
         super().__init__()
         self.padded_column = padded_column
 
-    def _pad_and_create_mask(self, seqs, dtype=torch.long):
+    def _pad_seq(self, seqs, dtype=torch.long):
         max_length = max([len(seq) for seq in seqs])
-        padded_seqs = [torch.zeros(max_length, dtype=dtype) for _ in range(len(seqs))]
-        mask = [torch.zeros(max_length, dtype=torch.bool) for _ in range(len(seqs))]
+        # padding value is -1
+        padded_seqs = [-1*torch.ones(max_length, dtype=dtype) for _ in range(len(seqs))]
         for i, seq in enumerate(seqs):
             seq_tensor = seq if torch.is_tensor(seq) else torch.tensor(seq, dtype=dtype)
             padded_seqs[i][:len(seq)] = seq_tensor.clone().detach()
-            mask[i][:len(seq)] = 1
 
-        return padded_seqs, mask
+        return padded_seqs
 
     def _unpack(self, batch: List[DataPoint]) -> Batch:
         ids = []
@@ -122,11 +121,11 @@ class PaddedCollater(GeneralCollater):
         
         for key, values in inputs.items():
             if key == self.padded_column:
-                inputs_padded[key], inputs_padded["mask"] = self._pad_and_create_mask(values)
+                inputs_padded[key] = self._pad_seq(values)
             else:
                 inputs_padded[key] = values
 
-        outputs_padded, _ = self._pad_and_create_mask(outputs, dtype=torch.float)
+        outputs_padded = self._pad_seq(outputs, dtype=torch.float)
         outputs_padded = torch.stack(outputs_padded)
         
         inputs_padded = dict(inputs_padded)

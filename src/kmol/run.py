@@ -438,7 +438,6 @@ class Executor(AbstractExecutor):
             if "ligand_gd" in results:
                 results[f"{label}_ligand_gd"] = results["ligand_gd"][:, i]
                 columns.append(f"{label}_ligand_gd")
-            # TODO: check if this should be outside the for loop
             columns += self._config.prediction_additional_columns
         
         if "likelihood_ratio" in results:

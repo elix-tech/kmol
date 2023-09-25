@@ -197,7 +197,6 @@ class PredictionProcessor:
 
     def compute_metrics(self, ground_truth: List[torch.Tensor], logits: List[torch.Tensor]) -> Namespace:
         metrics = defaultdict(list)
-        # TODO: significant change to be validated
         if self._metrics:
             ground_truth, logits, predictions = self._prepare(ground_truth=ground_truth, logits=logits)
 
