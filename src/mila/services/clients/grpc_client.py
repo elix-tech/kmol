@@ -11,11 +11,11 @@ from ...exceptions import InvalidNameError
 from .abstract_client import AbstractClient
 from ...configs import ClientConfiguration
 
-class GrcpClient(AbstractClient):
+class GrpcClient(AbstractClient):
 
     def __init__(self, config: ClientConfiguration) -> None:
         super().__init__(config)
-        self._cfg_grcp = self._config.grcp_configuration
+        self._cfg_grpc = self._config.grpc_configuration
 
         self._validate()
 
@@ -40,17 +40,17 @@ class GrcpClient(AbstractClient):
                     raise e
     
     def _connect(self) -> grpc.Channel:
-        if self._cfg_grcp.use_secure_connection:
+        if self._cfg_grpc.use_secure_connection:
             credentials = self._get_credentials()
-            return grpc.secure_channel(target=self._cfg_grcp.target, credentials=credentials, options=self._cfg_grcp.options)
+            return grpc.secure_channel(target=self._cfg_grpc.target, credentials=credentials, options=self._cfg_grpc.options)
         else:
             logging.warning("[CAUTION] Connection is insecure!")
-            return grpc.insecure_channel(self._cfg_grcp.target, options=self._cfg_grcp.options)
+            return grpc.insecure_channel(self._cfg_grpc.target, options=self._cfg_grpc.options)
 
     def _get_credentials(self) -> grpc.ServerCredentials:
-        private_key = self._read_file(self._cfg_grcp.ssl_private_key)
-        certificate_chain = self._read_file(self._cfg_grcp.ssl_cert)
-        root_certificate = self._read_file(self._cfg_grcp.ssl_root_cert)
+        private_key = self._read_file(self._cfg_grpc.ssl_private_key)
+        certificate_chain = self._read_file(self._cfg_grpc.ssl_cert)
+        root_certificate = self._read_file(self._cfg_grpc.ssl_root_cert)
 
         return grpc.ssl_channel_credentials(
             certificate_chain=certificate_chain, private_key=private_key, root_certificates=root_certificate

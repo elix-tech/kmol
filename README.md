@@ -4,15 +4,34 @@
 kMoL is a machine learning library for drug discovery and life sciences, with federated learning capabilities.
 Some of its features include state-of-the-art graph-based predictive models, explainable AI components, and differential privacy for data protection.
 The library was benchmarked on datasets containing ADME properties (Absorption, Distribution, Metabolism, Excretion), toxicity, and binding affinities values.
- 
+
 Models are built using PyTorch and PyTorch Geometric.
 
 ## Installation
+kmol uses a conda virtual enviroment run the following command to create it.
 ```bash
-conda env create -f environment.yml
+make create-env
 conda activate kmol
-pip install --no-build-isolation .
 ```
+
+## Using docker
+
+In order to build the image run the following command.
+
+```bash
+make build-docker
+```
+
+Then it is possible to run a model by passing the job and config command. Use the volume
+for the local data.
+
+```bash
+# Simplest command, will run 'kmol {job} {path_to_config}'
+docker run --rm -ti --gpus=all -v ./data:/opt/elix/kmol/data elix-kmol:1.1.7 {job} {path_to_config}
+# Running without a parameter will start an interactive shell in the same environment
+docker run --rm -ti --gpus=all -v ./data:/opt/elix/kmol/data elix-kmol:1.1.7
+```
+
 
 ## Local Examples
 
@@ -26,14 +45,14 @@ In these examples we focus on the [Tox21 Dataset](https://tripod.nih.gov/tox21/c
 After downloading the dataset to a suitable location, point to dataset with the "input_path" option in this JSON file.
 
 ### Training
-The `train` command can be used to train a model. 
- 
+The `train` command can be used to train a model.
+
 ```bash
 kmol train data/configs/model/tox21.json
 ```
 
 ### Finding the best checkpoint
-Training will save a checkpoint for each individual epoch. 
+Training will save a checkpoint for each individual epoch.
 These can be evaluated on a test split to find the best performing one with the `find_best_checkpoint` command.
 
 ```bash
@@ -41,7 +60,7 @@ kmol find_best_checkpoint data/configs/model/tox21.json
 ```
 
 ### Validate (a single checkpoint):
-If a `checkpoint_path` is set in the JSON file for a specific checkpoint, it can be evaluated with the `eval` command. 
+If a `checkpoint_path` is set in the JSON file for a specific checkpoint, it can be evaluated with the `eval` command.
 
 ```bash
 kmol eval data/configs/model/tox21.json
@@ -63,19 +82,19 @@ Similar to local training, a JSON configuration is needed to specify the trainin
 
 In addition, a configuration file is needed for the server and each individual client to establish proper communication.
 A detailed documentation on how to configure the server and clients can be found under section 3.5.1 and 3.5.2 of `docs/documentation.pdf` respectively.
-Sample configurations can be found under `data/configs/mila/`.  
+Sample configurations can be found under `data/configs/mila/`.
 
-### Box and Grcp parameters
+### Box and Grpc parameters
 
-There are two ways to run a federated example. One is with the grcp protocol to connect the client directly to the server. The second way uses box applications and sends the models to a box shared directory.  There is a needed set up to be done on Box for it to work. The set up won't be explained here, see `docs/box_documentation.pdf` for more details.
+There are two ways to run a federated example. One is with the grpc protocol to connect the client directly to the server. The second way uses box applications and sends the models to a box shared directory.  There is a needed set up to be done on Box for it to work. The set up won't be explained here, see `docs/box_documentation.pdf` for more details.
 
-The grcp parameter should be contain in `grcp_configuration` like the following:
+The grpc parameter should be contain in `grpc_configuration` like the following:
 
 ```json
-  "server_type": "mila.services.servers.GrcpServer",
-  "server_manager_type": "mila.services.server_manager.GrcpServicer",
+  "server_type": "mila.services.servers.GrpcServer",
+  "server_manager_type": "mila.services.server_manager.GrpcServicer",
   ...
-  "grcp_configuration": {
+  "grpc_configuration": {
     "target": "localhost:8024",
 
     "options": [
@@ -91,9 +110,9 @@ The grcp parameter should be contain in `grcp_configuration` like the following:
   }
 ```
 
-The client configuration only changes having the parameter `client_type` to `mila.services.clients.GrcpClient` istead of `server_type` and `server_manager_type`.
+The client configuration only changes having the parameter `client_type` to `mila.services.clients.GrpcClient` istead of `server_type` and `server_manager_type`.
 
-Note: if the user want to leave the default parameter it should still provide an empty directory to the grcp_configuration configuration.
+Note: if the user want to leave the default parameter it should still provide an empty directory to the grpc_configuration configuration.
 
 
 As for box we will have a similar config type:
@@ -111,7 +130,7 @@ As for box we will have a similar config type:
   }
 ```
 
-Similar to grcp the client config will only need `client_type` set to `mila.services.clients.BoxClient`
+Similar to grpc the client config will only need `client_type` set to `mila.services.clients.BoxClient`
 
 - `box_configuration_path`: The Public / private key pair file downloaded during the admin set up,
 - `shared_dir_name`: The name of the directory shared with the group of the application,
@@ -140,16 +159,16 @@ mila client data/configs/mila/naive_aggregator/tox21/clients/2/client2.json
 
 ### Runing a Aggregation in Command Line.
 
-Once all model have been run with the kmol module, it is possible to aggregate it using 
+Once all model have been run with the kmol module, it is possible to aggregate it using
 what we introduce as a script.
 
 It is possible to use a new command line argument called `kmol-script`. This argument
-expect only a config file containing all the necessary argument for that script.
+expects only a config file containing all the necessary argument for that script.
 
-In out case we are want to run an manual aggregation. So we can run:
+In out case we are want to run a manual aggregation. So we can run:
 
 ```
-kmol-script manual_aggregator.yaml
+kmol-script data/configs/manual_aggregator.yaml
 ```
 
 `manual_aggregator.yaml` is define as the following:
@@ -157,7 +176,7 @@ kmol-script manual_aggregator.yaml
 ```yaml
 script:
   type: "manual_aggregation"
-  chekpoint_paths: 
+  chekpoint_paths:
     - data/logs/local/tester1/2022-10-20_17-10/checkpoint_10.pt
     - data/logs/local/tester2/2022-10-20_17-10/checkpoint_10.pt
     - data/logs/local/tester3/2022-10-20_17-10/checkpoint_10.pt
@@ -179,7 +198,7 @@ the weights should follow the order of the checkpoint_paths
 
 - `save_path`: Were to save the aggregator.
 
-If other type of aggregator is needed, only `aggregator_type` and `aggregator_options` 
+If other type of aggregator is needed, only `aggregator_type` and `aggregator_options`
 needs to be change.
 
 You can find the aggregator and their argument in `src/mila/aggregators.py`

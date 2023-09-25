@@ -109,6 +109,13 @@ class MultitaskLoader(CsvLoader):
             filepath_or_buffer=input_path,
             converters=converter_dict,
         )
+        assert type(self._dataset.loc[0, self._task_column_name]) == list, \
+            "Type of target must be a list in the MultitaskLoader"
+        max_target = max(self._dataset.loc[:, self._task_column_name].max())
+        assert max_target < self._max_num_tasks, "The values of the target in the " \
+            "MultitaskLoader should range from 0 to max_num_tasks - 1 here "  \
+            f"maximum in target is {max_target} and max_num_tasks is {max_num_tasks} " \
+            f"should be {max_target + 1}"
 
     def __getitem__(self, id_: str) -> DataPoint:
         entry = self._dataset.loc[id_]
