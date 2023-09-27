@@ -143,7 +143,11 @@ class ProteinSchnetNetwork(AbstractNetwork, SchNet):
         if self.scale is not None:
             out = self.scale * out
 
-        return out
+        if len(out.shape) == 1:
+            # In case the last batch is of size 1
+            return out.unsqueeze(0)
+        else:
+            return out
 
     def get_mask_lp_indice(self, edge_index: torch.Tensor, edge_weight: torch.Tensor, lp_interaction_edge: torch.Tensor):
         """
