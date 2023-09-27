@@ -15,6 +15,7 @@ from typing import Type, Any, Dict, Union, T, Optional, List, Callable, TextIO, 
 import humps
 import numpy as np
 import torch
+from filelock import FileLock
 
 from .exceptions import ReflectionError
 from .logger import LOGGER as logging
@@ -365,6 +366,23 @@ class CacheDiskList(DiskList):
         self.delete = delete
         self.tempfile = tempfile.NamedTemporaryFile(dir=tmp_dir, delete=delete) if not init_temp_file else init_temp_file
         self.tempfile_name = self.tempfile.name
+        self.lock = FileLock(self.tempfile.name + ".lock")
+
+    def get_lock(self):
+        try:
+            return self.lock
+        except:
+            # For already cached file support should be deletable later.
+            self.lock = FileLock(self.tempfile.name + ".lock")
+            return self.lock
+
+    def append(self, item):
+        with self.get_lock():
+            super().append(item)
+
+    def __getitem__(self, index):
+        with self.get_lock():
+            return super().__getitem__(index)
 
     def clear(self):
         self.tempfile.close()
