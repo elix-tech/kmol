@@ -23,6 +23,7 @@ from .data.streamers import GeneralStreamer, SubsetStreamer, CrossValidationStre
 from .model.executors import Predictor, ThresholdFinder, LearningRareFinder, Pipeliner
 from .model.metrics import PredictionProcessor, CsvLogger
 from .data.preprocessor import AbstractPreprocessor
+from .core.utils import progress_bar
 
 
 class Executor(AbstractExecutor):
@@ -272,9 +273,7 @@ class Executor(AbstractExecutor):
             logits = []
 
             for pipeliner, test_loader in folds.items():
-                pipeliner.config.checkpoint_path = "{}/checkpoint.{}.pt".format(
-                    pipeliner.config.output_path, checkpoint_id
-                )
+                pipeliner.config.checkpoint_path = "{}/checkpoint.{}.pt".format(pipeliner.config.output_path, checkpoint_id)
                 pipeliner.initialize_predictor()
                 fold_ground_truth, fold_logits = pipeliner.predict(data_loader=test_loader)
                 ground_truth.extend(fold_ground_truth)
@@ -352,43 +351,48 @@ class Executor(AbstractExecutor):
 
         results = defaultdict(list)
         outputs_to_save = defaultdict(list)
-        for batch in data_loader.dataset:
-            outputs = predictor.run(batch)
-            logits = outputs.logits
-            variance = getattr(outputs, "logits_var", None)
-            softmax_score = getattr(outputs, "softmax_score", None)
-            belief_mass = getattr(outputs, "belief_mass", None)
-            protein_gradients = getattr(outputs, "protein_gd_mean", None)
-            ligand_gradients = getattr(outputs, "ligand_gd_mean", None)
-            hidden_layer_output = getattr(outputs, "hidden_layer", None)
-            labels = batch.outputs.cpu().numpy()
-            labels = np.apply_along_axis(transformer_reverter, axis=1, arr=labels)
+        with progress_bar() as progress:
+            description = f"Computing prediction..."
+            task = progress.add_task(description, total=len(data_loader.dataset))
+            for batch in data_loader.dataset:
+                outputs = predictor.run(batch)
+                logits = outputs.logits
+                variance = getattr(outputs, "logits_var", None)
+                softmax_score = getattr(outputs, "softmax_score", None)
+                belief_mass = getattr(outputs, "belief_mass", None)
+                protein_gradients = getattr(outputs, "protein_gd_mean", None)
+                ligand_gradients = getattr(outputs, "ligand_gd_mean", None)
+                hidden_layer_output = getattr(outputs, "hidden_layer", None)
+                labels = batch.outputs.cpu().numpy()
+                labels = np.apply_along_axis(transformer_reverter, axis=1, arr=labels)
 
-            if hidden_layer_output is not None:
-                outputs_to_save["hidden_layer"].extend(hidden_layer_output.cpu().numpy())
+                if hidden_layer_output is not None:
+                    outputs_to_save["hidden_layer"].extend(hidden_layer_output.cpu().numpy())
 
-            predictions = PredictionProcessor.apply_threshold(logits, self._config.threshold)
-            predictions = np.apply_along_axis(transformer_reverter, axis=1, arr=predictions)
+                predictions = PredictionProcessor.apply_threshold(logits, self._config.threshold)
+                predictions = np.apply_along_axis(transformer_reverter, axis=1, arr=predictions)
 
-            results["predictions"].extend(predictions)
-            results["id"].extend(batch.ids)
-            outputs_to_save["id"].extend(batch.ids)
-            results["labels"].extend(labels)
+                results["predictions"].extend(predictions)
+                results["id"].extend(batch.ids)
+                outputs_to_save["id"].extend(batch.ids)
+                results["labels"].extend(labels)
 
-            if variance is not None:
-                results["variance"].extend(variance.cpu().numpy())
-            if softmax_score is not None:
-                results["softmax_score"].extend(softmax_score.cpu().numpy())
-            if belief_mass is not None:
-                results["belief_mass"].extend(belief_mass.cpu().numpy())
-            if protein_gradients is not None:
-                results["protein_gd"].extend(protein_gradients.cpu().numpy())
-            if ligand_gradients is not None:
-                results["ligand_gd"].extend(ligand_gradients.cpu().numpy())
+                if variance is not None:
+                    results["variance"].extend(variance.cpu().numpy())
+                if softmax_score is not None:
+                    results["softmax_score"].extend(softmax_score.cpu().numpy())
+                if belief_mass is not None:
+                    results["belief_mass"].extend(belief_mass.cpu().numpy())
+                if protein_gradients is not None:
+                    results["protein_gd"].extend(protein_gradients.cpu().numpy())
+                if ligand_gradients is not None:
+                    results["ligand_gd"].extend(ligand_gradients.cpu().numpy())
 
-            if len(self._config.prediction_additional_columns) > 0:
-                for col_name in self._config.prediction_additional_columns:
-                    results[col_name].extend(loader._dataset.iloc[batch.ids][col_name].values)
+                if len(self._config.prediction_additional_columns) > 0:
+                    for col_name in self._config.prediction_additional_columns:
+                        results[col_name].extend(loader._dataset.iloc[batch.ids][col_name].values)
+
+                progress.update(task, description=description, advance=1)
 
         results["predictions"] = np.vstack(results["predictions"])
         results["labels"] = np.vstack(results["labels"])
