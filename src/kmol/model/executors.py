@@ -48,7 +48,7 @@ class AbstractExecutor(metaclass=ABCMeta):
                 elif type(values) == dict:
                     batch.inputs[key] = self.dict_to_device(values)
                 elif type(values) == list:
-                    if values[0] == torch.Tensor:
+                    if isinstance(values[0], torch.Tensor):
                         batch.inputs[key] = [a.to(self._device) for a in values]
                     else:
                         batch.inputs[key] = [a for a in values]
@@ -64,7 +64,7 @@ class AbstractExecutor(metaclass=ABCMeta):
             if type(v) is dict:
                 new_dict[k] = self.dict_to_device(v)
             else:
-                if v == torch.Tensor or issubclass(type(values), Data):
+                if isinstance(v, torch.Tensor) or issubclass(type(values), Data):
                     new_dict[k] = v.to(self._device)
                 else:
                     new_dict[k] = v
