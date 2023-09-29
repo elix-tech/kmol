@@ -31,7 +31,6 @@ class LogNormalizeTransformer(AbstractTransformer):
         for target in self._targets:
             data.outputs[target] = np.exp(data.outputs[target])
 
-# TODO: make real reverse
 class AutoEncoderTransformer(AbstractTransformer):
     def __init__(self, target: str, input: str):
         self._target = target
