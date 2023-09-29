@@ -8,7 +8,7 @@ The new interpretation of LRODD was implemented this includes big changes to dat
 
 Perturbations are added in a similar manner as in pseudo LRODD, but it is crucial to adhere to the following specifications for fg and bg models:
 
-```json
+```yaml
 
     "model": {
             "type": "generative_lstm",
@@ -76,7 +76,7 @@ Additional options are required to train auto-regressive models within kmol. For
 To perform inference with real log likelihood, use the following configuration:
 
 
-```json
+```yaml
     "model": {
             "type": "lrodd",
             "model_configs": [
