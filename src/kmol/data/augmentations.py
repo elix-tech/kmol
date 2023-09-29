@@ -194,9 +194,11 @@ class RandomTemplateSelectionAugmentation(AbstractAugmentation):
 
 
 class ProteinPertubationAugmentation(AbstractAugmentation):
-    def __init__(self, vocabulary: List[str], p: float = 0.2):
+    def __init__(self, vocabulary: List[str], p: float = 0.2, input_field: str = "target_sequence", output_field: str = "protein_index"):
         self._original_vocabulary = vocabulary
         self._bernoulli_prob = p
+        self._input = input_field
+        self._output = output_field
 
     def _perturb(self, data: str) -> str:
         bern = bernoulli(self._bernoulli_prob)
@@ -211,13 +213,10 @@ class ProteinPerturbationBaggedAugmentation(ProteinPertubationAugmentation):
     """
     Augmentation useful for pseudo lrodd background network. Perturb the protein following a Bernoulli distribution.
     """
-    def __init__(self, vocabulary: List[str], max_length: int, p: float = 0.2, input: str = "target_sequence", output: str = "protein"):
-        self._original_vocabulary = vocabulary
-        self._bernoulli_prob = p
+    def __init__(self, vocabulary: List[str], max_length: int, p: float = 0.2, input_field: str = "target_sequence", output_field: str = "protein"):
+        super().__init__(vocabulary, p, input_field, output_field)
         self._vocabulary = self._get_combinations(vocabulary, max_length)
         self._max_length = max_length
-        self._input = input
-        self._output = output
 
     def _get_combinations(self, vocabulary: List[str], max_length: int) -> List[str]:
         combinations = []
@@ -245,12 +244,9 @@ class ProteinPerturbationSequenceAugmentation(ProteinPertubationAugmentation):
     """
     Augmentation useful for lrodd generative bg network. Perturb the protein following a Bernoulli distribution.
     """
-    def __init__(self, vocabulary: List[str], p: float = 0.2, input: str = "target_sequence", output: str = "protein_index"):
-        self._original_vocabulary = vocabulary
-        self._bernoulli_prob = p
+    def __init__(self, vocabulary: List[str], p: float = 0.2, input_field: str = "target_sequence", output_field: str = "protein_index"):
+        super().__init__(vocabulary, p, input_field, output_field)
         self._to_index_dict = self._create_index_dict()
-        self._input = input
-        self._output = output
 
     def _create_index_dict(self):
         to_index_dict = {}
