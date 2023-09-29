@@ -930,15 +930,15 @@ class AtomTypeExtensionPdbFeaturizer(PdbToMol2Featurizer):
         """
         super().__init__(inputs, outputs, pdb_dir, dir_to_save, overwrite_if_exist, should_cache, rewrite)
 
-        self.ligand_res = ligand_residue
+        self.ligand_residue = ligand_residue
         self.protein_atom_type = [s.upper() for s in protein_atom_type]
         self.ligand_atom_type = [s.upper() for s in ligand_atom_type]
         self.at = {"AM1-BCC": "bcc", "GAFF": "gaff"}
         self.need_antechamber = any([at in self.at for at in ligand_atom_type])
         self.tokenize_atom_type = tokenize_atom_type
 
-        self.ligand_filter = f"resname {' '.join(self.ligand_res)}"
-        self.protein_filter = f"protein and not resname {' '.join(self.ligand_res)}"
+        self.ligand_filter = f"resname {' '.join(self.ligand_residue)}"
+        self.protein_filter = f"protein and not resname {' '.join(self.ligand_residue)}"
 
         # fmt: off
         # Taken from https://github.com/choderalab/ambermini/tree/master/share/amber/dat/antechamber
@@ -1210,7 +1210,9 @@ class IntdescFeaturizer(AbstractFeaturizer):
 
         protein_atom_ids = self.filter_protein_atom_of_interest(mol_complex, intdesc)
 
-        mol_edge_index, edge_index = self.compute_edge_index(intdesc, ligand_atom_ids.tolist(), protein_atom_ids)
+        mol_edge_index, edge_index, graph_mol_index_mapping = self.compute_edge_index(
+            intdesc, ligand_atom_ids.tolist(), protein_atom_ids
+        )
         edge_features = self.compute_edge_features(intdesc, mol_edge_index, edge_index)
         coords = np.vstack([mol_complex.coords[ligand_atom_ids], mol_complex.coords[protein_atom_ids]]).squeeze()
         # Retrieve tokenized atom type, the order is the same so we can use the same indexes.
@@ -1227,6 +1229,9 @@ class IntdescFeaturizer(AbstractFeaturizer):
             coords=torch.from_numpy(coords),
             protein_mask=torch.from_numpy(protein_mask).bool(),
             num_nodes=len(protein_mask),  # avoids warning
+            graph_mol_index_mapping=graph_mol_index_mapping,  # metadata for interpretation
+            original_atom_ids=torch.from_numpy(np.hstack([ligand_atom_ids, protein_atom_ids])),
+            mol2_path=str(mol2_filepath),
         )
 
     def filter_protein_atom_of_interest(self, mol_complex: Molecule, intdesc: pd.DataFrame) -> List:
@@ -1267,7 +1272,7 @@ class IntdescFeaturizer(AbstractFeaturizer):
         for new_index, mol_index in graph_mol_index_mapping.items():
             edge_index[mol_edge_index == mol_index] = new_index
 
-        return mol_edge_index, edge_index
+        return mol_edge_index, edge_index, graph_mol_index_mapping
 
     def compute_edge_features(self, intdesc, mol_edge_index, edge_index):
         # [num_bonds, num_interaction_labels]
