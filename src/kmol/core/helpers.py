@@ -366,14 +366,14 @@ class CacheDiskList(DiskList):
         self.delete = delete
         self.tempfile = tempfile.NamedTemporaryFile(dir=tmp_dir, delete=delete) if not init_temp_file else init_temp_file
         self.tempfile_name = self.tempfile.name
-        self.lock = FileLock(self.tempfile.name + ".lock")
+        self.lock = FileLock(self.tempfile.name + ".lock", thread_local=False)
 
     def get_lock(self):
         try:
             return self.lock
         except:
             # For already cached file support should be deletable later.
-            self.lock = FileLock(self.tempfile.name + ".lock")
+            self.lock = FileLock(self.tempfile.name + ".lock", thread_local=False)
             return self.lock
 
     def append(self, item):
