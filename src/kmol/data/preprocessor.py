@@ -64,7 +64,6 @@ class AbstractPreprocessor(metaclass=ABCMeta):
             transformer.reverse(sample)
 
     def _init_logging_worker(self, func, *args):
-        logger.add_file_log(self._config.output_path)
         logger.stdout_handler.setLevel(self._config.log_level.upper())
         return func(*args)
 

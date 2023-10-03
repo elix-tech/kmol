@@ -361,7 +361,7 @@ class Predictor(AbstractExecutor):
         logits = []
 
         with progress_bar() as progress:
-            for batch in progress.track(data_loader.dataset):
+            for batch in progress.track(data_loader.dataset, description="Evaluating..."):
                 ground_truth.append(batch.outputs)
                 logits.append(self.run(batch).logits)
 
