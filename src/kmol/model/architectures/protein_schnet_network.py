@@ -69,9 +69,9 @@ class ProteinSchnetNetwork(AbstractNetwork, SchNet):
             block = ProteinInteractionBlock(hidden_channels, num_gaussians, num_filters, cutoff, num_lp_interactions)
             self.interactions.append(block)
 
+        self.out_features = out_feature
         self.lin1 = Linear(hidden_channels, hidden_channels // 2)
-        self.lin2 = Linear(hidden_channels // 2, out_feature)
-        self.out_feature = out_feature
+        self.lin2 = Linear(hidden_channels // 2, self.out_features)
 
         readout_kwargs = {}
         readout_kwargs.update({"in_channels": hidden_channels // 2})
