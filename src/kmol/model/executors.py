@@ -160,10 +160,6 @@ class Trainer(AbstractExecutor):
         EventManager.dispatch_event(event_name="before_criterion", payload=payload)
 
         loss = self.criterion(payload.logits, payload.features.outputs, *payload.extras)
-        # del payload
-        # del batch.inputs
-        # gc.collect()
-        # torch.cuda.empty_cache()
         loss.backward()
 
         self.optimizer.step()
@@ -219,9 +215,6 @@ class Trainer(AbstractExecutor):
                     logits.append(inference_mode(batch.inputs)["logits"])
                 else:
                     logits.append(self.network(batch.inputs))
-                    # del batch
-                    # gc.collect()
-                    # torch.cuda.empty_cache()
 
             metrics = self._metric_computer.compute_metrics(ground_truth, logits)
             averages = self._metric_computer.compute_statistics(metrics, (np.mean,))

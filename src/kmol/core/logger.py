@@ -65,7 +65,6 @@ class __Logger(logging.Logger):
         if len(self._logger.handlers) != 0:
             self.stdout_handler = [h for h in self._logger.handlers if h.stream.name == "<stdout>"][0]
         else:
-            # self.stdout_handler = RichHandler(rich_tracebacks=True, markup=True)
             self.stdout_handler = logging.StreamHandler(sys.stdout)
             self.stdout_handler.setFormatter(formatter)
             self._logger.addHandler(self.stdout_handler)
