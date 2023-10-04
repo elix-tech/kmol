@@ -13,11 +13,12 @@ GRAPH_CAPTUM_FEAT += ["z", "z_protein", "coords", "edge_attr"]
 
 
 class ProteinCaptumScript(CaptumScript):
-    def __init__(self, config_path, n_steps: int = 50) -> None:
+    def __init__(self, config_path, n_steps: int = 50, default_attribution_value: int = 0) -> None:
         super().__init__({}, config_path, "sum", n_steps)
         self.attribution, groups = self.get_integrated_layer_protein_schnet(self.model)
         self.attribution_innit()
         self.groups = groups
+        self.default_attribution_value = default_attribution_value
 
     def run(self):
         for data in tqdm(self.data_loader):
@@ -66,6 +67,8 @@ class ProteinCaptumScript(CaptumScript):
                 mask = orinal_ids_mapping == atom_idx
                 if mask.any():
                     line = line[:60] + f"{attributions[mask].item():6.2f}" + line[66:]
+                else:
+                    line = line[:60] + f"{self.default_attribution_value:6.2f}" + line[66:]
 
             modified_pdb_output.append(line)
 
