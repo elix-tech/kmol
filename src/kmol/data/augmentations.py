@@ -180,19 +180,6 @@ class RandomBondDeleteAugmentation(BaseTransform):
         return "RandomBondDelete(p = {})".format(self.prob)
 
 
-class RandomTemplateSelectionAugmentation(AbstractAugmentation):
-
-    def __call__(self, data: Dict, seed=None)-> None:
-        if type(data['protein']) == dict:
-            temple_number = np.random.random_integers(0, data['protein']["aatype"].shape[-1] - 1)
-            fetch_cur_batch = lambda t: t[..., temple_number]
-            data['protein'] = tensor_tree_map(fetch_cur_batch, data['protein'])
-        elif type(data['protein']) == list:
-            temple_number = np.random.random_integers(0, len(data['protein']) -1)
-            data['protein'] = data['protein'][temple_number][0]
-        return data
-
-
 class ProteinPerturbationAugmentation(AbstractAugmentation):
     """
     Augmentation useful for lrodd network. Perturb the protein following a Bernoulli distribution.

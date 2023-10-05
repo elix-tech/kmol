@@ -800,7 +800,7 @@ class NumpyLoadFeaturizer(LoadFeaturizer):
 
 
 class PdbqtToPdbFeaturizer(AbstractFeaturizer):
-    """Change a pdbqt file to pdb"""
+    """Convert a pdbqt file to pdb"""
 
     def __init__(
         self,
@@ -814,6 +814,14 @@ class PdbqtToPdbFeaturizer(AbstractFeaturizer):
         should_cache: bool = False,
         rewrite: bool = True,
     ):
+        """
+        inputs: expect a column name of a pdbqt path data
+        pdqt_dir: path to add to the input path field of the dataset.
+        dir_to_save: pdb file are save to this directory
+        protonize: Protonize if true
+        ph: Use for protonization
+        overwrite_if_exist: if False use existing files
+        """
         super().__init__(inputs, outputs, should_cache, rewrite)
 
         self.outdir = Path(dir_to_save)
@@ -856,6 +864,8 @@ class PdbqtToPdbFeaturizer(AbstractFeaturizer):
 
 
 class PdbToMol2Featurizer(AbstractFeaturizer):
+    """Convert a pdb file to mol2"""
+
     def __init__(
         self,
         inputs: List[str],
@@ -866,6 +876,13 @@ class PdbToMol2Featurizer(AbstractFeaturizer):
         should_cache: bool = False,
         rewrite: bool = True,
     ):
+        """
+        inputs: expect a column name of a pdb path data
+        pdb_dir: path to add to the input taken from the dataset.
+            Only use in case we are starting the featurization from a pdb files,
+            otherwise leave as default
+        overwrite_if_exist: if False use existing files, default: True
+        """
         super().__init__(inputs, outputs, should_cache, rewrite)
 
         self.outdir = Path(dir_to_save)
@@ -926,7 +943,16 @@ class AtomTypeExtensionPdbFeaturizer(PdbToMol2Featurizer):
         rewrite: bool = True,
     ):
         """
+        inputs: expect a column name of a pdb path data
+        pdb_dir: path to add to the input taken from the dataset.
+            Only use in case we are starting the featurization from a pdb files,
+            otherwise leave as default
+        ligand_residue: List of residue name of the ligand in the pdb file
+        protein_atom_type: list of atom type to use option "SYBYL" and/or "PDB".
+        ligand_atom_type: list of atom type to use option "SYBYL", "AM1-BCC" and/or "GAFF".
+        dir_to_save: where to save the mol2 file and antechamber generation.
         tokenize_atom_type: Turn atom type to integer base on each atom type vocabulary.
+        overwrite_if_exist: if False use existing files, default: True
         """
         super().__init__(inputs, outputs, pdb_dir, dir_to_save, overwrite_if_exist, should_cache, rewrite)
 
@@ -1002,7 +1028,13 @@ class AtomTypeExtensionPdbFeaturizer(PdbToMol2Featurizer):
         openbabel.obErrorLog.SetOutputLevel(1)
         return mol2_filepath
 
-    def compute_gaff_or_bcc_atom_type(self, mol_complex, pdb_filepath):
+    def compute_gaff_or_bcc_atom_type(self, mol_complex: Molecule, pdb_filepath: str):
+        """
+        Run antechamber for each atom type needed, three files will be generated:
+            - the input of antechamber `{name}_ligand.pdb` file containing only the ligand atoms
+            - the output of antechamber `{name}_ligand_{atom_type}.mol2`
+            - the a complex file where the ligand type have been updated `{name}_{atom_type}.mol2`
+        """
         if self.need_antechamber:
             with redirect_stdout(StringIO()):
                 ligand_file_path = self.create_ligand_pdb_file(pdb_filepath)
@@ -1012,6 +1044,9 @@ class AtomTypeExtensionPdbFeaturizer(PdbToMol2Featurizer):
                     mol_antechamber.write(self.get_antechamber_filepath(pdb_filepath, atom_type))
 
     def run_antechamber(self, ligand_filepath_pdb: str, atom_type: str, mol_complex: Molecule) -> Molecule:
+        """
+        Run antechamber between the ligand pdb file and generate a mol2 file with the atom_type provided
+        """
         antechamber_filepath = self.get_antechamber_filepath(ligand_filepath_pdb, atom_type)
         cmd_str = f"antechamber -i {ligand_filepath_pdb} -fi pdb -o {antechamber_filepath} -fo mol2 -at {self.at[atom_type]}"
         cmd = cmd_str.split(" ")
@@ -1026,6 +1061,11 @@ class AtomTypeExtensionPdbFeaturizer(PdbToMol2Featurizer):
         return str(Path(self.outdir) / f"{Path(filepath_pdb).stem}_{self.at[atom_type]}.mol2")
 
     def create_ligand_pdb_file(self, pdb_filepath: Path) -> str:
+        """
+        Retrieve all lines starting with ATOM or HETATM if the residue is in `ligand_residue`
+        and generate a new pdb file only with those atoms.
+        Delete all CONECT.
+        """
         ligand_file_path = Path(self.outdir) / f"{Path(pdb_filepath).stem}_ligand.pdb"
         atom_id = 1
         atom_id_space = " " * 5
@@ -1041,6 +1081,9 @@ class AtomTypeExtensionPdbFeaturizer(PdbToMol2Featurizer):
         return str(ligand_file_path)
 
     def replace_atom_type(self, mol: Molecule, antechamber_filepath: str):
+        """
+        Replace the atom type from the antechamber_filepath in the mol object.
+        """
         mol_complex = mol.copy()
         ligand = Molecule(antechamber_filepath)
         for atom_id in range(ligand.numAtoms):
@@ -1064,7 +1107,10 @@ class AtomTypeExtensionPdbFeaturizer(PdbToMol2Featurizer):
                 raise FeaturizationError(f"Error in the update of the atom type {antechamber_filepath}")
         return mol_complex
 
-    def update_atom_type(self, atom_type, mol_complex, additional_atom_type, sel, overwrite):
+    def update_atom_type(self, atom_type, mol_complex: Molecule, additional_atom_type, sel, overwrite):
+        """
+        Update the main Molecule object with the additional_atom_type and tokenize them if needed
+        """
         index = mol_complex.get("index", sel=sel)
         if overwrite:
             mol_complex.atomtype[index] = additional_atom_type
@@ -1120,9 +1166,16 @@ class IntdescFeaturizer(AbstractFeaturizer):
         rewrite: bool = True,
     ):
         """
-        There are 5 outputs generated in this featurizer and regroup in a pytorch
-        geometric Data object:
-        atom_ids, coords, protein_mask, edge_index, edge_features
+        There are 6 outputs generated and used in the model in this featurizer.
+        They are regroup in a pytorch geometric Data object:
+
+        z: Tokenize ligand atom type [N, num_atom_type]
+        z_protein: Tokenize protein atom type [N, num_atom_type]
+        edge_index: Edge index of the protein-ligand interaction
+        edge_attr: Features of the protein-ligand interaction
+        coords: Coordinates of both ligand and protein atoms, for each sample,
+            ligand are first along the batch dimension
+        protein_mask: mask marking protein atoms
         """
         super().__init__(inputs, outputs, should_cache, rewrite)
 
@@ -1230,7 +1283,7 @@ class IntdescFeaturizer(AbstractFeaturizer):
             coords=torch.from_numpy(coords),
             protein_mask=torch.from_numpy(protein_mask).bool(),
             num_nodes=len(protein_mask),  # avoids warning
-            graph_mol_index_mapping=[graph_mol_index_mapping],  # metadata for interprettation
+            # metadata for interprettation
             original_atom_ids=torch.from_numpy(np.hstack([ligand_atom_ids, protein_atom_ids])),
             mol2_path=str(mol2_filepath),
         )
