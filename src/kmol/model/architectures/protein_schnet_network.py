@@ -13,6 +13,12 @@ from ..read_out import get_read_out
 
 
 class ProteinSchnetNetwork(AbstractNetwork, SchNet):
+    """
+    Model to leverage 3D data of complex file, it uses both protein information
+    in the surrounding of the ligand and interaction information extracted 
+    with intDesc. 
+    It's expected to be used with the AtomTypeExtensionPdbFeaturizer and IntdescFeaturizer
+    """
     def __init__(
         self,
         hidden_channels: int = 128,
