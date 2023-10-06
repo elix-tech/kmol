@@ -193,7 +193,7 @@ class RandomTemplateSelectionAugmentation(AbstractAugmentation):
         return data
 
 
-class ProteinPertubationAugmentation(AbstractAugmentation):
+class AbstractProteinPertubationAugmentation(AbstractAugmentation):
     def __init__(self, vocabulary: List[str], p: float = 0.2, input_field: str = "target_sequence", output_field: str = "protein_index"):
         self._original_vocabulary = vocabulary
         self._bernoulli_prob = p
@@ -209,7 +209,7 @@ class ProteinPertubationAugmentation(AbstractAugmentation):
                 l_data[i] = random.choice(self._original_vocabulary)
         return ''.join(l_data)
 
-class ProteinPerturbationBaggedAugmentation(ProteinPertubationAugmentation):
+class ProteinPerturbationBaggedAugmentation(AbstractProteinPertubationAugmentation):
     """
     Augmentation useful for pseudo lrodd background network. Perturb the protein following a Bernoulli distribution.
     """
@@ -240,7 +240,7 @@ class ProteinPerturbationBaggedAugmentation(ProteinPertubationAugmentation):
         data[self._output] = torch.FloatTensor(list(sample.values()))
         return data
 
-class ProteinPerturbationSequenceAugmentation(ProteinPertubationAugmentation):
+class ProteinPerturbationSequenceAugmentation(AbstractProteinPertubationAugmentation):
     """
     Augmentation useful for lrodd generative bg network. Perturb the protein following a Bernoulli distribution.
     """
