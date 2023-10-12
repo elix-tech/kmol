@@ -187,8 +187,7 @@ class CustomCaptum:
         return results
 
     def dict_to_tensor(self, data_inputs):
-        inputs = []
-        output_name = []
+        inputs, output_name, additional_attr = [], [], []
         original_feature_key = {"inputs": [], "graph_attr": []}
         for key, _input in data_inputs.items():
             original_feature_key["inputs"].append((key, type(_input)))

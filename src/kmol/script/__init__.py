@@ -4,7 +4,7 @@ from mila.factories import AbstractScript
 from mila.scripts import *
 from .lr_finder import LrFinderScript
 from .integrated_gradient import CaptumScript
-from .protein_captum import ProteinCaptumScript
+from .protein_captum import ProteinCaptumScript, ProteinSequenceCaptumScript
 from .generate_msa import GenerateMsaScript
 
 

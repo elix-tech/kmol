@@ -415,6 +415,7 @@ class TokenFeaturizer(AbstractFeaturizer):
         max_length: int,
         separator: str = "",
         should_cache: bool = False,
+        tokenize_onehot: bool = False,
         rewrite: bool = True,
     ):
         super().__init__(inputs, outputs, should_cache, rewrite)
@@ -422,6 +423,7 @@ class TokenFeaturizer(AbstractFeaturizer):
         self._vocabulary = vocabulary
         self._separator = separator
         self._max_length = max_length
+        self._tokenize_onehot = tokenize_onehot
 
     def _process(self, data: str, entry: DataPoint) -> torch.FloatTensor:
         tokens = data.split(self._separator) if self._separator else [character for character in data]
@@ -433,6 +435,8 @@ class TokenFeaturizer(AbstractFeaturizer):
                 break
 
             features[index][self._vocabulary.index(token)] = 1
+        if self._tokenize_onehot:
+            features = features.argmax(1)
 
         return torch.FloatTensor(features)
 
