@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Literal, Optional, List, Dict, Any, DefaultDict
 
 import torch
+from openbabel import pybel
 from mila.factories import AbstractConfiguration
 
 from .helpers import SuperFactory
@@ -19,7 +20,6 @@ from .observers import AbstractEventHandler, EventManager, DifferentialPrivacy
 
 @dataclass
 class Config(AbstractConfiguration):
-
     job_command: str
     model: Dict[str, Any]
     loader: Dict[str, Any]
@@ -57,8 +57,7 @@ class Config(AbstractConfiguration):
     enabled_gpus: List[int] = field(default_factory=lambda: [0])
     num_workers: int = 0
     featurization_jobs: int = 4
-    preprocessing_use_disk: bool = False
-    preprocessing_disk_dir: Optional[str] = None
+    preprocessor: DefaultDict[str, Any] = field(default_factory=lambda: {"type": "cache"})
 
     cache_location: str = "/tmp/federated/"
     clear_cache: bool = False
@@ -79,7 +78,6 @@ class Config(AbstractConfiguration):
 
     augmentations: List[Dict[str, Any]] = None
     static_augmentations: List[Dict[str, Any]] = None
-    online_preprocessing: bool = False
     seed: int = 42
 
     def should_parallelize(self) -> bool:
@@ -100,7 +98,7 @@ class Config(AbstractConfiguration):
             os.makedirs(self.output_path)
 
         dump_copy = self.__dict__.copy()
-        del dump_copy['job_command']
+        del dump_copy["job_command"]
         with open(Path(self.output_path) / "config.json", "w") as file:
             json.dump(dump_copy, file, indent=2)
         with open(Path(self.output_path) / "config.yaml", "w") as file:
@@ -108,7 +106,6 @@ class Config(AbstractConfiguration):
 
         logging.add_file_log(Path(self.output_path))
         logging.stdout_handler.setLevel(self.log_level.upper())
-
         EventManager.flush()
         for event_name, event_handlers in self.observers.items():
             for event_handler_definition in event_handlers:
@@ -119,7 +116,7 @@ class Config(AbstractConfiguration):
             DifferentialPrivacy.setup(**self.differential_privacy["options"])
 
     def check_update_config(self):
-        if self.job_command not in ['find_best_checkpoint', 'find_threshold']:
+        if self.job_command not in ["find_best_checkpoint", "find_threshold"]:
             self.output_path = str(Path(self.output_path) / datetime.now().strftime("%Y-%m-%d_%H-%M"))
 
         if getattr(self, "observers") is None:

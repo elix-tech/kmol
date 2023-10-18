@@ -5,6 +5,7 @@ import os
 import traceback
 import sys
 import time
+from rich.logging import RichHandler
 
 
 BLACK, RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE = range(8)
@@ -12,13 +13,8 @@ RESET_SEQ = "\033[0m"
 COLOR_SEQ = "\033[%dm"
 BOLD_SEQ = "\033[1m"
 
-COLORS = {
-    'WARNING': YELLOW,
-    'INFO': WHITE,
-    'DEBUG': BLUE,
-    'CRITICAL': RED,
-    'ERROR': RED
-}
+COLORS = {"WARNING": YELLOW, "INFO": WHITE, "DEBUG": BLUE, "CRITICAL": RED, "ERROR": RED}
+
 
 class CustomFormatter(logging.Formatter):
     """
@@ -64,7 +60,6 @@ class __Logger(logging.Logger):
         return cls.instance
 
     def __init__(self):
-        self._logger.setLevel(logging.DEBUG)
         self.now = datetime.datetime.now()
         formatter = self._get_formatter()
         if len(self._logger.handlers) != 0:
@@ -74,6 +69,7 @@ class __Logger(logging.Logger):
             self.stdout_handler.setFormatter(formatter)
             self._logger.addHandler(self.stdout_handler)
 
+        self.propagate = False
         sys.excepthook = self.handle_excepthook
 
     def __getattr__(self, key):
@@ -90,7 +86,7 @@ class __Logger(logging.Logger):
     def add_file_log(self, dir_path):
         if not os.path.isdir(dir_path):
             os.mkdir(dir_path)
-        path_log = dir_path / f"log_{self.now.strftime('%Y-%m-%d_%H-%M')}.log"
+        path_log = os.path.join(dir_path, f"log_{self.now.strftime('%Y-%m-%d_%H-%M')}.log")
         self.file_handler = logging.FileHandler(path_log)
         self.file_handler.setLevel(logging.DEBUG)
         self.file_handler.setFormatter(self._get_formatter(use_color=False))
@@ -127,5 +123,12 @@ class __Logger(logging.Logger):
         if self.has_file_handler():
             return
         self.addHandler(self.file_handler)
+
+    def set_logging_level(self, level):
+        self.level = level
+        self._logger.setLevel(level)
+        for handler in self._logger.handlers:
+            handler.setLevel(level)
+
 
 LOGGER = __Logger()

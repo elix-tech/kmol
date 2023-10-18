@@ -2,65 +2,102 @@ from typing import Dict, Any, List
 
 import torch
 from ...vendor.openfold.model.embedders import (
+    RecyclingEmbedder,
     InputEmbedder,
     TemplateAngleEmbedder,
     TemplatePairEmbedder,
     ExtraMSAEmbedder,
 )
-from ...vendor.openfold.model.evoformer import ExtraMSAStack
+from ...vendor.openfold.model.heads import AuxiliaryHeads
+from ...vendor.openfold.model.structure_module import StructureModule
+from ...vendor.openfold.model.evoformer import ExtraMSAStack, EvoformerStack
 from ...vendor.openfold.model.template import (
     TemplatePairStack,
     TemplatePointwiseAttention,
     embed_templates_average,
     embed_templates_offload,
 )
+from ...vendor.openfold.model.primitives import LayerNorm, Linear
 from ...vendor.openfold.utils.tensor_utils import add, tensor_tree_map
 from ...vendor.openfold.utils.feats import (
+    pseudo_beta_fn,
     build_extra_msa_feat,
     build_template_angle_feat,
     build_template_pair_feat,
+    atom14_to_atom37,
 )
 from ...vendor.openfold.config import model_config
+from ...vendor.openfold.np import residue_constants
 from .abstract_network import AbstractNetwork
+from ..layers.global_attention_pooling_layers import GlobalAttentionPooling, GlobalAttentionPooling2D
 
 
 class MsaEmbedderNetwork(AbstractNetwork):
-    def __init__(self, out_features, msa_extrator_cfg=None) -> None:
+    def __init__(
+        self, out_features, msa_extrator_cfg=None, c_s: int = 384, c_z: int = 128, attention_pooling_dim: int = 256
+    ) -> None:
         super().__init__()
         if msa_extrator_cfg is not None:
-            self.msa_extractor = MsaExtractor(**msa_extrator_cfg)
+            self.msa_extractor = AlphaFold(**msa_extrator_cfg)
         self.msa_extrator_cfg = msa_extrator_cfg
 
         self.global_average = torch.nn.AdaptiveAvgPool2d(1)
-        self.out_linear = torch.nn.Linear(128 + 256, out_features)
+        self.c_s = c_s  # single representation dim
+        self.c_z = c_z
         self.relu = torch.nn.ReLU()
         self.out_features = out_features
+
+        self.layer_norm_s = LayerNorm(self.c_s)
+        self.layer_norm_z = LayerNorm(self.c_z)
+
+        self.conv_s = torch.nn.Conv1d(self.c_s, self.c_s, 3, padding=1)
+        self.conv_z = torch.nn.Conv2d(self.c_z, self.c_z, 3, padding=1)
+
+        self.global_pooling_s = GlobalAttentionPooling(self.c_s, attention_pooling_dim)
+        self.global_pooling_z = GlobalAttentionPooling2D(128, int(attention_pooling_dim))
+
+        self.linear_1 = Linear(self.c_s + self.c_z, self.c_s + self.c_z)
+        self.linear_2 = Linear(self.c_s + self.c_z, out_features)
 
     def get_requirements(self) -> List[str]:
         return ["protein"]
 
     def forward(self, data: Dict[str, Any]):
-        batch = data[self.get_requirements()[0]]
-        # m msa representation
-        # z pair representation
         if self.msa_extrator_cfg is not None:
-            if self.msa_extractor.reduce:
-                concat_feat = self.msa_extractor(batch)
-            else:
-                m, z = self.msa_extractor(batch)
-                raise NotImplementedError
+            alphafold_inputs = data[self.get_requirements()[0]]
+            evoformer_output_dict = self.msa_extractor(alphafold_inputs)
         else:
-            concat_feat = batch
-            if not self.training:
-                concat_feat = torch.mean(torch.stack(concat_feat), axis=0).squeeze(1)
+            evoformer_output_dict = data[self.get_requirements()[0]]
+        s = evoformer_output_dict["single"]
+        z = evoformer_output_dict["pair"]
+        del evoformer_output_dict
 
-        # out = self.relu(self.out_linear(concat_feat))
-        out = self.out_linear(concat_feat)
-        return out
+        # [*, N, C_s]
+        s = self.layer_norm_s(s)
+        # [*, N, N, C_z]
+        z = self.layer_norm_z(z)
+
+        # [*, N, N, C_z]
+        s = self.relu(self.conv_s(s.permute(0, 2, 1)))
+        z = self.relu(self.conv_z(z.permute(0, 3, 1, 2)))
+
+        # [*, C_s]
+        s = self.global_pooling_s(s.permute(0, 2, 1))
+        # [*, C_z]
+        z = self.global_pooling_z(z)
+
+        # [*, C_s + C_z]
+        out = torch.column_stack([s, z])
+        del s, z
+
+        out = self.relu(self.linear_1(out))
+
+        # [*, out_features]
+        return self.linear_2(out)
 
 
-class MsaExtractor(torch.nn.Module):
-    def __init__(self, name_config, finetune=False, update_config=None, pretrained_weight_path=None, reduce=True):
+class AlphaFold(torch.nn.Module):
+    def __init__(self, name_config, finetune=False, update_config=None, pretrained_weight_path=None):
         """
         @param name_config: Name of the openfold configuration to load
             One can view the various possible name in
@@ -85,9 +122,9 @@ class MsaExtractor(torch.nn.Module):
         self.input_embedder = InputEmbedder(
             **self.config["input_embedder"],
         )
-        # self.recycling_embedder = RecyclingEmbedder(
-        #     **self.config["recycling_embedder"],
-        # )
+        self.recycling_embedder = RecyclingEmbedder(
+            **self.config["recycling_embedder"],
+        )
 
         if self.template_config.enabled:
             self.template_angle_embedder = TemplateAngleEmbedder(
@@ -111,6 +148,17 @@ class MsaExtractor(torch.nn.Module):
                 **self.extra_msa_config["extra_msa_stack"],
             )
 
+        self.evoformer = EvoformerStack(
+            **self.config["evoformer_stack"],
+        )
+
+        # self.structure_module = StructureModule(
+        #     **self.config["structure_module"],
+        # )
+        # self.aux_heads = AuxiliaryHeads(
+        #     self.config["heads"],
+        # )
+
         if pretrained_weight_path is not None:
             params = torch.load(pretrained_weight_path)
             modules_to_keep = list(self._modules.keys())
@@ -119,14 +167,10 @@ class MsaExtractor(torch.nn.Module):
                 if k.split(".")[0] in modules_to_keep:
                     new_params.update({k: v})
             self.load_state_dict(new_params)
-
+        self.finetune = finetune
         if not finetune:
             for p in self.parameters():
                 p.requires_grad = False
-
-        self.reduce = reduce
-        if reduce:
-            self.global_average = torch.nn.AdaptiveAvgPool2d(1)
 
     def embed_templates(self, batch, z, pair_mask, templ_dim, inplace_safe):
         if self.template_config.offload_templates:
@@ -231,10 +275,232 @@ class MsaExtractor(torch.nn.Module):
 
         return ret
 
-    def forward(self, feats: Dict[str, Any]):  # Named iteration in openfold
+    def iteration(self, feats, prevs, _recycle=True):
+        # Primary output dictionary
+        outputs = {}
+
+        # This needs to be done manually for DeepSpeed's sake
+        dtype = next(self.parameters()).dtype
+        for k in feats:
+            if feats[k].dtype == torch.float32:
+                feats[k] = feats[k].to(dtype=dtype)
+
+        # Grab some data about the input
+        batch_dims = feats["target_feat"].shape[:-2]
+        no_batch_dims = len(batch_dims)
+        n = feats["target_feat"].shape[-2]
+        n_seq = feats["msa_feat"].shape[-3]
+        device = feats["target_feat"].device
+
+        # Controls whether the model uses in-place operations throughout
+        # The dual condition accounts for activation checkpoints
+        inplace_safe = not (self.training or torch.is_grad_enabled())
+
+        # Prep some features
+        seq_mask = feats["seq_mask"]
+        pair_mask = seq_mask[..., None] * seq_mask[..., None, :]
+        msa_mask = feats["msa_mask"]
+
+        ## Initialize the MSA and pair representations
+
+        # m: [*, S_c, N, C_m]
+        # z: [*, N, N, C_z]
+        m, z = self.input_embedder(
+            feats["target_feat"],
+            feats["residue_index"],
+            feats["msa_feat"],
+            inplace_safe=inplace_safe,
+        )
+
+        # Unpack the recycling embeddings. Removing them from the list allows
+        # them to be freed further down in this function, saving memory
+        m_1_prev, z_prev, x_prev = reversed([prevs.pop() for _ in range(3)])
+
+        if x_prev is None:
+            x_prev = z.new_zeros(
+                (*batch_dims, n, residue_constants.atom_type_num, 3),
+                requires_grad=False,
+            )
+        # Initialize the recycling embeddings, if needs be
+        if None in [m_1_prev, z_prev, x_prev]:
+            # [*, N, C_m]
+            m_1_prev = m.new_zeros(
+                (*batch_dims, n, self.config.input_embedder.c_m),
+                requires_grad=False,
+            )
+
+            # [*, N, N, C_z]
+            z_prev = z.new_zeros(
+                (*batch_dims, n, n, self.config.input_embedder.c_z),
+                requires_grad=False,
+            )
+
+            # [*, N, 3]
+            x_prev = z.new_zeros(
+                (*batch_dims, n, residue_constants.atom_type_num, 3),
+                requires_grad=False,
+            )
+
+        x_prev = pseudo_beta_fn(feats["aatype"], x_prev, None).to(dtype=z.dtype)
+
+        # The recycling embedder is memory-intensive, so we offload first
+        if self.globals.offload_inference and inplace_safe:
+            m = m.cpu()
+            z = z.cpu()
+
+        # m_1_prev_emb: [*, N, C_m]
+        # z_prev_emb: [*, N, N, C_z]
+        m_1_prev_emb, z_prev_emb = self.recycling_embedder(
+            m_1_prev,
+            z_prev,
+            x_prev,
+            inplace_safe=inplace_safe,
+        )
+
+        if self.globals.offload_inference and inplace_safe:
+            m = m.to(m_1_prev_emb.device)
+            z = z.to(z_prev.device)
+
+        # [*, S_c, N, C_m]
+        m[..., 0, :, :] += m_1_prev_emb
+
+        # [*, N, N, C_z]
+        z = add(z, z_prev_emb, inplace=inplace_safe)
+
+        # Deletions like these become significant for inference with large N,
+        # where they free unused tensors and remove references to others such
+        # that they can be offloaded later
+        del m_1_prev, z_prev, x_prev, m_1_prev_emb, z_prev_emb
+
+        # Embed the templates + merge with MSA/pair embeddings
+        if self.config.template.enabled:
+            template_feats = {k: v for k, v in feats.items() if k.startswith("template_")}
+            template_embeds = self.embed_templates(
+                template_feats,
+                z,
+                pair_mask.to(dtype=z.dtype),
+                no_batch_dims,
+                inplace_safe=inplace_safe,
+            )
+
+            # [*, N, N, C_z]
+            z = add(
+                z,
+                template_embeds.pop("template_pair_embedding"),
+                inplace_safe,
+            )
+
+            if "template_angle_embedding" in template_embeds:
+                # [*, S = S_c + S_t, N, C_m]
+                m = torch.cat([m, template_embeds["template_angle_embedding"]], dim=-3)
+
+                # [*, S, N]
+                torsion_angles_mask = feats["template_torsion_angles_mask"]
+                msa_mask = torch.cat([feats["msa_mask"], torsion_angles_mask[..., 2]], dim=-2)
+
+        # Embed extra MSA features + merge with pairwise embeddings
+        if self.config.extra_msa.enabled:
+            # [*, S_e, N, C_e]
+            a = self.extra_msa_embedder(build_extra_msa_feat(feats))
+
+            if self.globals.offload_inference:
+                # To allow the extra MSA stack (and later the evoformer) to
+                # offload its inputs, we remove all references to them here
+                input_tensors = [a, z]
+                del a, z
+
+                # [*, N, N, C_z]
+                z = self.extra_msa_stack._forward_offload(
+                    input_tensors,
+                    msa_mask=feats["extra_msa_mask"].to(dtype=m.dtype),
+                    chunk_size=self.globals.chunk_size,
+                    use_lma=self.globals.use_lma,
+                    pair_mask=pair_mask.to(dtype=m.dtype),
+                    _mask_trans=self.config._mask_trans,
+                )
+
+                del input_tensors
+            else:
+                # [*, N, N, C_z]
+                z = self.extra_msa_stack(
+                    a,
+                    z,
+                    msa_mask=feats["extra_msa_mask"].to(dtype=m.dtype),
+                    chunk_size=self.globals.chunk_size,
+                    use_lma=self.globals.use_lma,
+                    pair_mask=pair_mask.to(dtype=m.dtype),
+                    inplace_safe=inplace_safe,
+                    _mask_trans=self.config._mask_trans,
+                )
+
+        # Run MSA + pair embeddings through the trunk of the network
+        # m: [*, S, N, C_m]
+        # z: [*, N, N, C_z]
+        # s: [*, N, C_s]
+        if self.globals.offload_inference:
+            input_tensors = [m, z]
+            del m, z
+            m, z, s = self.evoformer._forward_offload(
+                input_tensors,
+                msa_mask=msa_mask.to(dtype=input_tensors[0].dtype),
+                pair_mask=pair_mask.to(dtype=input_tensors[1].dtype),
+                chunk_size=self.globals.chunk_size,
+                use_lma=self.globals.use_lma,
+                _mask_trans=self.config._mask_trans,
+            )
+
+            del input_tensors
+        else:
+            m, z, s = self.evoformer(
+                m,
+                z,
+                msa_mask=msa_mask.to(dtype=m.dtype),
+                pair_mask=pair_mask.to(dtype=z.dtype),
+                chunk_size=self.globals.chunk_size,
+                use_lma=self.globals.use_lma,
+                use_flash=self.globals.use_flash,
+                inplace_safe=inplace_safe,
+                _mask_trans=self.config._mask_trans,
+            )
+
+        outputs["msa"] = m[..., :n_seq, :, :]
+        outputs["pair"] = z
+        outputs["single"] = s
+
+        del z
+
+        # Predict 3D structure
+        # outputs["sm"] = self.structure_module(
+        #     outputs,
+        #     feats["aatype"],
+        #     mask=feats["seq_mask"].to(dtype=s.dtype),
+        #     inplace_safe=inplace_safe,
+        #     _offload_inference=self.globals.offload_inference,
+        # )
+        # outputs["final_atom_positions"] = atom14_to_atom37(
+        #     outputs["sm"]["positions"][-1], feats
+        # )
+        # outputs["final_atom_mask"] = feats["atom37_atom_exists"]
+        # outputs["final_affine_tensor"] = outputs["sm"]["frames"][-1]
+
+        # Save embeddings for use during the next recycling iteration
+
+        # [*, N, C_m]
+        m_1_prev = m[..., 0, :, :]
+
+        # [*, N, N, C_z]
+        z_prev = outputs["pair"]
+
+        # [*, N, 3]
+        # x_prev = outputs["final_atom_positions"]
+        x_prev = None
+
+        return outputs, m_1_prev, z_prev, x_prev
+
+    def forward(self, batch):
         """
         Args:
-            feats:
+            batch:
                 Dictionary of arguments outlined in Algorithm 2. Keys must
                 include the official names of the features in the
                 supplement subsection 1.2.9.
@@ -282,177 +548,37 @@ class MsaExtractor(torch.nn.Module):
                     "template_pseudo_beta_mask" ([*, N_templ, N_res])
                         Pseudo-beta mask
         """
-        # Primary output dictionary
-        outputs = {}
+        # Initialize recycling embeddings
+        m_1_prev, z_prev, x_prev = None, None, None
+        prevs = [m_1_prev, z_prev, x_prev]
 
-        # This needs to be done manually for DeepSpeed's sake
-        dtype = next(self.parameters()).dtype
-        for k in feats:
-            if feats[k].dtype == torch.float32:
-                feats[k] = feats[k].to(dtype=dtype)
+        is_grad_enabled = torch.is_grad_enabled()
 
-        # Grab some data about the input
-        batch_dims = feats["target_feat"].shape[:-2]
-        no_batch_dims = len(batch_dims)
-        n = feats["target_feat"].shape[-2]
-        n_seq = feats["msa_feat"].shape[-3]
-        device = feats["target_feat"].device
+        # Main recycling loop
+        num_iters = batch["aatype"].shape[-1]
+        for cycle_no in range(num_iters):
+            # Select the features for the current recycling cycle
+            fetch_cur_batch = lambda t: t[..., cycle_no]
+            feats = tensor_tree_map(fetch_cur_batch, batch)
 
-        # Controls whether the model uses in-place operations throughout
-        # The dual condition accounts for activation checkpoints
-        inplace_safe = not (self.training or torch.is_grad_enabled())
+            # Enable grad iff we're training and it's the final recycling layer
+            is_final_iter = cycle_no == (num_iters - 1)
+            with torch.set_grad_enabled(is_grad_enabled and is_final_iter):
+                if is_final_iter:
+                    # Sidestep AMP bug (PyTorch issue #65766)
+                    if torch.is_autocast_enabled():
+                        torch.clear_autocast_cache()
 
-        # Prep some features
-        seq_mask = feats["seq_mask"]
-        pair_mask = seq_mask[..., None] * seq_mask[..., None, :]
-        msa_mask = feats["msa_mask"]
+                # Run the next iteration of the model
+                outputs, m_1_prev, z_prev, x_prev = self.iteration(feats, prevs, _recycle=(num_iters > 1))
 
-        ## Initialize the MSA and pair representations
+                if not is_final_iter:
+                    del outputs
+                    prevs = [m_1_prev, z_prev, x_prev]
+                    del m_1_prev, z_prev, x_prev
 
-        # m: [*, S_c, N, C_m]
-        # z: [*, N, N, C_z]
-        m, z = self.input_embedder(
-            feats["target_feat"],
-            feats["residue_index"],
-            feats["msa_feat"],
-            inplace_safe=inplace_safe,
-        )
-
-        # Unpack the recycling embeddings. Removing them from the list allows
-        # them to be freed further down in this function, saving memory
-        # m_1_prev, z_prev, x_prev = reversed([prevs.pop() for _ in range(3)])
-
-        # Initialize the recycling embeddings, if needs be
-        # if None in [m_1_prev, z_prev, x_prev]:
-
-        # Change in our implementation
-        # We are removing the recycling step
-        # [*, N, C_m]
-        # m_1_prev = m.new_zeros(
-        #     (*batch_dims, n, self.config.input_embedder.c_m),
-        #     requires_grad=False,
-        # )
-
-        # # [*, N, N, C_z]
-        # z_prev = z.new_zeros(
-        #     (*batch_dims, n, n, self.config.input_embedder.c_z),
-        #     requires_grad=False,
-        # )
-
-        # # [*, N, 3]
-        # x_prev = z.new_zeros(
-        #     (*batch_dims, n, residue_constants.atom_type_num, 3),
-        #     requires_grad=False,
-        # )
-
-        # x_prev = pseudo_beta_fn(
-        #     feats["aatype"], x_prev, None
-        # ).to(dtype=z.dtype)
-
-        # The recycling embedder is memory-intensive, so we offload first
-        if self.globals.offload_inference and inplace_safe:
-            m = m.cpu()
-            z = z.cpu()
-
-        # m_1_prev_emb: [*, N, C_m]
-        # z_prev_emb: [*, N, N, C_z]
-        # m_1_prev_emb, z_prev_emb = self.recycling_embedder(
-        #     m_1_prev,
-        #     z_prev,
-        #     x_prev,
-        #     inplace_safe=inplace_safe,
-        # )
-
-        # if(self.globals.offload_inference and inplace_safe):
-        #     m = m.to(m_1_prev_emb.device)
-        #     z = z.to(z_prev.device)
-
-        # [*, S_c, N, C_m]
-        # m[..., 0, :, :] += m_1_prev_emb
-
-        # [*, N, N, C_z]
-        # z = add(z, z_prev_emb, inplace=inplace_safe)
-
-        # Deletions like these become significant for inference with large N,
-        # where they free unused tensors and remove references to others such
-        # that they can be offloaded later
-        # del m_1_prev, z_prev, x_prev, m_1_prev_emb, z_prev_emb
-
-        # Embed the templates + merge with MSA/pair embeddings
-        if self.config.template.enabled:
-            template_feats = {k: v for k, v in feats.items() if k.startswith("template_")}
-            template_embeds = self.embed_templates(
-                template_feats,
-                z,
-                pair_mask.to(dtype=z.dtype),
-                no_batch_dims,
-                inplace_safe=inplace_safe,
-            )
-
-            # [*, N, N, C_z]
-            z = add(
-                z,
-                template_embeds.pop("template_pair_embedding"),
-                inplace_safe,
-            )
-
-            if "template_angle_embedding" in template_embeds:
-                # [*, S = S_c + S_t, N, C_m]
-                m = torch.cat([m, template_embeds["template_angle_embedding"]], dim=-3)
-
-                # [*, S, N]
-                torsion_angles_mask = feats["template_torsion_angles_mask"]
-                msa_mask = torch.cat([feats["msa_mask"], torsion_angles_mask[..., 2]], dim=-2)
-
-        # Embed extra MSA features + merge with pairwise embeddings
-        if self.config.extra_msa.enabled:
-            # [*, S_e, N, C_e]
-            a = self.extra_msa_embedder(build_extra_msa_feat(feats))
-
-            if self.globals.offload_inference:
-                # To allow the extra MSA stack (and later the evoformer) to
-                # offload its inputs, we remove all references to them here
-                input_tensors = [a, z]
-                del a, z
-
-                # [*, N, N, C_z]
-                z = self.extra_msa_stack._forward_offload(
-                    input_tensors,
-                    msa_mask=feats["extra_msa_mask"].to(dtype=m.dtype),
-                    chunk_size=self.globals.chunk_size,
-                    use_lma=True,  # self.globals.use_lma, # Change in our implementation
-                    pair_mask=pair_mask.to(dtype=m.dtype),
-                    _mask_trans=self.config._mask_trans,
-                )
-
-                del input_tensors
-            else:
-                # [*, N, N, C_z]
-                z = self.extra_msa_stack(
-                    a,
-                    z,
-                    msa_mask=feats["extra_msa_mask"].to(dtype=m.dtype),
-                    chunk_size=self.globals.chunk_size,
-                    use_lma=True,  # self.globals.use_lma, # Change in our implementation
-                    pair_mask=pair_mask.to(dtype=m.dtype),
-                    inplace_safe=inplace_safe,
-                    _mask_trans=self.config._mask_trans,
-                )
-
-                del a
-
-        # Run MSA + pair embeddings through the trunk of the network
-        # m: [*, S, N, C_m]
-        # z: [*, N, N, C_z]
-        # s: [*, N, C_s]
-        if self.reduce:
-            concat_feat = torch.cat(
-                [
-                    self.global_average(torch.transpose(m, 1, -1)),
-                    self.global_average(torch.transpose(z, 1, -1)),
-                ],
-                dim=1,
-            )[:, :, 0, 0]
-            return concat_feat
-        else:
-            return m, z
+        # Run auxiliary heads
+        # outputs.update(self.aux_heads(outputs))
+        del m_1_prev, z_prev, x_prev
+        # del outputs["msa"]
+        return outputs

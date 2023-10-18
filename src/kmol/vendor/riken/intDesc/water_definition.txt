@@ -1,0 +1,4 @@
+# Definition of water molecule name
+# List the names recognized by Pymol
+HOH
+TIP
