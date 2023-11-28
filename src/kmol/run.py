@@ -364,6 +364,7 @@ class Executor(AbstractExecutor):
                 protein_gradients = getattr(outputs, "protein_gd_mean", None)
                 ligand_gradients = getattr(outputs, "ligand_gd_mean", None)
                 hidden_layer_output = getattr(outputs, "hidden_layer", None)
+                likelihood_ratio = getattr(outputs, "likelihood_ratio", None)
                 labels = batch.outputs.cpu().numpy()
                 labels = np.apply_along_axis(transformer_reverter, axis=1, arr=labels)
 
