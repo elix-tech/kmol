@@ -5,10 +5,13 @@ from abc import ABCMeta, abstractmethod
 from functools import partial
 from typing import List, Dict, Tuple
 from copy import deepcopy
-from concurrent.futures import ProcessPoolExecutor
 import multiprocessing
 from tqdm import tqdm
-from dask.distributed import Client
+from pathlib import Path
+import pickle
+import logging
+import traceback
+import concurrent.futures
 
 from torch.utils.data import Subset
 
@@ -20,7 +23,7 @@ from .transformers import AbstractTransformer
 from ..core.config import Config
 from ..core.exceptions import FeaturizationError
 from ..core.helpers import CacheDiskList, SuperFactory, CacheManager
-from ..core.logger import LOGGER as logging
+from ..core.logger import LOGGER as logger
 from ..core.utils import progress_bar
 
 
@@ -28,11 +31,11 @@ class AbstractPreprocessor(metaclass=ABCMeta):
     def __init__(self, config: Config) -> None:
         self._config = config
 
-        self.online = self._config.online_preprocessing
-        self._use_disk = self._config.preprocessing_use_disk
         self._cache_manager = CacheManager(cache_location=self._config.cache_location)
 
         self._featurizers = [SuperFactory.create(AbstractFeaturizer, featurizer) for featurizer in self._config.featurizers]
+
+        [f.set_device(self._config.get_device()) for f in self._featurizers]
 
         self._transformers = [
             SuperFactory.create(AbstractTransformer, transformer) for transformer in self._config.transformers
@@ -60,28 +63,31 @@ class AbstractPreprocessor(metaclass=ABCMeta):
         for transformer in reversed(self._transformers):
             transformer.reverse(sample)
 
+    def _init_logging_worker(self, func, *args):
+        logger.stdout_handler.setLevel(self._config.log_level.upper())
+        return func(*args)
+
     def _get_chunks(self, dataset):
         n_jobs = self._config.featurization_jobs
         chunk_size = len(dataset) // n_jobs
         range_list = list(range(0, len(dataset)))
-        chunks = [range_list[i * chunk_size:(i + 1) * chunk_size] for i in range((len(dataset) + chunk_size - 1) // chunk_size)]
+        chunks = [
+            range_list[i * chunk_size : (i + 1) * chunk_size] for i in range((len(dataset) + chunk_size - 1) // chunk_size)
+        ]
         return [Subset(dataset, chunk) for chunk in chunks]
 
     def _run_parrallel(self, func, dataset, use_disk=False):
         chunks = self._get_chunks(dataset)
         futures = []
+        func = partial(self._init_logging_worker, func)
         with progress_bar() as progress:
-            with multiprocessing.Manager() as manager:
+            with multiprocessing.Manager() as manager, concurrent.futures.ProcessPoolExecutor() as executor:
                 _progress = manager.dict()
-
-                client = Client(n_workers=self._config.featurization_jobs)
-                warnings.simplefilter('ignore')
                 overall_progress_task = progress.add_task("[green]All jobs progress:")
                 for n, chunk in enumerate(chunks, 1):
                     task_id = progress.add_task(f"featurizer {n}", visible=False)
-                    futures.append(client.submit(func, _progress, task_id, chunk, pure=False))
+                    futures.append(executor.submit(func, _progress, task_id, chunk))
 
-                warnings.resetwarnings()
                 n_finished = 0
                 while n_finished < len(futures):
                     for task_id, update_data in _progress.items():
@@ -90,9 +96,10 @@ class AbstractPreprocessor(metaclass=ABCMeta):
                         progress.update(task_id, completed=latest, total=total, visible=latest < total)
                     n_finished = sum([future.done() for future in futures])
                     progress.update(overall_progress_task, completed=n_finished, total=len(futures))
+                warnings.resetwarnings()
 
         if use_disk:
-            logging.info("Merging cache files...")
+            logger.info("Merging cache files...")
             disk_lists = [future.result() for future in futures]
             dataset = disk_lists[0]
             with progress_bar() as progress:
@@ -117,6 +124,12 @@ class AbstractPreprocessor(metaclass=ABCMeta):
 
 
 class OnlinePreprocessor(AbstractPreprocessor):
+    """
+    Will run the featurization at each step of the training. No features will be
+    saved. Ideal when the dataset is very large and can't be kept in memory but
+    the featurization is not a bottleneck.
+    """
+
     def __init__(self, config) -> None:
         super().__init__(config)
 
@@ -157,7 +170,7 @@ class OnlinePreprocessor(AbstractPreprocessor):
     def _load_augmented_data(self):
         loader = SuperFactory.create(AbstractLoader, self._config.loader)
         for i, a in enumerate(self._static_augmentations):
-            logging.info(f"Starting {type(a)} augmentation...")
+            logger.info(f"Starting {type(a)} augmentation...")
             self._static_augmentations[i] = self._cache_manager.execute_cached_operation(
                 processor=partial(a.generate_augmented_data, loader),
                 clear_cache=self._config.clear_cache,
@@ -199,6 +212,22 @@ class OnlinePreprocessor(AbstractPreprocessor):
 
 
 class CachePreprocessor(AbstractPreprocessor):
+    """
+    Run the featurization before the start of the training and keep all feature in
+    memory. Enabling fast training.
+    Ideal when the featurization is time consuming but the final dataset fit in
+    memory.
+    """
+
+    def __init__(self, config, use_disk: bool = False, disk_dir: str = "") -> None:
+        """
+        use_disk: if True, save the featurization to a cache list on the disk.
+        disk_dir: where the cache list is saved
+        """
+        super().__init__(config)
+        self._use_disk = use_disk
+        self._disk_dir = disk_dir
+
     def _load_dataset(self) -> AbstractLoader:
         dataset = self._cache_manager.execute_cached_operation(
             processor=self._prepare_dataset,
@@ -215,16 +244,15 @@ class CachePreprocessor(AbstractPreprocessor):
         return dataset
 
     def _prepare_dataset(self) -> ListLoader:
-
         loader = SuperFactory.create(AbstractLoader, self._config.loader)
-        logging.info("Starting featurization...")
+        logger.info("Starting featurization...")
         dataset = self._run_parrallel(self._prepare_chunk, loader, self._use_disk)
 
         ids = [sample.id_ for sample in dataset]
         return ListLoader(dataset, ids)
 
     def _prepare_chunk(self, progress, task_id, loader) -> List[DataPoint]:
-        dataset = CacheDiskList(tmp_dir=self._config.preprocessing_disk_dir) if self._use_disk else []
+        dataset = CacheDiskList(tmp_dir=self._disk_dir) if self._use_disk else []
         for n, sample in enumerate(loader):
             smiles = sample.inputs["smiles"] if "smiles" in sample.inputs else ""
             try:
@@ -232,9 +260,11 @@ class CachePreprocessor(AbstractPreprocessor):
                 dataset.append(sample)
 
             except FeaturizationError as e:
-                logging.warning(e)
+                tb_str = traceback.format_exc()
+                logger.warning(f"{e}\n{tb_str}")
             except Exception as e:
-                logging.debug(f"{sample} {smiles} - {e}")
+                tb_str = traceback.format_exc()
+                logger.error(f"{sample} {smiles} - {e}\n{tb_str}")
 
             progress[task_id] = {"progress": n + 1, "total": len(loader)}
 
@@ -263,11 +293,11 @@ class CachePreprocessor(AbstractPreprocessor):
                 i += 1
 
     def _apply_deterministic_augmentation(self, a: AbstractStaticAugmentation, loader: AbstractLoader) -> ListLoader:
-        logging.info(f"Starting {type(a)} augmentation...")
+        logger.info(f"Starting {type(a)} augmentation...")
         a.generate_augmented_data(loader)
-        logging.info(f"Starting Featurization of  {type(a)} augmented data...")
+        logger.info(f"Starting Featurization of  {type(a)} augmented data...")
         # a.aug_dataset = self._prepare_chunk(a.aug_dataset)
-        logging.info("Starting featurization...")
+        logger.info("Starting featurization...")
         a.aug_dataset = self._run_parrallel(self._prepare_chunk, a.aug_dataset)
         return a
 
@@ -276,3 +306,60 @@ class CachePreprocessor(AbstractPreprocessor):
         for a in self._static_augmentations:
             tmp_dataset += a.aug_dataset
         return ListLoader(tmp_dataset, range(len(tmp_dataset)))
+
+
+class FilePreprocessor(AbstractPreprocessor):
+    """
+    This preprocessor is made to be used with the featurize task.
+    It is a 2 step process, first run the featurization task with this preprocessor.
+    Then use OnlinePreprocessor and load the generated feature with PickleLoadFeaturizer.
+    The goal is to compute and save complex featurization. Ideal for large dataset with
+    a time consuming featurization.
+    If there is no need to access the featurization files it is also possible to use
+    the Cached dataset with the `use_disk` option.
+    """
+
+    def __init__(
+        self, config, folder_path: str, feature_to_save: List, input_to_use_has_filename: List, overwrite: bool = False
+    ) -> None:
+        """
+        folder_path: Folder where the features will be save. Additional folder will be created
+            based on the name of the feature to save.
+        feature_to_save: Name after the featurization of which field to save.
+            Will be used as additional folder name.
+        input_to_use_has_filename: unique name for each file generated. This field
+            can be used to skip the processing of identical feature and so speed up the preprocessing.
+        """
+        super().__init__(config)
+        self.folder_name = Path(folder_path)
+        self.feature_to_save = feature_to_save
+        self.input_to_use_has_filename = input_to_use_has_filename
+        self.overwrite = overwrite
+        for input_field_filename in self.input_to_use_has_filename:
+            folder = self.folder_name / input_field_filename
+            folder.mkdir(exist_ok=True, parents=True)
+
+    def _load_dataset(self) -> AbstractLoader:
+        loader = SuperFactory.create(AbstractLoader, self._config.loader)
+        with progress_bar() as progress:
+            task_id = progress.add_task("File preprocessing:", total=len(loader))
+            for n, sample in enumerate(loader):
+                smiles = sample.inputs["smiles"] if "smiles" in sample.inputs else ""
+                filenames = []
+                for input_field_filename in self.input_to_use_has_filename:
+                    filenames.append(self.folder_name / input_field_filename / f"{sample.inputs[input_field_filename]}.pkl")
+                if not self.overwrite and all([filename.exists() for filename in filenames]):
+                    continue
+                try:
+                    outputs = self.preprocess(sample)
+                    for output_name, filename in zip(self.feature_to_save, filenames):
+                        with open(filename, "wb") as file:
+                            pickle.dump(outputs.inputs[output_name], file)
+                except FeaturizationError as e:
+                    logging.warning(e)
+                except Exception as e:
+                    logging.debug(f"{sample} {smiles} - {e}")
+                progress.update(task_id, completed=n + 1, total=len(loader))
+
+    def _load_augmented_data(self):
+        return

@@ -1,7 +1,7 @@
 {
-    "server_type": "mila.services.servers.GrcpServer",
-    "server_manager_type": "mila.services.server_manager.GrcpServicer",
-    "grcp_configuration": {},
+    "server_type": "mila.services.servers.GrpcServer",
+    "server_manager_type": "mila.services.server_manager.GrpcServicer",
+    "grpc_configuration": {},
     "task_configuration_file": "data/configs/model/adme/solubility.json",
     "aggregator_type": "mila.aggregators.WeightedTorchAggregator",
     "aggregator_options": {"weights": {"tester1": 0.8, "tester2": 0.1, "tester3": 0.1}},

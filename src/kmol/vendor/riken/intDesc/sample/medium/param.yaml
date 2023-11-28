@@ -1,0 +1,85 @@
+# interaction_type dist(Ang) angle1(deg) angle2_min(deg) angle2_max(deg)
+HB_OH_(N,O): 3.2 60.0 60.0 180.0
+
+# interaction_type dist(Ang) angle1(deg) angle2(deg) angle3(deg)
+HB_OH_OH: 3.2 60.0 90.0 60.0
+
+# interaction_type dist(Ang) angle1(deg) angle1_N4(deg) angle2_min(deg) angle2_max(deg)
+HB_NH_(N,O): 3.2 60.0 90.0 60.0 180.0
+
+# interaction_type dist(Ang) angle1(deg) angle1_N4(deg) angle2(deg) angle3(deg)
+HB_NH_OH: 3.2 60.0 90.0 90.0 60.0
+
+# interaction_type dist(Ang)
+(Met)_(X): 0.2
+
+# interaction_type buffer(Ang)
+(Ion)_(X): 1.0
+S_O: 0.2
+S_N: 0.2
+
+# interaction_type buffer(Ang) diff(Ang) dist1(Ang) dist2(Ang) dist3(Ang)
+vdW: 1.0 0.275 2.69 2.86 2.905
+
+# interaction_type buffer(Ang) angle(deg)
+SH_N: 1.0 90.0
+SH_O: 1.0 90.0
+OH_S: 1.0 90.0
+SH_S: 1.0 90.0
+S_S: 0.4 90.0
+Hal_(X)_N: 1.0 15.0
+Hal_(X)_O: 1.0 15.0
+Hal_(X)_S: 1.0 15.0
+S_F: 1.0 180.0
+
+
+# interaction_type buffer(Ang) dist(Ang) angle1(deg) buffer2(Ang)
+CH_F: 1.0 3.05 180.0 137.15
+NH_F: 1.0 2.99 180.0 145
+SH_F: 1.0 3.3 180.0 145
+
+# interaction_type buffer(Ang) dist1(Ang) angle1(deg) buffer2(Ang) dist2(Ang)
+OH_F: 1.0 2.8 180.0 145 2.7
+
+# interaction_type buffer(Ang) dist1(Ang) dist2(Ang) angle1(deg) angle2(deg)
+CH_N: 1.0 2.95 3.1 180.0 135.0
+CH_S: 1.0 3.2 3.3 180.0 120.0
+
+# interaction_type buffer(Ang) dist1(ANg) angle(deg)
+CH_O: 1.0 3.22 180.0 94.58
+
+# interaction_type buffer(Ang) angle1(deg) angle2(deg) angle3(deg) angle4(deg)
+CH_Hal_(X): 1.0 165.0 150.0 90.0 90.0
+OH_Hal_(X): 1.0 165.0 150.0 90.0 90.0
+SH_Hal_(X): 1.0 165.0 150.0 90.0 90.0
+NH_Hal_(X): 1.0 165.0 150.0 90.0 90.0
+
+# interaction_type buffer(Ang) coef angle1 angle2 dihedral
+S_PI: 1.0 1.2 30.0 120.0 135.0
+
+# interaction_type buffer(Ang) coef angle1(deg) dihedral(deg)
+Hal_PI_(X): 1.0 1.4 150.0 135.0
+
+# interaction_type dist(Ang) buffer(Ang) angle1(deg) angle1_N4(deg) angle2_min(deg) angle2_max(deg)
+Elec_(NH,OH)_(N,O): 3.2 1.0 60.0 90.0 60.0 180.0
+
+# interaction_type dist(Ang) buffer(Ang) angle1(deg) angle1_N4(deg)  angle2(deg) angle3(deg)
+Elec_(N,O)H_OH: 3.2 1.0 60.0 90.0 90.0 60.0
+
+# interaction_type buffer(Ang) angle1(deg) angle2(deg) angle3(deg) charge hydro
+Dipo: 1.0 165.0 90.0 90.0 0.2 except
+
+# interaction_type buffer1(Ang) coef angle1(deg) dihedral(deg)
+CH_PI: 1.0 1.4 3.195 3.325 180.0 124.455
+NH_PI: 1.0 1.4 3.14 3.365 180.0 132.0
+SH_PI: 1.0 1.4 3.2 3.33 180.0 120.0
+OH_PI: 1.0 1.4 3.0 3.3 180.0 105.0
+
+# interaction_type buffer(Ang) dist1(Ang) dist2(Ang) angle1_min(deg) angle1_max(deg) angle1_min(deg) angle1_max(deg)
+NH_S: 1.0 3.155 3.4 105.0 180.0 165.0 180.0
+
+# interaction_type buffer(Ang) angle1(deg) angle2(deg)
+PI_PI: 0.4 30.0 60.0
+
+# interaction_type buffer(Ang) angle1_min(deg) angle1_max(deg) angle2 angle3(deg) charge
+OMulPol: 0.6 75.0 105.0 20.0 150.0 0.2

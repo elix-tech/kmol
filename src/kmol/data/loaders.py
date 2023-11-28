@@ -6,6 +6,7 @@ import pandas as pd
 import dask.dataframe as dd
 from torch.utils.data import Dataset as TorchDataset
 import multiprocessing
+import pickle
 
 from .resources import DataPoint
 
@@ -59,15 +60,19 @@ class CsvLoader(AbstractLoader):
         Retrieve the dataset as List of Datapoint, faster than iterating though the
         list of data in case of very large dataset.
         """
-        df = dd.from_pandas(self._dataset, npartitions=4*multiprocessing.cpu_count())
-        result = df.map_partitions(lambda pdf: pdf.apply(
-            lambda row: DataPoint(
-            id_=row,
-            labels=self._target_columns,
-            inputs={**row[self._input_columns]},
-            outputs=row[self._target_columns]
-        ), axis=1))
-        result = result.compute(scheduler='processes')
+        df = dd.from_pandas(self._dataset, npartitions=4 * multiprocessing.cpu_count())
+        result = df.map_partitions(
+            lambda pdf: pdf.apply(
+                lambda row: DataPoint(
+                    id_=row,
+                    labels=self._target_columns,
+                    inputs={**row[self._input_columns]},
+                    outputs=row[self._target_columns],
+                ),
+                axis=1,
+            )
+        )
+        result = result.compute(scheduler="processes")
         return result.to_list()
 
     def list_ids(self) -> List[Union[int, str]]:
@@ -109,13 +114,16 @@ class MultitaskLoader(CsvLoader):
             filepath_or_buffer=input_path,
             converters=converter_dict,
         )
-        assert type(self._dataset.loc[0, self._task_column_name]) == list, \
-            "Type of target must be a list in the MultitaskLoader"
+        assert (
+            type(self._dataset.loc[0, self._task_column_name]) == list
+        ), "Type of target must be a list in the MultitaskLoader"
         max_target = max(self._dataset.loc[:, self._task_column_name].max())
-        assert max_target < self._max_num_tasks, "The values of the target in the " \
-            "MultitaskLoader should range from 0 to max_num_tasks - 1 here "  \
-            f"maximum in target is {max_target} and max_num_tasks is {max_num_tasks} " \
+        assert max_target < self._max_num_tasks, (
+            "The values of the target in the "
+            "MultitaskLoader should range from 0 to max_num_tasks - 1 here "
+            f"maximum in target is {max_target} and max_num_tasks is {max_num_tasks} "
             f"should be {max_target + 1}"
+        )
 
     def __getitem__(self, id_: str) -> DataPoint:
         entry = self._dataset.loc[id_]

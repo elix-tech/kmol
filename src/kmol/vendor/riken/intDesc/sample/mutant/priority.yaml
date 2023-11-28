@@ -1,0 +1,90 @@
+# Label: Score
+OMulPol: 3
+
+CH_PI: 4
+CH_N: 2
+C_N_vdw: 0
+CH_O: 2
+C_O_vdw: 0
+CH_S: 2
+C_S_vdw: 0
+
+S_PI: 4
+S_N: 2
+S_N_vdW: 0
+S_O: 2
+S_O_vdW: 0
+S_S: 2
+SH_S: 1
+S_S_vdW: 0
+
+SH_PI: 1
+
+HB_NH_O: 6
+NH_PI: 4
+Elec_NH_O: 1
+O_N_vdW: 0
+
+HB_OH_O: 6
+OH_PI: 4
+Elec_OH_O: 1
+O_O_vdW: 0
+
+HB_OH_N: 6
+Elec_OH_N: 1
+
+HB_NH_N: 6
+Elec_NH_N: 1
+N_N_vdW: 0
+
+CH_F: 1
+C_F_vdW: 0
+
+OH_F: 1
+O_F_vdW: 0
+
+NH_F: 1
+N_F_vdW: 0
+
+S_F: 2
+SH_F: 1
+S_F_vdW: 0
+
+PI_PI: 5
+
+Hal_PI_Cl: 4
+Hal_Cl_N: 2
+Cl_N_vdw: 0
+Hal_Cl_O: 2
+Cl_O_vdw: 0
+Hal_Cl_S: 2
+Cl_S_vdw: 0
+
+Hal_PI_Br: 4
+Hal_Br_N: 2
+Br_N_vdw: 0
+Hal_Br_O: 2
+Br_O_vdw: 0
+Hal_Br_S: 2
+Br_S_vdw: 0
+
+Hal_PI_I: 4
+Hal_I_N: 2
+I_N_vdw: 0
+Hal_I_O: 2
+I_O_vdw: 0
+Hal_I_S: 2
+I_S_vdw: 0
+
+CH_Hal_Cl: 1
+CH_Hal_Br: 1
+CH_Hal_I: 1
+NH_Hal_Cl: 1
+NH_Hal_Br: 1
+NH_Hal_I: 1
+OH_Hal_Cl: 1
+OH_Hal_Br: 1
+OH_Hal_I: 1
+SH_Hal_Cl: 1
+SH_Hal_Br: 1
+SH_Hal_I: 1

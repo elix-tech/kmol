@@ -1,3 +1,4 @@
+import os
 import datetime
 import hashlib
 import importlib
@@ -14,6 +15,7 @@ from typing import Type, Any, Dict, Union, T, Optional, List, Callable, TextIO, 
 import humps
 import numpy as np
 import torch
+from filelock import FileLock
 
 from .exceptions import ReflectionError
 from .logger import LOGGER as logging
@@ -79,7 +81,6 @@ class SuperFactory:
 
         dynamic_parameters = dynamic_parameters.copy()
         if "type" in dynamic_parameters:
-
             dependency_type = dynamic_parameters.pop("type")
 
             if "." in dependency_type:
@@ -258,7 +259,6 @@ class Namespace:
 @dataclass
 @total_ordering
 class ConfidenceInterval:
-
     mean: float
     deviation: float
     confidence: float
@@ -360,10 +360,29 @@ class CacheDiskList(DiskList):
         self.cache = []
         self.cache_size = cache_size
         self.cache_index = 0
+        if not os.path.exists(tmp_dir):
+            os.makedirs(tmp_dir)
 
         self.delete = delete
         self.tempfile = tempfile.NamedTemporaryFile(dir=tmp_dir, delete=delete) if not init_temp_file else init_temp_file
         self.tempfile_name = self.tempfile.name
+        self.lock = FileLock(self.tempfile.name + ".lock", thread_local=False)
+
+    def get_lock(self):
+        try:
+            return self.lock
+        except:
+            # For already cached file support should be deletable later.
+            self.lock = FileLock(self.tempfile.name + ".lock", thread_local=False)
+            return self.lock
+
+    def append(self, item):
+        with self.get_lock():
+            super().append(item)
+
+    def __getitem__(self, index):
+        with self.get_lock():
+            return super().__getitem__(index)
 
     def clear(self):
         self.tempfile.close()

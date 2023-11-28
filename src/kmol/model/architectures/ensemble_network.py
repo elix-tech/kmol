@@ -13,6 +13,10 @@ class EnsembleNetwork(AbstractNetwork):
         self.models = torch.nn.ModuleList([SuperFactory.create(AbstractNetwork, config) for config in model_configs])
         EventManager.add_event_listener(event_name="before_predict", handler=AddLossInfoHandler())
 
+    @property
+    def out_features(self):
+        return self.models[0].out_feautures
+
     def load_checkpoint(self, checkpoint_paths: List[str], device: Optional[torch.device] = None):
         n_models = len(self.models)
         n_checkpoints = len(checkpoint_paths)
