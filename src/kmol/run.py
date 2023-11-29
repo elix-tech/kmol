@@ -22,6 +22,8 @@ from .data.loaders import AbstractLoader
 from .data.streamers import GeneralStreamer, SubsetStreamer, CrossValidationStreamer
 from .model.executors import Predictor, ThresholdFinder, LearningRareFinder, Pipeliner
 from .model.metrics import PredictionProcessor, CsvLogger
+from .data.preprocessor import AbstractPreprocessor
+from .core.utils import progress_bar
 
 
 class Executor(AbstractExecutor):
@@ -344,49 +346,53 @@ class Executor(AbstractExecutor):
         predictor = Predictor(config=self._config)
         transformer_reverter = partial(self.__revert_transformers, streamer=streamer)
 
-
         if len(self._config.prediction_additional_columns) > 0:
             loader = SuperFactory.create(AbstractLoader, self._config.loader)
 
         results = defaultdict(list)
         outputs_to_save = defaultdict(list)
-        for batch in data_loader.dataset:
-            outputs = predictor.run(batch)
-            logits = outputs.logits
-            variance = getattr(outputs, "logits_var", None)
-            softmax_score = getattr(outputs, "softmax_score", None)
-            belief_mass = getattr(outputs, "belief_mass", None)
-            protein_gradients = getattr(outputs, "protein_gd_mean", None)
-            ligand_gradients = getattr(outputs, "ligand_gd_mean", None)
-            hidden_layer_output = getattr(outputs, "hidden_layer", None)
-            labels = batch.outputs.cpu().numpy()
-            labels = np.apply_along_axis(transformer_reverter, axis=1, arr=labels)
+        with progress_bar() as progress:
+            description = f"Computing prediction..."
+            task = progress.add_task(description, total=len(data_loader.dataset))
+            for batch in data_loader.dataset:
+                outputs = predictor.run(batch)
+                logits = outputs.logits
+                variance = getattr(outputs, "logits_var", None)
+                softmax_score = getattr(outputs, "softmax_score", None)
+                belief_mass = getattr(outputs, "belief_mass", None)
+                protein_gradients = getattr(outputs, "protein_gd_mean", None)
+                ligand_gradients = getattr(outputs, "ligand_gd_mean", None)
+                hidden_layer_output = getattr(outputs, "hidden_layer", None)
+                labels = batch.outputs.cpu().numpy()
+                labels = np.apply_along_axis(transformer_reverter, axis=1, arr=labels)
 
-            if hidden_layer_output is not None:
-                outputs_to_save["hidden_layer"].extend(hidden_layer_output.cpu().numpy())
+                if hidden_layer_output is not None:
+                    outputs_to_save["hidden_layer"].extend(hidden_layer_output.cpu().numpy())
 
-            predictions = PredictionProcessor.apply_threshold(logits, self._config.threshold)
-            predictions = np.apply_along_axis(transformer_reverter, axis=1, arr=predictions)
+                predictions = PredictionProcessor.apply_threshold(logits, self._config.threshold)
+                predictions = np.apply_along_axis(transformer_reverter, axis=1, arr=predictions)
 
-            results["predictions"].extend(predictions)
-            results["id"].extend(batch.ids)
-            outputs_to_save["id"].extend(batch.ids)
-            results["labels"].extend(labels)
+                results["predictions"].extend(predictions)
+                results["id"].extend(batch.ids)
+                outputs_to_save["id"].extend(batch.ids)
+                results["labels"].extend(labels)
 
-            if variance is not None:
-                results["variance"].extend(variance.cpu().numpy())
-            if softmax_score is not None:
-                results["softmax_score"].extend(softmax_score.cpu().numpy())
-            if belief_mass is not None:
-                results["belief_mass"].extend(belief_mass.cpu().numpy())
-            if protein_gradients is not None:
-                results["protein_gd"].extend(protein_gradients.cpu().numpy())
-            if ligand_gradients is not None:
-                results["ligand_gd"].extend(ligand_gradients.cpu().numpy())
+                if variance is not None:
+                    results["variance"].extend(variance.cpu().numpy())
+                if softmax_score is not None:
+                    results["softmax_score"].extend(softmax_score.cpu().numpy())
+                if belief_mass is not None:
+                    results["belief_mass"].extend(belief_mass.cpu().numpy())
+                if protein_gradients is not None:
+                    results["protein_gd"].extend(protein_gradients.cpu().numpy())
+                if ligand_gradients is not None:
+                    results["ligand_gd"].extend(ligand_gradients.cpu().numpy())
 
-            if len(self._config.prediction_additional_columns) > 0:
-                for col_name in self._config.prediction_additional_columns:
-                    results[col_name].extend(loader._dataset.iloc[batch.ids][col_name].values)
+                if len(self._config.prediction_additional_columns) > 0:
+                    for col_name in self._config.prediction_additional_columns:
+                        results[col_name].extend(loader._dataset.iloc[batch.ids][col_name].values)
+
+                progress.update(task, description=description, advance=1)
 
         results["predictions"] = np.vstack(results["predictions"])
         results["labels"] = np.vstack(results["labels"])
@@ -434,7 +440,7 @@ class Executor(AbstractExecutor):
                 results[f"{label}_ligand_gd"] = results["ligand_gd"][:, i]
                 columns.append(f"{label}_ligand_gd")
             columns += self._config.prediction_additional_columns
-        
+
         results = pd.DataFrame.from_dict({c: results[c] for c in columns})
 
         predictions_dir = Path(self._config.output_path)
@@ -469,7 +475,6 @@ class Executor(AbstractExecutor):
             delete_checkpoints=True,
             log_path=str(Path(self._config.output_path) / "summary.csv"),
         ) as template_parser:
-
             study = optuna.create_study(direction="maximize")
             if self._config.optuna_init:
                 study.enqueue_trial(self._config.optuna_init)
@@ -542,7 +547,6 @@ class Executor(AbstractExecutor):
             raise ValueError(f"Visualizer type should be one of 'umap', 'iig', received: {visualizer_type}")
 
         if visualizer_type == "iig":
-
             streamer = GeneralStreamer(config=self._config)
             data_loader = streamer.get(
                 split_name=self._config.test_split,
@@ -574,7 +578,6 @@ class Executor(AbstractExecutor):
                             visualizer.visualize(batch, target_id, save_path)
 
         elif visualizer_type == "umap":
-
             self._config.probe_layer = "last_hidden"
             results, outputs_to_save, labels_names = self._collect_predictions()
             hidden_features = np.array(outputs_to_save["hidden_layer"])
@@ -604,6 +607,12 @@ class Executor(AbstractExecutor):
 
     def print_cfg(self) -> None:
         logging.info(json.dumps(self._config.__dict__, indent=2))
+
+    def featurize(self) -> None:
+        preprocessor: AbstractPreprocessor = SuperFactory.create(
+            AbstractPreprocessor, self._config.preprocessor, loaded_parameters={"config": self._config}
+        )
+        preprocessor._load_dataset()
 
 
 def main():

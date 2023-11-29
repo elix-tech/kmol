@@ -81,6 +81,7 @@ class AbstractConfiguration(metaclass=ABCMeta):
         cfg = get_dict_from_file(file_path)
         if cfg.get("parameters", False):
             del cfg["parameters"]
+        cfg = cls._support_old_configuration(cfg)
         return cls(job_command, **cfg)
 
     @classmethod
@@ -101,6 +102,26 @@ class AbstractConfiguration(metaclass=ABCMeta):
                 output.update({k: v})
 
         return output
+
+    @classmethod
+    def _support_old_configuration(cls, cfg):
+        # Fix version 1.1.8
+        if "online_preprocessing" in cfg:
+            if cfg.pop("online_preprocessing"):
+                cfg["preprocessor"] = {"type": "online"}
+            else:
+                cfg["preprocessor"] = {
+                    "type": "cache",
+                    "use_disk": cfg.pop("preprocessing_use_disk", False),
+                    "disk_dir": cfg.pop("preprocessing_disk_dir", ""),
+                }
+        elif "preprocessing_use_disk" in cfg:
+            cfg["preprocessor"] = {
+                "type": "cache",
+                "use_disk": cfg.pop("preprocessing_use_disk"),
+                "disk_dir": cfg.pop("preprocessing_disk_dir", ""),
+            }
+        return cfg
 
 
 class AbstractExecutor(metaclass=ABCMeta):

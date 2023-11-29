@@ -1,0 +1,5 @@
+numpy==1.21.4
+networkx==2.6.3
+PyYAML==6.0
+biopandas==0.2.9
+mdanalysis

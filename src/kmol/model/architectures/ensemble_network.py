@@ -11,6 +11,10 @@ class EnsembleNetwork(AbstractNetwork):
         super().__init__()
         self.models = torch.nn.ModuleList([SuperFactory.create(AbstractNetwork, config) for config in model_configs])
 
+    @property
+    def out_features(self):
+        return self.models[0].out_feautures
+
     def load_checkpoint(self, checkpoint_paths: List[str], device: Optional[torch.device] = None):
         n_models = len(self.models)
         n_checkpoints = len(checkpoint_paths)
