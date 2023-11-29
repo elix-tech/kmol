@@ -17,7 +17,7 @@ class ProteinLigandNetwork(AbstractNetwork):
         xavier_init: bool = True,
     ):
         super().__init__()
-
+        self.out_features = out_features
         self.protein_module = protein_module
         self.ligand_module = ligand_module
 
@@ -51,7 +51,6 @@ class ProteinLigandNetwork(AbstractNetwork):
         return ["ligand", "protein"]
 
     def forward(self, data: Dict[str, Any]) -> torch.Tensor:
-
         requirements = self.get_requirements()
 
         ligand_features = self.map(self.ligand_module, data[requirements[0]])

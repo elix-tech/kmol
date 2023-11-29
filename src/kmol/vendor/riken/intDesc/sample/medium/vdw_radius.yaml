@@ -1,0 +1,21 @@
+# Van Der Waals Radius of the elements
+# # FORMAT RULE
+# # - [Element symbol]:[Van der Waals radius]
+# # - Enter [Van der Waals radius] in "Å".
+H: 1.2
+C: 1.7
+N: 1.55
+O: 1.52
+F: 1.47
+S: 1.8
+Cl: 1.75
+Br: 1.85
+I: 1.98
+Fe: 2.44
+Zn: 2.39
+Ca: 2.62
+Mg: 2.51
+Ni: 2.40
+P: 1.80
+Na: 2.27
+K: 2.75

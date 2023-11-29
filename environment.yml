@@ -4,30 +4,32 @@ channels:
   - mordred-descriptor
   - pyg
   - pytorch
-  - nvidia
+  - nvidia/label/cuda-11.7.0
   - conda-forge
+  - acellera
   - defaults
 dependencies:
-  - biopython=1.79
+  - biopython=1.81
   - cairosvg=2.5.2
   - captum=0.5.0
-  - cudatoolkit-dev=11.7.0
+  - cuda=11.7.0
+  - cudatoolkit=11.7.0
   - cython=0.29.33
   - dask=2023.4.0=pyhd8ed1ab_0
   - distributed=2023.4.0=pyhd8ed1ab_0
   - dm-tree=0.1.6
-  - grpcio-tools=1.35.0
-  - grpcio=1.35.0
-  - libprotobuf=3.20.3
+  - grpcio-tools=1.54.2
+  - grpcio=1.54.2
+  - libprotobuf=3.21.12
   - mordred=1.2.0
   - networkx=2.5.1
   - numpy=1.24.1
   - openpyxl=3.1.1
   - optuna=2.4.0
   - pandas=1.5.2
-  - pyg=2.2.0
+  - pyg=2.3.0
   - pyhumps=1.6.1
-  - python=3.9.1
+  - python=3.9.17
   - python_abi=3.9
   - pytorch-cluster=1.6.0
   - pytorch-cuda=11.7
@@ -43,3 +45,8 @@ dependencies:
   - torchaudio=0.13.1
   - torchvision=0.14.1
   - typing-extensions=4.3.0
+  - moleculekit=1.7.7
+  - openbabel=3.1.1
+  - ambertools=22.0
+  - biopandas=0.4.1
+  - mdanalysis=2.5.0

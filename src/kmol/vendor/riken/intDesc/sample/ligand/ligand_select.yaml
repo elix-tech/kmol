@@ -1,0 +1,6 @@
+ligand:
+  name: EMH
+protein:
+  num: 1090:1200
+solvent:
+  name: HOH
