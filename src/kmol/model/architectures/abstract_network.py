@@ -8,8 +8,6 @@ from ...core.helpers import Namespace
 from ...core.logger import LOGGER as logging
 from ...core.observers import EventManager
 from ...core.exceptions import CheckpointNotFound
-from ..evidential_losses import prepare_edl_classification_output
-
 
 class AbstractNetwork(torch.nn.Module, metaclass=ABCMeta):
     @abstractmethod

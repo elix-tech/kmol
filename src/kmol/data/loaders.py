@@ -34,7 +34,7 @@ class AbstractLoader(TorchDataset):
 
 
 class CsvLoader(AbstractLoader):
-    def __init__(self, input_path: str, input_column_names: List[str], target_column_names: List[str], flexible: bool = False):
+    def __init__(self, input_path: str, input_column_names: List[str], target_column_names: List[str]):
         self._input_columns = input_column_names
         self._target_columns = target_column_names
 

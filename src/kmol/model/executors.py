@@ -44,11 +44,11 @@ class AbstractExecutor(metaclass=ABCMeta):
         batch.outputs = batch.outputs.to(self._device)
         for key, values in batch.inputs.items():
             try:
-                if type(values) == torch.Tensor or issubclass(type(values), Data):
+                if isinstance(values, torch.Tensor) or issubclass(type(values), Data):
                     batch.inputs[key] = values.to(self._device)
-                elif type(values) == dict:
+                elif isinstance(values, dict):
                     batch.inputs[key] = self.dict_to_device(values)
-                elif type(values) == list:
+                elif isinstance(values, list):
                     if isinstance(values[0], torch.Tensor):
                         batch.inputs[key] = [a.to(self._device) for a in values]
                     else:
@@ -300,6 +300,9 @@ class Predictor(AbstractExecutor):
         self.network = self.network.eval()
         self.probe = None
 
+        # Macros of observers are launched in criterions, so it should be initialized even in predictor
+        criterion = SuperFactory.create(AbstractCriterion, self.config.criterion).to(self.config.get_device())
+
     def set_hook_probe(self):
         if isinstance(self.network, EnsembleNetwork):
             raise ValueError(
@@ -310,17 +313,15 @@ class Predictor(AbstractExecutor):
             self.probe = HookProbe(self.network, self.config.probe_layer)
 
     def run(self, batch: Batch) -> torch.Tensor:
-        # criterion is launching obsersevers, so it should be initialized even in predictor
-        criterion = SuperFactory.create(AbstractCriterion, self.config.criterion).to(self.config.get_device())
-
         self._to_device(batch)
         with torch.no_grad():
             if self.config.probe_layer is not None:
                 self.set_hook_probe()
 
-            payload = Namespace(data=batch.inputs, extras=[self.config.criterion["type"]])
+            #payload = Namespace(data=batch.inputs, extras=[self.config.criterion["type"]])
+            payload = Namespace(data=batch.inputs, extras=[], loss_type=self.config.criterion["type"])
             EventManager.dispatch_event("before_predict", payload=payload)
-            delattr(payload, 'extras')
+            #delattr(payload, 'extras')
 
             if self.config.inference_mode == "mc_dropout":
                 outputs = self.network.mc_dropout(
@@ -330,7 +331,7 @@ class Predictor(AbstractExecutor):
                     loss_type=self.config.criterion["type"],
                 )
             else:
-                outputs = self.network(**vars(payload))
+                outputs = self.network(payload.data, *payload.extras)
 
             if isinstance(outputs, torch.Tensor):
                 outputs = {"logits": outputs}

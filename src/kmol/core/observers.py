@@ -90,14 +90,20 @@ class AddEpochEventHandler(AbstractEventHandler):
         payload.extras.append(payload.epoch)
 
 
+class AddLossInfoHandler(AbstractEventHandler):
+    """event: before_predict"""
+
+    def run(self, payload: Namespace):
+        payload.extras.append(payload.loss_type)
+    
+
 class AutoEncoderEventHandler(AbstractEventHandler):
     """event: before_criterion"""
 
     def run(self, payload: Namespace):
         payload.logits = payload.logits.view(-1, payload.logits.size(-1))
         payload.features.outputs = payload.features.inputs[payload.config.transformers[0]['input']].view(-1)
-        #payload.features.outputs = payload.features.inputs['protein_index'].view(-1)
-
+        
 
 class EvidentialClassificationProcessingHandler(AbstractEventHandler):
     """event: before_tracker_update"""
@@ -147,13 +153,6 @@ class EvidentialRegressionInferenceHandler(AbstractEventHandler):
 
         payload.logits = mu
         payload.logits_var = epistemic
-
-
-class AddLossInfoHandler(AbstractEventHandler):
-    """event: before_predict"""
-
-    def run(self, payload: Namespace):
-        payload.loss_type = payload.extras[0]
 
 
 class AddMaskEventHandler(AbstractEventHandler):
