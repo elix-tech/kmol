@@ -95,15 +95,7 @@ class AddLossInfoHandler(AbstractEventHandler):
 
     def run(self, payload: Namespace):
         payload.extras.append(payload.loss_type)
-    
 
-class AutoEncoderEventHandler(AbstractEventHandler):
-    """event: before_criterion"""
-
-    def run(self, payload: Namespace):
-        payload.logits = payload.logits.view(-1, payload.logits.size(-1))
-        payload.features.outputs = payload.features.inputs[payload.config.transformers[0]['input']].view(-1)
-        
 
 class EvidentialClassificationProcessingHandler(AbstractEventHandler):
     """event: before_tracker_update"""
@@ -137,6 +129,7 @@ class EvidentialClassificationInferenceHandler(AbstractEventHandler):
         payload.logits = logits
         payload.logits_var = uncertainty
         payload.softmax_score = softmax_score
+        
 
 class EvidentialRegressionInferenceHandler(AbstractEventHandler):
     """event: after_val_inference|after_predict"""

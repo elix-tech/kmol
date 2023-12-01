@@ -32,8 +32,7 @@ class LogNormalizeTransformer(AbstractTransformer):
             data.outputs[target] = np.exp(data.outputs[target])
 
 class AutoEncoderTransformer(AbstractTransformer):
-    def __init__(self, target: str, input: str):
-        self._target = target
+    def __init__(self, input: str):
         self._input = input
 
     def apply(self, data: DataPoint) -> None:

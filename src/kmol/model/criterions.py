@@ -7,7 +7,7 @@ from .evidential_losses import (
     edl_regression,
 )
 
-from ..core.observers import (EventManager, AddEpochEventHandler, AutoEncoderEventHandler,
+from ..core.observers import (EventManager, AddEpochEventHandler,
                               EvidentialClassificationProcessingHandler, EvidentialRegressionProcessingHandler,
                               EvidentialClassificationInferenceHandler, EvidentialRegressionInferenceHandler)
 
@@ -112,6 +112,18 @@ class MultitaskCrossEntropyLoss(torch.nn.CrossEntropyLoss):
 
 class EvidentialLoss(torch.nn.Module):
     def __init__(self, loss: Dict[str, str]):
+        """
+        Criterions for evidential deep learning.
+        Implementation of following papers for the modes:
+        - classification => Evidential Deep Learning to Quantify Classification Uncertainty  (https://arxiv.org/pdf/1806.01768.pdf)
+        - regression => Deep Evidential Regression (https://arxiv.org/abs/1910.02600)
+
+        Config example:
+        "criterion": {
+            "type": "kmol.model.criterions.EvidentialLoss",
+            "loss": {"type": "classification", "annealing": true}
+        },
+        """
         super().__init__()
 
         self._loss_type = loss["type"]
@@ -140,16 +152,20 @@ class EvidentialLoss(torch.nn.Module):
 
         return loss
 
-class LroddLoss(torch.nn.Module):
-    def __init__(self):
+class PaddedLoss(torch.nn.Module):
+    def __init__(self, loss: torch.nn.Module, padding_value: int = -1, tokenized: bool = False):
         super().__init__()
-
-        EventManager.add_event_listener(event_name="before_criterion", handler=AutoEncoderEventHandler())
-        
-        self._loss = torch.nn.CrossEntropyLoss(reduction="none")
+        self._loss = loss
+        self._loss.reduction = "none"
+        self._padding_value = padding_value
+        self._tokenized = tokenized
 
     def forward(self, outputs: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
-        mask = labels != -1
+        if self._tokenized:
+            outputs = outputs.view(-1, outputs.size(-1))
+            labels = labels.view(-1).long()
+
+        mask = labels != self._padding_value
         labels[~mask] = 0
 
         loss = self._loss(outputs, labels)

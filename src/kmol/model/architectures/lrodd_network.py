@@ -7,6 +7,30 @@ from .abstract_network import AbstractNetwork
 
 class PseudoLroddNetwork(EnsembleNetwork):
     def __init__(self, model_configs: List[Dict[str, Any]]):
+        """
+        This is not a direct implementation for Likelihood Ratios for Out-of-Distribution Detection.
+        This gives pseudo likelihood ratios between two trained classifier.
+        The ratio of classifer probabilities can be interpreted as a likelihood ratio.
+
+        Config example:
+        "model": {
+            "type": "pseudo_lrodd",
+            "model_configs": [
+                {
+                    "type": "classifier",
+                    "in_features": 1024,
+                    "hidden_features": 512,
+                    "out_features": 2,
+                },
+                {
+                    "type": "classifier",
+                    "in_features": 1024,
+                    "hidden_features": 512,
+                    "out_features": 2,
+                }
+            ]
+        },
+        """
         super().__init__(model_configs)
 
     def forward(self, data: Dict[str, Any], loss_type: str = None) -> Dict[str, torch.Tensor]:
@@ -72,6 +96,41 @@ class GenerativeLstmNetwork(AbstractNetwork):
 
 class LroddNetwork(EnsembleNetwork):
     def __init__(self, model_configs: List[Dict[str, Any]]):
+        """
+        Architecture used LRODD for Likelihood Ratios for Out-of-Distribution Detection (https://arxiv.org/abs/1906.02845).
+        Expects a list of 3 models: classifier, foreground, background.
+        Foreground and background models should be generative models.
+        Background model should be trained with pertubation.
+        The log likelihood difference between the foreground and background model is used to compute the likelihood ratio.
+        This likelihood ratio is a metric akin to uncertainty.
+
+        Config example:
+        "model": {
+            "type": "lrodd",
+            "model_configs": [
+                {
+                    "type": "classifier",
+                    "in_features": 1024,
+                    "hidden_features": 512,
+                    "out_features": 2,
+                },
+                {
+                    "type": "generative_lstm",
+                    "in_features": 21,
+                    "n_embedding": 64,
+                    "hidden_features": 64,
+                    "out_features": 21
+                },
+                {
+                    "type": "generative_lstm",
+                    "in_features": 21,
+                    "n_embedding": 64,
+                    "hidden_features": 64,
+                    "out_features": 21
+                }
+            ]
+        },
+        """
         super().__init__(model_configs)
 
     def forward(self, data: Dict[str, Any], loss_type: str) -> Dict[str, torch.Tensor]:

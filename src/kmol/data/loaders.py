@@ -40,7 +40,7 @@ class CsvLoader(AbstractLoader):
 
         self._dataset = pd.read_csv(input_path)
 
-        # Add target columns if they don't exist
+        # Add target column if none defined
         self._dataset = self._dataset.assign(**{col: None for col in target_column_names if col not in self._dataset.columns})
 
     def __len__(self) -> int:

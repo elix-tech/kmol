@@ -318,10 +318,8 @@ class Predictor(AbstractExecutor):
             if self.config.probe_layer is not None:
                 self.set_hook_probe()
 
-            #payload = Namespace(data=batch.inputs, extras=[self.config.criterion["type"]])
             payload = Namespace(data=batch.inputs, extras=[], loss_type=self.config.criterion["type"])
             EventManager.dispatch_event("before_predict", payload=payload)
-            #delattr(payload, 'extras')
 
             if self.config.inference_mode == "mc_dropout":
                 outputs = self.network.mc_dropout(

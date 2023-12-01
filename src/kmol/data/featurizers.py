@@ -482,6 +482,11 @@ class IndexFeaturizer(AbstractFeaturizer):
         should_cache: bool = False,
         rewrite: bool = True,
     ):
+        """
+        Featurizer converting a string to a list of index in vocabulary.
+        This is mainly used along the padded collater for RNNs with nn.embedding as first layer.
+        Max lenght of the sequence in batch is computed in the collater.
+        """
         super().__init__(inputs, outputs, should_cache, rewrite)
         self._vocabulary = vocabulary
         self._to_index_dict = {v: k for k, v in enumerate(vocabulary)}

@@ -2,7 +2,7 @@ from abc import ABCMeta, abstractmethod
 import math
 import random
 from copy import deepcopy
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 import itertools
 
 from rdkit import Chem
@@ -11,6 +11,7 @@ from scipy.stats import bernoulli
 import torch
 from torch_geometric.data import Data as PyG_Data
 import numpy as np
+from .resources import DataPoint
 
 from ..vendor.openfold.utils.tensor_utils import tensor_tree_map
 
@@ -67,8 +68,11 @@ class BaseTransform(AbstractAugmentation):
         self.prob = prob
         self.input_field = input_field
 
+    def __call__(self, data: DataPoint, seed=None) -> DataPoint:
+        data.inputs = self.process_input(data.inputs, seed)
+        return data
 
-    def __call__(self, data: Dict, seed=None) -> PyG_Data:
+    def process_input(self, data: Dict, seed=None) -> PyG_Data:
         """
         @param mol_graph: PyG Data to be augmented
         @param metadata: if set to be a list, metadata about the function execution
@@ -180,7 +184,7 @@ class RandomBondDeleteAugmentation(BaseTransform):
         return "RandomBondDelete(p = {})".format(self.prob)
 
 class AbstractProteinPertubationAugmentation(AbstractAugmentation):
-    def __init__(self, vocabulary: List[str], p: float = 0.2, input_field: str = "target_sequence", output_field: str = "protein_index"):
+    def __init__(self, vocabulary: List[str], p: float = 0.2, input_field: str = "target_sequence", output_field: str = "protein_index", autoencoder: bool = False):
         self._original_vocabulary = vocabulary
         self._bernoulli_prob = p
         self._input = input_field
@@ -194,13 +198,20 @@ class AbstractProteinPertubationAugmentation(AbstractAugmentation):
             if bern_seq[i]:
                 l_data[i] = random.choice(self._original_vocabulary)
         return ''.join(l_data)
+    
+    def __call__(self, data: DataPoint, seed=None) -> DataPoint:
+        data.inputs = self.process_input(data.inputs, seed)
+        if self._autoencoder:
+            data.outputs = data.inputs[self._output]
+
+        return data
 
 class ProteinPerturbationBaggedAugmentation(AbstractProteinPertubationAugmentation):
     """
     Augmentation useful for pseudo lrodd background network. Perturb the protein following a Bernoulli distribution.
     """
-    def __init__(self, vocabulary: List[str], max_length: int, p: float = 0.2, input_field: str = "target_sequence", output_field: str = "protein"):
-        super().__init__(vocabulary, p, input_field, output_field)
+    def __init__(self, vocabulary: List[str], max_length: int, p: float = 0.2, input_field: str = "target_sequence", output_field: str = "protein", autoencoder: bool = False):
+        super().__init__(vocabulary, p, input_field, output_field, autoencoder)
         self._vocabulary = self._get_combinations(vocabulary, max_length)
         self._max_length = max_length
 
@@ -212,8 +223,8 @@ class ProteinPerturbationBaggedAugmentation(AbstractProteinPertubationAugmentati
                 combinations.append("".join(variation))
 
         return combinations
-
-    def __call__(self, data: dict, seed=None) -> dict:
+    
+    def process_input(self, data: dict, seed=None) -> dict:
         target_sequence = data[self._input]
         target_sequence = self._perturb(target_sequence)
 
@@ -230,9 +241,10 @@ class ProteinPerturbationSequenceAugmentation(AbstractProteinPertubationAugmenta
     """
     Augmentation useful for lrodd generative bg network. Perturb the protein following a Bernoulli distribution.
     """
-    def __init__(self, vocabulary: List[str], p: float = 0.2, input_field: str = "target_sequence", output_field: str = "protein_index"):
-        super().__init__(vocabulary, p, input_field, output_field)
+    def __init__(self, vocabulary: List[str], p: float = 0.2, input_field: str = "target_sequence", output_field: str = "protein_index", autoencoder: bool = False):
+        super().__init__(vocabulary, p, input_field, output_field, autoencoder)
         self._to_index_dict = self._create_index_dict()
+        self._autoencoder = autoencoder
 
     def _create_index_dict(self):
         to_index_dict = {}
@@ -241,7 +253,7 @@ class ProteinPerturbationSequenceAugmentation(AbstractProteinPertubationAugmenta
 
         return to_index_dict
 
-    def __call__(self, data: dict, seed=None) -> dict:
+    def process_input(self, data: dict, seed=None) -> dict:
         target_sequence = data[self._input]
         target_sequence = self._perturb(target_sequence)
         data[self._output] = [self._to_index_dict[amino_acid] for amino_acid in target_sequence]
