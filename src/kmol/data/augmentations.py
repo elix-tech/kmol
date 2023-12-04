@@ -205,6 +205,10 @@ class AbstractProteinPertubationAugmentation(AbstractAugmentation):
             data.outputs = data.inputs[self._output]
 
         return data
+    
+    @abstractmethod
+    def process_input(self, data: dict, seed=None) -> dict:
+        raise NotImplementedError
 
 class ProteinPerturbationBaggedAugmentation(AbstractProteinPertubationAugmentation):
     """
