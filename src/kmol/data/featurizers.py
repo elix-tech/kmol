@@ -176,6 +176,9 @@ class RdkitDescriptorComputer(AbstractDescriptorComputer):
 
 
 class MordredDescriptorComputer(AbstractDescriptorComputer):
+    """
+    There is 1613 feature generated with this computer
+    """
     def __init__(self):
         from mordred import Calculator, descriptors
 
@@ -199,9 +202,9 @@ class DescriptorFeaturizer(AbstractFeaturizer):
         super().__init__(inputs, outputs, should_cache, rewrite)
         self._descriptor_calculator = descriptor_calculator
 
-    def _process(self, data: str):
+    def _process(self, data: str, entry: DataPoint):
         mol = Chem.MolFromSmiles(data)
-        molecule_features = self._descriptor_calculator.run(mol)
+        molecule_features = self._descriptor_calculator.run(mol, entry)
         return torch.FloatTensor(molecule_features)
 
 
