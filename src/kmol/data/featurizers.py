@@ -176,6 +176,9 @@ class RdkitDescriptorComputer(AbstractDescriptorComputer):
 
 
 class MordredDescriptorComputer(AbstractDescriptorComputer):
+    """
+    There is 1613 feature generated with this computer
+    """
     def __init__(self):
         from mordred import Calculator, descriptors
 
@@ -199,9 +202,9 @@ class DescriptorFeaturizer(AbstractFeaturizer):
         super().__init__(inputs, outputs, should_cache, rewrite)
         self._descriptor_calculator = descriptor_calculator
 
-    def _process(self, data: str):
+    def _process(self, data: str, entry: DataPoint):
         mol = Chem.MolFromSmiles(data)
-        molecule_features = self._descriptor_calculator.run(mol)
+        molecule_features = self._descriptor_calculator.run(mol, entry)
         return torch.FloatTensor(molecule_features)
 
 
@@ -473,6 +476,27 @@ class BagOfWordsFeaturizer(AbstractFeaturizer):
 
         return torch.FloatTensor(list(sample.values()))
 
+class IndexFeaturizer(AbstractFeaturizer):
+    def __init__(
+        self,
+        inputs: List[str],
+        outputs: List[str],
+        vocabulary: List[str],
+        should_cache: bool = False,
+        rewrite: bool = True,
+    ):
+        """
+        Featurizer converting a string to a list of index in vocabulary.
+        This is mainly used along the padded collater for RNNs with nn.embedding as first layer.
+        Max lenght of the sequence in batch is computed in the collater.
+        """
+        super().__init__(inputs, outputs, should_cache, rewrite)
+        self._vocabulary = vocabulary
+        self._to_index_dict = {v: k for k, v in enumerate(vocabulary)}
+
+    def _process(self, data: str, entry: DataPoint) -> torch.FloatTensor:
+        sample = [self._to_index_dict[amino_acid] for amino_acid in data]
+        return torch.LongTensor(sample)
 
 class PerturbedBagOfWordsFeaturizer(BagOfWordsFeaturizer):
     def __init__(

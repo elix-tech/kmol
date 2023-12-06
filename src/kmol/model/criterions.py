@@ -2,14 +2,14 @@ import torch
 from typing import List, Dict
 
 from .evidential_losses import (
-    edl_mse_loss,
-    edl_log_loss,
-    edl_digamma_loss,
-    edl_reg_log,
-    edl_log_loss_multilabel_logits,
-    edl_log_loss_multilabel_nologits,
-    edl_log_loss_multilabel_nologits_masked_weighted,
+    edl_classification,
+    edl_classification_masked,
+    edl_regression,
 )
+
+from ..core.observers import (EventManager, AddEpochEventHandler,
+                              EvidentialClassificationProcessingHandler, EvidentialRegressionProcessingHandler,
+                              EvidentialClassificationInferenceHandler, EvidentialRegressionInferenceHandler)
 
 
 class WeightedLoss(torch.nn.Module):
@@ -112,22 +112,64 @@ class MultitaskCrossEntropyLoss(torch.nn.CrossEntropyLoss):
 
 class EvidentialLoss(torch.nn.Module):
     def __init__(self, loss: Dict[str, str]):
+        """
+        Criterions for evidential deep learning.
+        Implementation of following papers for the modes:
+        - classification => Evidential Deep Learning to Quantify Classification Uncertainty  (https://arxiv.org/pdf/1806.01768.pdf)
+        - regression => Deep Evidential Regression (https://arxiv.org/abs/1910.02600)
+
+        Config example:
+        "criterion": {
+            "type": "kmol.model.criterions.EvidentialLoss",
+            "loss": {"type": "classification", "annealing": true}
+        },
+        """
         super().__init__()
 
         self._loss_type = loss["type"]
+        self._loss_annealing = loss["annealing"]
 
         loss_dict = {
-            "class_log": edl_log_loss,
-            "class_log_multilabel_logits": edl_log_loss_multilabel_logits,
-            "class_log_multilabel_nologits": edl_log_loss_multilabel_nologits,
-            "class_mse": edl_mse_loss,
-            "class_digamma": edl_digamma_loss,
-            "reg_log": edl_reg_log,
-            "class_log_multilabel_nologits_masked": edl_log_loss_multilabel_nologits_masked_weighted,
+            "classification": edl_classification,
+            "classification_masked": edl_classification_masked,
+            "regression": edl_regression,
         }
         self._loss = loss_dict[loss["type"]]
 
+        EventManager.add_event_listener(event_name="before_criterion", handler=AddEpochEventHandler())
+        
+        if self._loss_type == "classification" or self._loss_type == "classification_masked":
+            EventManager.add_event_listener(event_name="before_tracker_update", handler=EvidentialClassificationProcessingHandler())
+            EventManager.add_event_listener(event_name="after_val_inference", handler=EvidentialClassificationInferenceHandler())
+            EventManager.add_event_listener(event_name="after_predict", handler=EvidentialClassificationInferenceHandler())
+        else:
+            EventManager.add_event_listener(event_name="before_tracker_update", handler=EvidentialRegressionProcessingHandler())
+            EventManager.add_event_listener(event_name="after_val_inference", handler=EvidentialRegressionInferenceHandler())
+            EventManager.add_event_listener(event_name="after_predict", handler=EvidentialRegressionInferenceHandler())
+
+    def forward(self, outputs: torch.Tensor, labels: torch.Tensor, epoch: int) -> torch.Tensor:
+        loss = self._loss(outputs, labels, epoch=epoch, loss_annealing=self._loss_annealing)
+
+        return loss
+
+class PaddedLoss(torch.nn.Module):
+    def __init__(self, loss: torch.nn.Module, padding_value: int = -1, tokenized: bool = False):
+        super().__init__()
+        self._loss = loss
+        self._loss.reduction = "none"
+        self._padding_value = padding_value
+        self._tokenized = tokenized
+
     def forward(self, outputs: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
+        if self._tokenized:
+            outputs = outputs.view(-1, outputs.size(-1))
+            labels = labels.view(-1).long()
+
+        mask = labels != self._padding_value
+        labels[~mask] = 0
+
         loss = self._loss(outputs, labels)
 
+        loss = loss.view_as(mask) * mask
+        loss = loss.sum() / mask.sum()
         return loss

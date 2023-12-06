@@ -11,6 +11,7 @@ import torch
 from torch.nn.modules.loss import _Loss as AbstractCriterion
 from torch.optim import Optimizer as AbstractOptimizer
 from torch.optim.lr_scheduler import _LRScheduler as AbstractLearningRateScheduler, ExponentialLR
+from torch_geometric.data import Data
 
 from .architectures import AbstractNetwork, EnsembleNetwork
 from .metrics import PredictionProcessor
@@ -43,12 +44,17 @@ class AbstractExecutor(metaclass=ABCMeta):
         batch.outputs = batch.outputs.to(self._device)
         for key, values in batch.inputs.items():
             try:
-                if type(values) is dict:
-                    batch.inputs[key] = self.dict_to_device(values)
-                elif type(values) == list:
-                    batch.inputs[key] = [a.to(self._device) for a in values]
-                else:
+                if isinstance(values, torch.Tensor) or issubclass(type(values), Data):
                     batch.inputs[key] = values.to(self._device)
+                elif isinstance(values, dict):
+                    batch.inputs[key] = self.dict_to_device(values)
+                elif isinstance(values, list):
+                    if isinstance(values[0], torch.Tensor):
+                        batch.inputs[key] = [a.to(self._device) for a in values]
+                    else:
+                        batch.inputs[key] = [a for a in values]
+                else:
+                    batch.inputs[key] = values
             except (AttributeError, ValueError) as e:
                 logging.debug(e)
                 pass
@@ -59,7 +65,10 @@ class AbstractExecutor(metaclass=ABCMeta):
             if type(v) is dict:
                 new_dict[k] = self.dict_to_device(v)
             else:
-                new_dict[k] = v.to(self._device)
+                if isinstance(v, torch.Tensor) or issubclass(type(values), Data):
+                    new_dict[k] = v.to(self._device)
+                else:
+                    new_dict[k] = v
 
         return new_dict
 
@@ -151,28 +160,27 @@ class Trainer(AbstractExecutor):
 
         EventManager.dispatch_event(event_name="after_train_end", payload=initial_payload)
 
-    def _training_step(self, batch):
+    def _training_step(self, batch, epoch):
         self._to_device(batch)
         self.optimizer.zero_grad()
         outputs = self.network(batch.inputs)
 
-        payload = Namespace(features=batch, logits=outputs, extras=[])
+        payload = Namespace(features=batch, logits=outputs, extras=[], epoch=epoch, config=self.config)
         EventManager.dispatch_event(event_name="before_criterion", payload=payload)
 
         loss = self.criterion(payload.logits, payload.features.outputs, *payload.extras)
+
         loss.backward()
 
         self.optimizer.step()
         if self.config.is_stepwise_scheduler:
             self.scheduler.step()
 
-        logits_modes_dict = {
-            "evidential_classification_multilabel_nologits": self.network.evidential_nologits_outputs_processing,
-            "simple_classification": self.network.simple_classification_outputs_processing,
-            "evidential_regression": self.network.evidential_regression_outputs_processing,
-        }
-        logits_mode = logits_modes_dict.get(self.config.inference_mode, self.network.pass_outputs)
-        outputs = logits_mode(outputs)
+        payload = Namespace(outputs=outputs)
+        EventManager.dispatch_event(event_name="before_tracker_update", payload=payload)
+
+        outputs = payload.outputs
+        
         self._update_trackers(loss.item(), batch.outputs, outputs)
 
     def _train_epoch(self, train_loader, epoch):
@@ -182,7 +190,7 @@ class Trainer(AbstractExecutor):
             description = f"Epoch {epoch} | Train Loss: {self._loss_tracker.get():.5f}"
             task = progress.add_task(description, total=len(train_loader.dataset))
             for batch in train_loader.dataset:
-                self._training_step(batch)
+                self._training_step(batch, epoch)
                 if iteration % self.config.log_frequency == 0:
                     description = f"Epoch {epoch} | Train Loss: {self._loss_tracker.get():.5f}"
                 progress.update(task, description=description, advance=1)
@@ -203,18 +211,10 @@ class Trainer(AbstractExecutor):
                 self._to_device(batch)
                 ground_truth.append(batch.outputs)
 
-                inference_modes_dict = {
-                    "evidential_classification": self.network.evidential_classification,
-                    "evidential_classification_multilabel_logits": self.network.evidential_classification_multilabel_logits,
-                    "evidential_classification_multilabel_nologits": self.network.evidential_classification_multilabel_nologits,
-                    "evidential_regression": self.network.evidential_regression,
-                }
-                inference_mode = inference_modes_dict.get(self.config.inference_mode)
+                payload = Namespace(logits=self.network(batch.inputs), logits_var=None, softmax_score=None)
+                EventManager.dispatch_event(event_name="after_val_inference", payload=payload)
 
-                if inference_mode:
-                    logits.append(inference_mode(batch.inputs)["logits"])
-                else:
-                    logits.append(self.network(batch.inputs))
+                logits.append(payload.logits)
 
             metrics = self._metric_computer.compute_metrics(ground_truth, logits)
             averages = self._metric_computer.compute_statistics(metrics, (np.mean,))
@@ -300,6 +300,9 @@ class Predictor(AbstractExecutor):
         self.network = self.network.eval()
         self.probe = None
 
+        # Macros of observers are launched in criterions, so it should be initialized even in predictor
+        criterion = SuperFactory.create(AbstractCriterion, self.config.criterion).to(self.config.get_device())
+
     def set_hook_probe(self):
         if isinstance(self.network, EnsembleNetwork):
             raise ValueError(
@@ -315,7 +318,9 @@ class Predictor(AbstractExecutor):
             if self.config.probe_layer is not None:
                 self.set_hook_probe()
 
-            # TODO: use superfactory for this
+            payload = Namespace(data=batch.inputs, extras=[], loss_type=self.config.criterion["type"])
+            EventManager.dispatch_event("before_predict", payload=payload)
+
             if self.config.inference_mode == "mc_dropout":
                 outputs = self.network.mc_dropout(
                     batch.inputs,
@@ -323,20 +328,8 @@ class Predictor(AbstractExecutor):
                     n_iter=self.config.mc_dropout_iterations,
                     loss_type=self.config.criterion["type"],
                 )
-            elif self.config.inference_mode == "loss_aware":
-                outputs = self.network.loss_aware_forward(
-                    batch.inputs,
-                    loss_type=self.config.criterion["type"],
-                )
             else:
-                inference_modes_dict = {
-                    "evidential_classification": self.network.evidential_classification,
-                    "evidential_classification_multilabel_logits": self.network.evidential_classification_multilabel_logits,
-                    "evidential_classification_multilabel_nologits": self.network.evidential_classification_multilabel_nologits,
-                    "evidential_regression": self.network.evidential_regression,
-                }
-                inference_mode = inference_modes_dict.get(self.config.inference_mode, self.network)
-                outputs = inference_mode(batch.inputs)
+                outputs = self.network(payload.data, *payload.extras)
 
             if isinstance(outputs, torch.Tensor):
                 outputs = {"logits": outputs}

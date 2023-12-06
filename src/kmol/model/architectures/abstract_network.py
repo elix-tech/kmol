@@ -9,7 +9,6 @@ from ...core.logger import LOGGER as logging
 from ...core.observers import EventManager
 from ...core.exceptions import CheckpointNotFound
 
-
 class AbstractNetwork(torch.nn.Module, metaclass=ABCMeta):
     @abstractmethod
     def get_requirements(self) -> List[str]:
@@ -58,78 +57,6 @@ class AbstractNetwork(torch.nn.Module, metaclass=ABCMeta):
 
         return {"logits": torch.mean(outputs, dim=0), "logits_var": torch.var(outputs, dim=0)}
 
-    def evidential_classification_multilabel_logits(self, data):
-        outputs = self.forward(data)
-        out = torch.sigmoid(outputs)
-        out = torch.unsqueeze(out, dim=-1)
-        out = torch.cat((out, 1 - out), -1)
-        alpha = out + 1
-        uncertainty = 2 / torch.sum(alpha, dim=-1, keepdim=True)
-        return {"logits": outputs, "logits_var": uncertainty}
-
-    @torch.no_grad()
-    def evidential_nologits_outputs_processing(self, outputs):
-        true_logits, false_logits = torch.chunk(outputs, 2, dim=-1)
-        true_logits = torch.unsqueeze(true_logits, dim=-1)
-        false_logits = torch.unsqueeze(false_logits, dim=-1)
-        out = torch.cat((true_logits, false_logits), dim=-1)
-
-        return torch.argmin(out, dim=-1)
-
-    @torch.no_grad()
-    def evidential_regression_outputs_processing(self, outputs):
-        mu, v, alpha, beta = torch.chunk(outputs, 4, dim=-1)
-        return mu
-
     @torch.no_grad()
     def pass_outputs(self, outputs):
         return outputs
-
-    @torch.no_grad()
-    def simple_classification_outputs_processing(self, outputs):
-        return torch.argmax(outputs, dim=-1)
-
-    def evidential_classification_multilabel_nologits(self, data):
-        outputs = self.forward(data)
-
-        true_logits, false_logits = torch.chunk(outputs, 2, dim=-1)
-        true_logits = torch.unsqueeze(true_logits, dim=-1)
-        false_logits = torch.unsqueeze(false_logits, dim=-1)
-        out = torch.cat((true_logits, false_logits), dim=-1)
-
-        evidence = torch.nn.functional.relu(out)
-        alpha = evidence + 1
-        uncertainty = (2 / torch.sum(alpha, dim=-1, keepdim=True)).squeeze()
-
-        # logic is reversed as 0 is true and 1 is false
-        prediction = torch.argmin(out, dim=-1)
-        
-        softmax_out = torch.softmax(out, dim=-1)
-        softmax_score, max_indice = torch.max(softmax_out, dim=-1)
-        
-        prob = alpha / torch.sum(alpha, dim=-1, keepdim=True)
-        max_prob, max_indice = torch.max(prob, dim=-1)
-
-        return {"logits": prediction, "logits_var": uncertainty, "softmax_score": softmax_score, "belief_mass": max_prob}
-
-    def evidential_classification(self, data):
-        outputs = self.forward(data)
-        evidence = torch.nn.functional.relu(outputs)
-
-        alpha = evidence + 1
-        uncertainty = outputs.size()[-1] / torch.sum(alpha, dim=-1, keepdim=True)
-        uncertainty = uncertainty.unsqueeze(-1).repeat(1, 1, outputs.size(-1))
-
-        return {"logits": outputs, "logits_var": uncertainty}
-
-    def evidential_regression(self, data):
-        outputs = self.forward(data)
-        mu, v, alpha, beta = torch.chunk(outputs, 4, dim=-1)
-
-        v = torch.abs(v) + 1.0
-        alpha = torch.abs(alpha) + 1.0
-        beta = torch.abs(beta) + 0.1
-
-        epistemic = beta / (v * (alpha - 1))
-
-        return {"logits": mu, "logits_var": epistemic}

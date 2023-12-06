@@ -7,6 +7,7 @@ from torch.nn.modules.batchnorm import _BatchNorm as BatchNormLayer
 
 from .helpers import Namespace
 from .logger import LOGGER as logging
+from ..model.evidential_losses import prepare_edl_classification_output
 
 
 class AbstractEventHandler(metaclass=ABCMeta):
@@ -80,6 +81,78 @@ class InjectLossWeightsEventHandler(AbstractEventHandler):
     def run(self, payload: Namespace):
         for mapper in self._mappers:
             payload.extras.append(payload.features.inputs[mapper].reshape(-1, 1))
+
+
+class AddEpochEventHandler(AbstractEventHandler):
+    """event: before_criterion"""
+
+    def run(self, payload: Namespace):
+        payload.extras.append(payload.epoch)
+
+
+class AddLossInfoHandler(AbstractEventHandler):
+    """event: before_predict"""
+
+    def run(self, payload: Namespace):
+        payload.extras.append(payload.loss_type)
+
+
+class EvidentialClassificationProcessingHandler(AbstractEventHandler):
+    """event: before_tracker_update"""
+
+    def run(self, payload: Namespace):
+        outputs, alpha = prepare_edl_classification_output(payload.outputs)
+        payload.outputs = torch.argmin(outputs, dim=-1)
+
+
+class EvidentialRegressionProcessingHandler(AbstractEventHandler):
+    """event: before_tracker_update"""
+
+    def run(self, payload: Namespace):
+        mu, v, alpha, beta = torch.chunk(payload.outputs, 4, dim=-1)
+        payload.outputs = mu
+
+
+class EvidentialClassificationInferenceHandler(AbstractEventHandler):
+    """event: after_val_inference|after_predict"""
+
+    def run(self, payload: Namespace):
+        outputs = payload.logits
+        outputs, alpha = prepare_edl_classification_output(outputs)
+        uncertainty = (2 / torch.sum(alpha, dim=-1, keepdim=True)).squeeze()
+        
+        # logic is reversed as 0 is true and 1 is false
+        logits = (torch.log(alpha[..., 0]) - torch.log(alpha[..., 1]))
+
+        softmax_score = (alpha[..., 0] / torch.sum(alpha, dim=-1))
+
+        payload.logits = logits
+        payload.logits_var = uncertainty
+        payload.softmax_score = softmax_score
+        
+
+class EvidentialRegressionInferenceHandler(AbstractEventHandler):
+    """event: after_val_inference|after_predict"""
+
+    def run(self, payload: Namespace):
+        outputs = self.forward(payload.logits)
+        mu, v, alpha, beta = torch.chunk(outputs, 4, dim=-1)
+
+        v = torch.abs(v) + 1.0
+        alpha = torch.abs(alpha) + 1.0
+        beta = torch.abs(beta) + 0.1
+
+        epistemic = beta / (v * (alpha - 1))
+
+        payload.logits = mu
+        payload.logits_var = epistemic
+
+
+class AddMaskEventHandler(AbstractEventHandler):
+    """event: before_criterion"""
+
+    def run(self, payload: Namespace):
+        payload.extras.append(payload.mask)
 
 
 class RemoveNansEventHandler(AbstractEventHandler):
