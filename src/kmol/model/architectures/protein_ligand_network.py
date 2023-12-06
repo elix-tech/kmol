@@ -52,7 +52,6 @@ class ProteinLigandNetwork(AbstractNetwork):
 
     def forward(self, data: Dict[str, Any]) -> torch.Tensor:
         requirements = self.get_requirements()
-
         ligand_features = self.map(self.ligand_module, data[requirements[0]])
         protein_features = self.map(self.protein_module, data[requirements[1]])
 

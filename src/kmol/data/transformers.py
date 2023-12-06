@@ -31,6 +31,16 @@ class LogNormalizeTransformer(AbstractTransformer):
         for target in self._targets:
             data.outputs[target] = np.exp(data.outputs[target])
 
+class AutoEncoderTransformer(AbstractTransformer):
+    def __init__(self, input: str):
+        self._input = input
+
+    def apply(self, data: DataPoint) -> None:
+        data.outputs = data.inputs[self._input]
+        
+    def reverse(self, data: DataPoint) -> None:
+        pass
+
 
 class MinMaxNormalizeTransformer(AbstractTransformer):
     def __init__(self, target: int, minimum: float, maximum: float):

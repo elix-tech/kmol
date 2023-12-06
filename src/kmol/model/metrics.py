@@ -196,20 +196,22 @@ class PredictionProcessor:
         return ground_truth, logits, predictions
 
     def compute_metrics(self, ground_truth: List[torch.Tensor], logits: List[torch.Tensor]) -> Namespace:
-        ground_truth, logits, predictions = self._prepare(ground_truth=ground_truth, logits=logits)
         metrics = defaultdict(list)
-        for target_index in range(len(ground_truth)):
-            for metric_name, metric_settings in self._metrics.items():
-                labels = predictions[target_index] if metric_settings.uses_threshold else logits[target_index]
+        if self._metrics:
+            ground_truth, logits, predictions = self._prepare(ground_truth=ground_truth, logits=logits)
 
-                try:
-                    computed_value = metric_settings.calculator(ground_truth[target_index], labels)
-                    if not metric_settings.maximize:
-                        computed_value *= -1
-                except ValueError:
-                    computed_value = self._error_value
+            for target_index in range(len(ground_truth)):
+                for metric_name, metric_settings in self._metrics.items():
+                    labels = predictions[target_index] if metric_settings.uses_threshold else logits[target_index]
 
-                metrics[metric_name].append(computed_value)
+                    try:
+                        computed_value = metric_settings.calculator(ground_truth[target_index], labels)
+                        if not metric_settings.maximize:
+                            computed_value *= -1
+                    except ValueError:
+                        computed_value = self._error_value
+
+                    metrics[metric_name].append(computed_value)
 
         return Namespace(**metrics)
 

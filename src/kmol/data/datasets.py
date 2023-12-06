@@ -27,7 +27,7 @@ class DatasetAugment(Subset):
 
     def _apply_aug(self, data: DataPoint):
         if self.training_mode and self.has_augmentation:
-            data.inputs = self.augmentations(data.inputs)
+            data = self.augmentations(data)
         return data
 
     def set_training_mode(self, training_mode: bool):

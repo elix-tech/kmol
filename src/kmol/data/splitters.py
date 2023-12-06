@@ -51,9 +51,12 @@ class IndexSplitter(AbstractSplitter):
 
 
 class PrecomputedSplitter(AbstractSplitter):
-    def __init__(self, splits: Dict[str, float], split_path: str):
+    def __init__(self, splits: Dict[str, float], split_path: str, skipped_splits: List[str] = []):
         super().__init__(splits)
         self.splits: Dict[str, List[Union[int, str]]] = json.load(open(split_path))
+
+        for key in skipped_splits:
+            del self.splits[key]
 
     def apply(self, data_loader: AbstractLoader) -> Dict[str, List[Union[int, str]]]:
         ids = sorted(data_loader.list_ids())

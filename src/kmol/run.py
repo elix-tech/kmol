@@ -351,6 +351,7 @@ class Executor(AbstractExecutor):
 
         results = defaultdict(list)
         outputs_to_save = defaultdict(list)
+
         with progress_bar() as progress:
             description = f"Computing prediction..."
             task = progress.add_task(description, total=len(data_loader.dataset))
@@ -363,6 +364,7 @@ class Executor(AbstractExecutor):
                 protein_gradients = getattr(outputs, "protein_gd_mean", None)
                 ligand_gradients = getattr(outputs, "ligand_gd_mean", None)
                 hidden_layer_output = getattr(outputs, "hidden_layer", None)
+                likelihood_ratio = getattr(outputs, "likelihood_ratio", None)
                 labels = batch.outputs.cpu().numpy()
                 labels = np.apply_along_axis(transformer_reverter, axis=1, arr=labels)
 
@@ -387,6 +389,8 @@ class Executor(AbstractExecutor):
                     results["protein_gd"].extend(protein_gradients.cpu().numpy())
                 if ligand_gradients is not None:
                     results["ligand_gd"].extend(ligand_gradients.cpu().numpy())
+                if likelihood_ratio is not None:
+                  results["likelihood_ratio"].extend(likelihood_ratio.cpu().numpy())
 
                 if len(self._config.prediction_additional_columns) > 0:
                     for col_name in self._config.prediction_additional_columns:
@@ -406,6 +410,8 @@ class Executor(AbstractExecutor):
             results["protein_gd"] = np.vstack(results["protein_gd"])
         if "ligand_gd" in results:
             results["ligand_gd"] = np.vstack(results["ligand_gd"])
+        if "likelihood_ratio" in results:
+            results["likelihood_ratio"] = np.vstack(results["likelihood_ratio"])
         if "hidden_layer" in outputs_to_save:
             outputs_to_save["hidden_layer"] = np.vstack(outputs_to_save["hidden_layer"]).tolist()
 
@@ -440,7 +446,11 @@ class Executor(AbstractExecutor):
                 results[f"{label}_ligand_gd"] = results["ligand_gd"][:, i]
                 columns.append(f"{label}_ligand_gd")
             columns += self._config.prediction_additional_columns
-
+        
+        if "likelihood_ratio" in results:
+            results["likelihood_ratio"] = results["likelihood_ratio"].flatten()
+            columns.append("likelihood_ratio")
+        
         results = pd.DataFrame.from_dict({c: results[c] for c in columns})
 
         predictions_dir = Path(self._config.output_path)
