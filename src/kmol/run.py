@@ -390,7 +390,7 @@ class Executor(AbstractExecutor):
                 if ligand_gradients is not None:
                     results["ligand_gd"].extend(ligand_gradients.cpu().numpy())
                 if likelihood_ratio is not None:
-                  results["likelihood_ratio"].extend(likelihood_ratio.cpu().numpy())
+                    results["likelihood_ratio"].extend(likelihood_ratio.cpu().numpy())
 
                 if len(self._config.prediction_additional_columns) > 0:
                     for col_name in self._config.prediction_additional_columns:
@@ -446,11 +446,11 @@ class Executor(AbstractExecutor):
                 results[f"{label}_ligand_gd"] = results["ligand_gd"][:, i]
                 columns.append(f"{label}_ligand_gd")
             columns += self._config.prediction_additional_columns
-        
+
         if "likelihood_ratio" in results:
             results["likelihood_ratio"] = results["likelihood_ratio"].flatten()
             columns.append("likelihood_ratio")
-        
+
         results = pd.DataFrame.from_dict({c: results[c] for c in columns})
 
         predictions_dir = Path(self._config.output_path)

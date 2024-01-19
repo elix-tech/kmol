@@ -68,7 +68,7 @@ class CaptumScript(AbstractScript):
     def compute_attribute(self, data, attributions, target):
         self.tmp_executor._to_device(data)
         try:
-            attribute_dict = self.attributor.attribute(data.inputs, target=0, n_steps=self.n_steps)
+            attribute_dict = self.attributor.attribute(data.inputs, target=target, n_steps=self.n_steps)
             attribute_dict = self.regroup_results(attribute_dict)
             attributions = self.update_dict(attributions, attribute_dict, target)
         except Exception as e:
