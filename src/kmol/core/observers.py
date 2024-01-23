@@ -135,7 +135,7 @@ class EvidentialRegressionInferenceHandler(AbstractEventHandler):
     """event: after_val_inference|after_predict"""
 
     def run(self, payload: Namespace):
-        outputs = self.forward(payload.logits)
+        outputs = payload.logits
         mu, v, alpha, beta = torch.chunk(outputs, 4, dim=-1)
 
         v = torch.abs(v) + 1.0
