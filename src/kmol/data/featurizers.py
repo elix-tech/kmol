@@ -179,6 +179,7 @@ class MordredDescriptorComputer(AbstractDescriptorComputer):
     """
     There is 1613 feature generated with this computer
     """
+
     def __init__(self):
         from mordred import Calculator, descriptors
 
@@ -476,6 +477,7 @@ class BagOfWordsFeaturizer(AbstractFeaturizer):
 
         return torch.FloatTensor(list(sample.values()))
 
+
 class IndexFeaturizer(AbstractFeaturizer):
     def __init__(
         self,
@@ -497,6 +499,7 @@ class IndexFeaturizer(AbstractFeaturizer):
     def _process(self, data: str, entry: DataPoint) -> torch.FloatTensor:
         sample = [self._to_index_dict[amino_acid] for amino_acid in data]
         return torch.LongTensor(sample)
+
 
 class PerturbedBagOfWordsFeaturizer(BagOfWordsFeaturizer):
     def __init__(

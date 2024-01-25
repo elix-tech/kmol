@@ -1,6 +1,4 @@
-import itertools
 import os
-import warnings
 from abc import ABCMeta, abstractmethod
 from functools import partial
 from typing import List, Dict, Tuple
@@ -11,9 +9,8 @@ from pathlib import Path
 import pickle
 import logging
 import traceback
-import concurrent.futures
 
-from torch.utils.data import Subset
+import numpy as np
 
 from .static_augmentation import AbstractStaticAugmentation
 from .featurizers import AbstractFeaturizer
@@ -63,54 +60,38 @@ class AbstractPreprocessor(metaclass=ABCMeta):
         for transformer in reversed(self._transformers):
             transformer.reverse(sample)
 
-    def _init_logging_worker(self, func, *args):
+    def _wrapper_mp_worker(self, func, progress, sample):
         logger.stdout_handler.setLevel(self._config.log_level.upper())
-        return func(*args)
+        try:
+            data = func(sample)
+        except FeaturizationError as e:
+            tb_str = traceback.format_exc()
+            logger.warning(f"{e}\n{tb_str}")
+            return None
+        except Exception as e:
+            tb_str = traceback.format_exc()
+            smiles = sample.inputs["smiles"] if "smiles" in sample.inputs else ""
+            logger.error(f"{sample} {smiles} - {e}\n{tb_str}")
+            return None
+        progress.set(progress.get() + 1)
+        # We are pickling the data to avoid any mmap errors
+        buffer = pickle.dumps(data, protocol=-1)
+        return np.frombuffer(buffer, dtype=np.uint8)
 
-    def _get_chunks(self, dataset):
-        n_jobs = self._config.featurization_jobs
-        chunk_size = len(dataset) // n_jobs
-        range_list = list(range(0, len(dataset)))
-        chunks = [
-            range_list[i * chunk_size : (i + 1) * chunk_size] for i in range((len(dataset) + chunk_size - 1) // chunk_size)
-        ]
-        return [Subset(dataset, chunk) for chunk in chunks]
-
-    def _run_parrallel(self, func, dataset, use_disk=False):
-        chunks = self._get_chunks(dataset)
-        futures = []
-        func = partial(self._init_logging_worker, func)
+    def _run_parrallel(self, func, loader, disk_dir=None):
         with progress_bar() as progress:
-            with multiprocessing.Manager() as manager, concurrent.futures.ProcessPoolExecutor() as executor:
-                _progress = manager.dict()
-                overall_progress_task = progress.add_task("[green]All jobs progress:")
-                for n, chunk in enumerate(chunks, 1):
-                    task_id = progress.add_task(f"featurizer {n}", visible=False)
-                    futures.append(executor.submit(func, _progress, task_id, chunk))
+            with multiprocessing.Manager() as manager, multiprocessing.Pool(self._config.featurization_jobs) as executor:
+                # Add a counter for "good" estimation of the advancement
+                _progress = manager.Value("i", 0)
+                func = partial(self._wrapper_mp_worker, func, _progress)
+                overall_progress_task = progress.add_task("[green] Progress:", total=len(loader))
 
-                n_finished = 0
-                while n_finished < len(futures):
-                    for task_id, update_data in _progress.items():
-                        latest = update_data["progress"]
-                        total = update_data["total"]
-                        progress.update(task_id, completed=latest, total=total, visible=latest < total)
-                    n_finished = sum([future.done() for future in futures])
-                    progress.update(overall_progress_task, completed=n_finished, total=len(futures))
-                warnings.resetwarnings()
-
-        if use_disk:
-            logger.info("Merging cache files...")
-            disk_lists = [future.result() for future in futures]
-            dataset = disk_lists[0]
-            with progress_bar() as progress:
-                for disk_list in progress.track(disk_lists[1:]):
-                    dataset.extend(disk_list)
-
-            # clean up
-            for dl in disk_lists[1:]:
-                dl.clear()
-        else:
-            dataset = list(itertools.chain.from_iterable([future.result() for future in futures]))
+                dataset = CacheDiskList(tmp_dir=disk_dir) if disk_dir is not None else []
+                for i, result in enumerate(executor.imap(func, loader, chunksize=100)):
+                    progress.update(overall_progress_task, completed=max(_progress.get(), i + 1), total=len(loader))
+                    if result is not None:
+                        result = pickle.loads(memoryview(result))
+                        dataset.append(result)
 
         return dataset
 
@@ -226,7 +207,7 @@ class CachePreprocessor(AbstractPreprocessor):
         """
         super().__init__(config)
         self._use_disk = use_disk
-        self._disk_dir = disk_dir
+        self._disk_dir = disk_dir if self._use_disk else None
 
     def _load_dataset(self) -> AbstractLoader:
         dataset = self._cache_manager.execute_cached_operation(
@@ -246,30 +227,10 @@ class CachePreprocessor(AbstractPreprocessor):
     def _prepare_dataset(self) -> ListLoader:
         loader = SuperFactory.create(AbstractLoader, self._config.loader)
         logger.info("Starting featurization...")
-        dataset = self._run_parrallel(self._prepare_chunk, loader, self._use_disk)
+        dataset = self._run_parrallel(self.preprocess, loader, self._disk_dir)
 
         ids = [sample.id_ for sample in dataset]
         return ListLoader(dataset, ids)
-
-    def _prepare_chunk(self, progress, task_id, loader) -> List[DataPoint]:
-        dataset = CacheDiskList(tmp_dir=self._disk_dir) if self._use_disk else []
-        for n, sample in enumerate(loader):
-            smiles = sample.inputs["smiles"] if "smiles" in sample.inputs else ""
-            try:
-                sample = self.preprocess(sample)
-                dataset.append(sample)
-
-            except FeaturizationError as e:
-                tb_str = traceback.format_exc()
-                logger.warning(f"{e}\n{tb_str}")
-            except Exception as e:
-                tb_str = traceback.format_exc()
-                logger.error(f"{sample} {smiles} - {e}\n{tb_str}")
-
-            progress[task_id] = {"progress": n + 1, "total": len(loader)}
-
-        self.dataset_size = len(dataset)
-        return dataset
 
     def _load_augmented_data(self) -> Tuple[ListLoader, Dict]:
         loader = SuperFactory.create(AbstractLoader, self._config.loader)
@@ -296,9 +257,7 @@ class CachePreprocessor(AbstractPreprocessor):
         logger.info(f"Starting {type(a)} augmentation...")
         a.generate_augmented_data(loader)
         logger.info(f"Starting Featurization of  {type(a)} augmented data...")
-        # a.aug_dataset = self._prepare_chunk(a.aug_dataset)
-        logger.info("Starting featurization...")
-        a.aug_dataset = self._run_parrallel(self._prepare_chunk, a.aug_dataset)
+        a.aug_dataset = self._run_parrallel(self.preprocess, a.aug_dataset)
         return a
 
     def _add_static_aug_dataset(self, dataset: ListLoader):
