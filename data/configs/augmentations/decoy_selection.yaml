@@ -1,0 +1,77 @@
+
+
+# Decoy selection is a `static_augmentation` while there can be some randomness the data will be added
+# only once at the beginning of the training and will not change.
+# The decoy selection computes the tanimoto similarity score between all 
+# combinations of ligand, decoy pair provided. (Morgan Fingerprint is used)
+
+# Since this operation can take time, we enable the possibility to launch it as a separate script 
+# or to launch it at the start of the training. 
+# In both cases, it will generate a `result_tanimoto_score.csv` file which will be loaded on the following runs.
+# If the user wants to add values to the `result_tanimoto_score.csv` he can run the script on a subset of the dataset. However, he will have to manually combine both files.
+
+
+# - decoy_to_add: Define which type of decoy to add to the dataset, either positive, negative or all.
+# - negative_threshold: Tanimoto similarity threshold under which a decoy is considered negative. Default: 0.3
+# - positive_threshold: Tanimoto similarity threshold over which a decoy is considered positive.  Default: 0.5
+# - data_loader_smile_field: Name of the dataset column containing the smiles.
+# - data_loader_target_field: Name of the dataset column containing the protein sequence.
+# - script_file_path: (Optional) Fill either this parameter or `cfg_script`. Path to an output of the `decoy_similarity` script.
+# - cfg_script: (Optional) Fill either this parameter or `script_file_path`. Dict containing information to generate the `decoy_similarity` script.
+# - featurization_jobs: number of workers to use for this job. default: `featurization_jobs` of the general configuration file.
+
+static_augmentations:
+  - type: "decoy_selection"
+    decoy_to_add: "negative"
+    data_loader_smile_field: "smiles"
+    data_loader_target_field: "target_sequence"
+    script_file_path: "./path/result_tanimoto_score.csv"
+    # Config script to fill if the script was not run.
+    # Insert a script configuration similar to what's 
+    # inside the script_key below
+    cfg_script:
+      type: "DecoyTanimotoSimilarity"
+      decoy_loader:
+        type: "sdf"
+        input_path: "data/datasets/..."
+        input_column_names: ["smiles"]
+        target_column_names: []
+
+      target_loader:
+        type: "csv"
+        input_path: "data/datasets/..."
+        input_column_names: []
+        target_column_names: ["target_sequence"]
+
+      data_loader:
+        type: "csv"
+        input_path: "/nasa/datasets/kyodai_federated/..."
+        input_column_names: ["smiles"]
+        target_column_names: ["target_sequence"]
+    featurization_jobs: 10
+
+
+# The script can be launch independently with:
+# kmol-script path_to_config
+
+# Where the config in path_to_config will be 
+
+# script: # <- script instead of cfg_script
+#   type: "DecoyTanimotoSimilarity"
+#   decoy_loader:
+#     type: "sdf"
+#     input_path: "data/datasets/..."
+#     input_column_names: ["smiles"]
+#     target_column_names: []
+
+#   target_loader:
+#     type: "csv"
+#     input_path: "data/datasets/..."
+#     input_column_names: []
+#     target_column_names: ["target_sequence"]
+
+#   data_loader:
+#     type: "csv"
+#     input_path: "/nasa/datasets/kyodai_federated/..."
+#     input_column_names: ["smiles"]
+#     target_column_names: ["target_sequence"]

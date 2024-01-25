@@ -1,0 +1,15 @@
+
+# Motif removal is a static augmentation and so is deterministic.
+# A similarity score is calculated between fragments and the molecule, where fragments above a threshold are retained. The similarity score computed is
+# based on tanimoto similarity. With the basic RDKFingerprint, so a RDKit topological fingerprint 2048 bit vector s used.
+
+# - similarity_threshold: (float) The minimum tanimoto similarity for a molecule to be kept as a motif. default: 0.6
+# - smiles_field: the name of the column input containing the smiles information. Default: Smiles
+# - max_per_mol: if given, set the maximum number of selected fragments per molecule.
+# - featurization_jobs: number of workers to use for this job. default: `featurization_jobs` of the general configuration file.
+
+static_augmentations:
+  - type: "motif_removal"
+    similarity_threshold: 0.6
+    featurization_jobs: 6
+    max_per_mol: 10

@@ -1,0 +1,163 @@
+{
+    "model": {
+      "hidden_features": 64,
+      "ligand_module": {
+        "encoder_embed_dim": 128,
+        "remove_head": true,
+        "multi_hop_max_dist": 10,
+        "edge_type": "multi_hop",
+        "type": "graphormer_encoder"
+      },
+      "out_features": 3,
+      "protein_module": {
+        "dropout": 0.1,
+        "hidden_features": 256,
+        "in_features": 9723,
+        "out_features": 128,
+        "type": "linear"
+      },
+      "type": "protein_ligand",
+      "use_mi": true,
+      "xavier_init": false
+    },
+    "loader": {
+      "input_column_names": [
+        "smiles",
+        "target_sequence"
+      ],
+      "input_path": "data/datasets/chembl_v2_above_500.csv",
+      "target_column_names": [
+        "t_100n",
+        "t_1u",
+        "t_10u"
+      ],
+      "type": "csv"
+    },
+    "splitter": {
+      "split_path": "data/datasets/splits_per_protein_chembl_v2_above_500.json",
+      "splits": {
+        "test": 0.1,
+        "train": 0.8,
+        "validation": 0.1
+      },
+      "type": "precomputed"
+    },
+    "featurizers": [
+      {
+        "inputs": [
+          "smiles"
+        ],
+        "outputs": [
+          "ligand"
+        ],
+        "type": "graphormer"
+      },
+      {
+        "inputs": [
+          "target_sequence"
+        ],
+        "max_length": 3,
+        "outputs": [
+          "protein"
+        ],
+        "should_cache": true,
+        "type": "bag_of_words",
+        "vocabulary": [
+          "A",
+          "C",
+          "D",
+          "E",
+          "F",
+          "G",
+          "H",
+          "I",
+          "K",
+          "L",
+          "M",
+          "N",
+          "P",
+          "Q",
+          "R",
+          "S",
+          "T",
+          "V",
+          "W",
+          "Y",
+          "X"
+        ]
+      }
+    ],
+    "transformers": [],
+    "criterion": {
+      "type": "torch.nn.BCEWithLogitsLoss"
+    },
+    "optimizer": {
+      "eps": 1e-06,
+      "lr": 0.001,
+      "type": "torch.optim.Adam",
+      "weight_decay": 0.0001
+    },
+    "scheduler": {
+      "epochs": 60,
+      "final_div_factor": 1000,
+      "max_lr": 0.00014,
+      "type": "torch.optim.lr_scheduler.OneCycleLR"
+    },
+    "output_path": "data/logs/graphormer",
+    "collater": {
+      "type": "graphormer",
+      "max_node": 512,
+      "multi_hop_max_dist": 10
+    },
+    "is_stepwise_scheduler": true,
+    "is_finetuning": false,
+    "checkpoint_path": null,
+    "threshold": 0.5,
+    "inference_mode": "null",
+    "cross_validation_folds": 5,
+    "mc_dropout_iterations": 10,
+    "mc_dropout_probability": null,
+    "probe_layer": null,
+    "train_split": "train",
+    "train_metrics": [
+      "roc_auc",
+      "accuracy",
+      "pr_auc"
+    ],
+    "validation_split": "validation",
+    "test_split": "test",
+    "test_metrics": [
+      "roc_auc",
+      "accuracy",
+      "pr_auc"
+    ],
+    "epochs": 60,
+    "batch_size": 32,
+    "drop_last_batch": false,
+    "use_cuda": true,
+    "enabled_gpus": [
+      0
+    ],
+    "num_workers": 1,
+    "featurization_jobs": 8,
+    "preprocessor": {
+        "type": "online"
+    },
+    "cache_location": "data/cache",
+    "clear_cache": false,
+    "log_level": "debug",
+    "log_format": "",
+    "log_frequency": 5,
+    "overwrite_checkpoint": true,
+    "observers": {},
+    "differential_privacy": {
+      "enabled": false
+    },
+    "target_metric": "roc_auc",
+    "optuna_trials": 1000,
+    "optuna_init": null,
+    "subset": null,
+    "visualizer": null,
+    "augmentations": null,
+    "static_augmentations": null
+}
