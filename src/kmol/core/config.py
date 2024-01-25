@@ -122,6 +122,11 @@ class Config(AbstractConfiguration):
         if getattr(self, "observers") is None:
             setattr(self, "observers", {})
 
+        if getattr(self, "preprocessor") is not None:
+            if self.preprocessor.get("type") == "cache" and self.preprocessor.get("use_disk"):
+                logging.warning("[Warning] Fixing num_workers=1. This should not affect the performance")
+                self.num_workers = 1
+
         for element in ["augmentations", "static_augmentations"]:
             if getattr(self, element) is None:
                 setattr(self, element, [])
