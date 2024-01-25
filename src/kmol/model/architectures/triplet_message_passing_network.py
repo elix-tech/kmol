@@ -3,8 +3,8 @@ from typing import Dict, Any, List
 import torch
 import torch_geometric as geometric
 
-from ..layers import TripletMessagePassingLayer
-from .abstract_network import AbstractNetwork
+from kmol.model.layers import TripletMessagePassingLayer
+from kmol.model.architectures.abstract_network import AbstractNetwork
 
 
 class TripletMessagePassingNetwork(AbstractNetwork):

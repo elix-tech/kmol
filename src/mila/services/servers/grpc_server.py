@@ -3,12 +3,12 @@ from concurrent import futures
 import grpc
 from kmol.core.logger import LOGGER as logging
 
-from ...configs import ServerConfiguration
-from ...protocol_buffers import mila_pb2_grpc
-from .abstract_server import AbstractServer
+from mila.configs import ServerConfiguration
+from mila.protocol_buffers import mila_pb2_grpc
+from mila.services.servers.abstract_server import AbstractServer
+
 
 class GrpcServer(AbstractServer):
-
     def __init__(self, config: ServerConfiguration) -> None:
         self._config = config
 
@@ -24,7 +24,9 @@ class GrpcServer(AbstractServer):
     def run(self, servicer: mila_pb2_grpc.MilaServicer) -> None:
         workers_count = max(self._config.workers, self._config.minimum_clients)
 
-        server = grpc.server(futures.ThreadPoolExecutor(max_workers=workers_count), options=self._config.grpc_configuration.options)
+        server = grpc.server(
+            futures.ThreadPoolExecutor(max_workers=workers_count), options=self._config.grpc_configuration.options
+        )
         mila_pb2_grpc.add_MilaServicer_to_server(servicer, server)
 
         if self._config.grpc_configuration.use_secure_connection:
@@ -38,4 +40,3 @@ class GrpcServer(AbstractServer):
 
         server.start()
         server.wait_for_termination()
-

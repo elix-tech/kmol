@@ -1,7 +1,7 @@
 from argparse import ArgumentParser
 
-from .core.config import ScriptConfig
-from .script import ScriptLauncher
+from kmol.core.config import ScriptConfig
+from kmol.script import ScriptLauncher
 
 
 def main():

@@ -8,17 +8,18 @@ from torch.nn import Sequential, Linear, ReLU, Embedding, ModuleList
 from torch import Tensor
 import torch
 
-from .abstract_network import AbstractNetwork
-from ..read_out import get_read_out
+from kmol.model.architectures.abstract_network import AbstractNetwork
+from kmol.model.read_out import get_read_out
 
 
 class ProteinSchnetNetwork(AbstractNetwork, SchNet):
     """
     Model to leverage 3D data of complex file, it uses both protein information
-    in the surrounding of the ligand and interaction information extracted 
-    with intDesc. 
+    in the surrounding of the ligand and interaction information extracted
+    with intDesc.
     It's expected to be used with the AtomTypeExtensionPdbFeaturizer and IntdescFeaturizer
     """
+
     def __init__(
         self,
         hidden_channels: int = 128,

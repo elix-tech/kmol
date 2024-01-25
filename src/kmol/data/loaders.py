@@ -7,7 +7,7 @@ import dask.dataframe as dd
 from torch.utils.data import Dataset as TorchDataset
 import multiprocessing
 
-from .resources import DataPoint
+from kmol.data.resources import DataPoint
 
 
 class AbstractLoader(TorchDataset):

@@ -1,23 +1,20 @@
 from typing import List
 from copy import deepcopy
 from torch.utils.data.dataset import Dataset, Subset
-from ..core.helpers import SuperFactory
 
-from .augmentations import AbstractAugmentation
-from .compositions import Compose
-from .preprocessor import AbstractPreprocessor
-from .resources import DataPoint
+from kmol.core.helpers import SuperFactory
+from kmol.data.augmentations import AbstractAugmentation
+from kmol.data.compositions import Compose
+from kmol.data.preprocessor import AbstractPreprocessor
+from kmol.data.resources import DataPoint
 
 
 class DatasetAugment(Subset):
-    def __init__(self, dataset: Dataset, indices: List[int], augmentations: List=[]) -> None:
+    def __init__(self, dataset: Dataset, indices: List[int], augmentations: List = []) -> None:
         super().__init__(dataset, indices)
         self.has_augmentation = len(augmentations) > 0
         if self.has_augmentation:
-            augmentations = [
-                SuperFactory.create(AbstractAugmentation, augmentation)
-                for augmentation in augmentations
-            ]
+            augmentations = [SuperFactory.create(AbstractAugmentation, augmentation) for augmentation in augmentations]
             self.augmentations = Compose(augmentations)
         self.training_mode = True
 
@@ -35,7 +32,9 @@ class DatasetAugment(Subset):
 
 
 class DatasetOnline(DatasetAugment):
-    def __init__(self, dataset: Dataset, indices: List[int], preprocessor: AbstractPreprocessor, augmentations: List=[]) -> None:
+    def __init__(
+        self, dataset: Dataset, indices: List[int], preprocessor: AbstractPreprocessor, augmentations: List = []
+    ) -> None:
         super().__init__(dataset, indices, augmentations)
         self.preprocessor = preprocessor
 

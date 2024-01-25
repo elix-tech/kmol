@@ -4,10 +4,11 @@ from typing import Dict, Any, Optional, List
 
 import torch
 
-from ...core.helpers import Namespace
-from ...core.logger import LOGGER as logging
-from ...core.observers import EventManager
-from ...core.exceptions import CheckpointNotFound
+from kmol.core.helpers import Namespace
+from kmol.core.logger import LOGGER as logging
+from kmol.core.observers import EventManager
+from kmol.core.exceptions import CheckpointNotFound
+
 
 class AbstractNetwork(torch.nn.Module, metaclass=ABCMeta):
     @abstractmethod

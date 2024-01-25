@@ -7,12 +7,12 @@ from typing import List, Dict, Union
 
 from torch.utils.data import DataLoader, Subset
 
-from .preprocessor import AbstractPreprocessor, OnlinePreprocessor
-from .datasets import DatasetAugment, DatasetOnline
-from .resources import DataPoint, AbstractCollater, LoadedContent
-from .splitters import AbstractSplitter
-from ..core.config import Config
-from ..core.helpers import SuperFactory
+from kmol.data.preprocessor import AbstractPreprocessor, OnlinePreprocessor
+from kmol.data.datasets import DatasetAugment, DatasetOnline
+from kmol.data.resources import DataPoint, AbstractCollater, LoadedContent
+from kmol.data.splitters import AbstractSplitter
+from kmol.core.config import Config
+from kmol.core.helpers import SuperFactory
 
 
 class AbstractStreamer(metaclass=ABCMeta):

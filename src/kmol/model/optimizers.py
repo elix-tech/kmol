@@ -2,7 +2,7 @@ import math
 
 import torch
 
-from ..core.logger import LOGGER as logging
+from kmol.core.logger import LOGGER as logging
 
 
 class AdaBelief(torch.optim.Optimizer):

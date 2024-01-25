@@ -1,35 +1,35 @@
 from typing import Dict, Any, List
 
 import torch
-from ...vendor.openfold.model.embedders import (
+from kmol.vendor.openfold.model.embedders import (
     RecyclingEmbedder,
     InputEmbedder,
     TemplateAngleEmbedder,
     TemplatePairEmbedder,
     ExtraMSAEmbedder,
 )
-from ...vendor.openfold.model.heads import AuxiliaryHeads
-from ...vendor.openfold.model.structure_module import StructureModule
-from ...vendor.openfold.model.evoformer import ExtraMSAStack, EvoformerStack
-from ...vendor.openfold.model.template import (
+from kmol.vendor.openfold.model.heads import AuxiliaryHeads
+from kmol.vendor.openfold.model.structure_module import StructureModule
+from kmol.vendor.openfold.model.evoformer import ExtraMSAStack, EvoformerStack
+from kmol.vendor.openfold.model.template import (
     TemplatePairStack,
     TemplatePointwiseAttention,
     embed_templates_average,
     embed_templates_offload,
 )
-from ...vendor.openfold.model.primitives import LayerNorm, Linear
-from ...vendor.openfold.utils.tensor_utils import add, tensor_tree_map
-from ...vendor.openfold.utils.feats import (
+from kmol.vendor.openfold.model.primitives import LayerNorm, Linear
+from kmol.vendor.openfold.utils.tensor_utils import add, tensor_tree_map
+from kmol.vendor.openfold.utils.feats import (
     pseudo_beta_fn,
     build_extra_msa_feat,
     build_template_angle_feat,
     build_template_pair_feat,
     atom14_to_atom37,
 )
-from ...vendor.openfold.config import model_config
-from ...vendor.openfold.np import residue_constants
-from .abstract_network import AbstractNetwork
-from ..layers.global_attention_pooling_layers import GlobalAttentionPooling, GlobalAttentionPooling2D
+from kmol.vendor.openfold.config import model_config
+from kmol.vendor.openfold.np import residue_constants
+from kmol.model.architectures.abstract_network import AbstractNetwork
+from kmol.model.layers.global_attention_pooling_layers import GlobalAttentionPooling, GlobalAttentionPooling2D
 
 
 class MsaEmbedderNetwork(AbstractNetwork):

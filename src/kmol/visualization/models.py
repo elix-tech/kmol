@@ -7,10 +7,10 @@ import torch
 import torch_geometric
 from captum.attr import IntegratedGradients
 
-from .sketchers import AbstractSketcher
-from ..core.config import Config
-from ..core.helpers import SuperFactory, Loggable
-from ..data.resources import DataPoint, Batch
+from kmol.visualization.sketchers import AbstractSketcher
+from kmol.core.config import Config
+from kmol.core.helpers import SuperFactory, Loggable
+from kmol.data.resources import DataPoint, Batch
 
 
 class IntegratedGradientsExplainer(Loggable):
@@ -72,9 +72,9 @@ class IntegratedGradientsExplainer(Loggable):
         data.inputs[self.graph_input_key].x = node_mask
 
         if not hasattr(data.inputs[self.graph_input_key], "batch"):
-            data.inputs[self.graph_input_key].batch = torch.zeros(data.inputs[self.graph_input_key].x.shape[0], dtype=int).to(
-                data.inputs[self.graph_input_key].x.device
-            )
+            data.inputs[self.graph_input_key].batch = torch.zeros(
+                data.inputs[self.graph_input_key].x.shape[0], dtype=int
+            ).to(data.inputs[self.graph_input_key].x.device)
 
         return self.model(data.inputs)
 
@@ -100,7 +100,6 @@ class IntegratedGradientsExplainer(Loggable):
         return data_list, dataset_sample_ids, labels
 
     def visualize(self, data: Union[DataPoint, Batch], target: int, save_path: str) -> None:
-
         if self.is_multitask:
             protein_target = np.argwhere(data.outputs.cpu().numpy() == data.outputs.cpu().numpy())
 

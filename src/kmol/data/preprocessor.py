@@ -12,16 +12,16 @@ import traceback
 
 import numpy as np
 
-from .static_augmentation import AbstractStaticAugmentation
-from .featurizers import AbstractFeaturizer
-from .loaders import AbstractLoader, ListLoader
-from .resources import DataPoint
-from .transformers import AbstractTransformer
-from ..core.config import Config
-from ..core.exceptions import FeaturizationError
-from ..core.helpers import CacheDiskList, SuperFactory, CacheManager
-from ..core.logger import LOGGER as logger
-from ..core.utils import progress_bar
+from kmol.data.static_augmentation import AbstractStaticAugmentation
+from kmol.data.featurizers import AbstractFeaturizer
+from kmol.data.loaders import AbstractLoader, ListLoader
+from kmol.data.resources import DataPoint
+from kmol.data.transformers import AbstractTransformer
+from kmol.core.config import Config
+from kmol.core.exceptions import FeaturizationError
+from kmol.core.helpers import CacheDiskList, SuperFactory, CacheManager
+from kmol.core.logger import LOGGER as logger
+from kmol.core.utils import progress_bar
 
 
 class AbstractPreprocessor(metaclass=ABCMeta):
@@ -113,6 +113,7 @@ class OnlinePreprocessor(AbstractPreprocessor):
 
     def __init__(self, config) -> None:
         super().__init__(config)
+        logger.info("The preprocessing will be online (recompute at each step)")
 
     def _load_dataset(self) -> ListLoader:
         dataset = SuperFactory.create(AbstractLoader, self._config.loader)
@@ -207,6 +208,10 @@ class CachePreprocessor(AbstractPreprocessor):
         """
         super().__init__(config)
         self._use_disk = use_disk
+        if self._use_disk:
+            logger.info("The preprocessing will be cache to DISK")
+        else:
+            logger.info("The preprocessing will be cache in the RAM")
         self._disk_dir = disk_dir if self._use_disk else None
 
     def _load_dataset(self) -> AbstractLoader:

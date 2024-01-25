@@ -11,14 +11,14 @@ from torch_geometric.data import Batch
 
 from mila.factories import AbstractScript
 
-from ..core.config import Config
-from ..model.executors import Predictor
-from ..core.helpers import SuperFactory
-from ..data.streamers import GeneralStreamer
-from ..data.loaders import AbstractLoader
-from ..model.architectures.abstract_network import AbstractNetwork
+from kmol.core.config import Config
+from kmol.model.executors import Predictor
+from kmol.core.helpers import SuperFactory
+from kmol.data.streamers import GeneralStreamer
+from kmol.data.loaders import AbstractLoader
+from kmol.model.architectures.abstract_network import AbstractNetwork
 
-from ..core.logger import LOGGER as logging
+from kmol.core.logger import LOGGER as logging
 
 GRAPH_CAPTUM_FEAT = ["x", "molecule_features", "edge_attr"]
 

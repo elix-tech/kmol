@@ -1,8 +1,8 @@
 from typing import Any, Dict, List
 import torch
 from torch import nn
-from . import EnsembleNetwork
-from .abstract_network import AbstractNetwork
+from kmol.model.architectures import EnsembleNetwork
+from kmol.model.architectures.abstract_network import AbstractNetwork
 
 
 class PseudoLroddNetwork(EnsembleNetwork):
@@ -45,13 +45,14 @@ class PseudoLroddNetwork(EnsembleNetwork):
             "likelihood_ratio": fg_output / bg_output,
         }
 
+
 class GenerativeLstmNetwork(AbstractNetwork):
     def __init__(
-        self, 
+        self,
         in_features: int,
         n_embedding: int,
         hidden_features: int,
-        out_features: int, 
+        out_features: int,
     ):
         super().__init__()
         self.embedding = nn.Embedding(in_features, n_embedding)
@@ -83,7 +84,7 @@ class GenerativeLstmNetwork(AbstractNetwork):
         input[~mask] = 0
 
         loss = torch.nn.functional.cross_entropy(output.view(-1, output.size(-1)), input.view(-1), reduction="none")
-        
+
         loss = loss.view_as(input) * mask
 
         log_likelihood = -loss.sum(dim=1) / mask.sum(dim=1)
@@ -143,7 +144,7 @@ class LroddNetwork(EnsembleNetwork):
 
         if loss_type == "torch.nn.BCEWithLogitsLoss":
             classifier_output = torch.sigmoid(classifier_output)
-        
+
         return {
             "logits": classifier_output,
             "likelihood_ratio": likelihood_ratio,

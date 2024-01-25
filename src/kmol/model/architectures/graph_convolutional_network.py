@@ -2,12 +2,10 @@ from typing import Dict, Any, Optional, List, Union
 
 import torch
 
-from ..layers import GraphConvolutionWrapper
-from ...core.helpers import SuperFactory
-from ...model.read_out import get_read_out
-
-
-from .abstract_network import AbstractNetwork
+from kmol.model.layers import GraphConvolutionWrapper
+from kmol.model.architectures.abstract_network import AbstractNetwork
+from kmol.model.read_out import get_read_out
+from kmol.core.helpers import SuperFactory
 
 
 class GraphConvolutionalNetwork(AbstractNetwork):

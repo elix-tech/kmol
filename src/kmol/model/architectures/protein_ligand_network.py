@@ -2,8 +2,8 @@ from typing import Dict, Any, List
 
 import torch
 
-from ..layers import LinearBlock, MultiplicativeInteractionLayer
-from .abstract_network import AbstractNetwork
+from kmol.model.layers import LinearBlock, MultiplicativeInteractionLayer
+from kmol.model.architectures.abstract_network import AbstractNetwork
 
 
 class ProteinLigandNetwork(AbstractNetwork):

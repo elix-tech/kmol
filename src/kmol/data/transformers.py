@@ -3,9 +3,9 @@ from typing import List, Tuple
 import numpy as np
 
 
-from ..core.exceptions import TransformerError
-from ..core.logger import LOGGER as logging
-from .resources import DataPoint
+from kmol.core.exceptions import TransformerError
+from kmol.core.logger import LOGGER as logging
+from kmol.data.resources import DataPoint
 
 
 class AbstractTransformer(metaclass=ABCMeta):
@@ -31,13 +31,14 @@ class LogNormalizeTransformer(AbstractTransformer):
         for target in self._targets:
             data.outputs[target] = np.exp(data.outputs[target])
 
+
 class AutoEncoderTransformer(AbstractTransformer):
     def __init__(self, input: str):
         self._input = input
 
     def apply(self, data: DataPoint) -> None:
         data.outputs = data.inputs[self._input]
-        
+
     def reverse(self, data: DataPoint) -> None:
         pass
 
@@ -124,7 +125,9 @@ class OneHotTransformer(AbstractTransformer):
         try:
             data.outputs[self._target] = self._classes.index(data.outputs[self._target])
         except ValueError:
-            raise TransformerError("One-Hot Transformer Failed: '{}' is not a valid class".format(data.outputs[self._target]))
+            raise TransformerError(
+                "One-Hot Transformer Failed: '{}' is not a valid class".format(data.outputs[self._target])
+            )
 
     def reverse(self, data: DataPoint) -> None:
         data.outputs[self._target] = self._classes[data.outputs[self._target]]

@@ -7,9 +7,14 @@ from .evidential_losses import (
     edl_regression,
 )
 
-from ..core.observers import (EventManager, AddEpochEventHandler,
-                              EvidentialClassificationProcessingHandler, EvidentialRegressionProcessingHandler,
-                              EvidentialClassificationInferenceHandler, EvidentialRegressionInferenceHandler)
+from kmol.core.observers import (
+    EventManager,
+    AddEpochEventHandler,
+    EvidentialClassificationProcessingHandler,
+    EvidentialRegressionProcessingHandler,
+    EvidentialClassificationInferenceHandler,
+    EvidentialRegressionInferenceHandler,
+)
 
 
 class WeightedLoss(torch.nn.Module):
@@ -20,7 +25,6 @@ class WeightedLoss(torch.nn.Module):
         self._loss.reduction = "none"
 
     def forward(self, logits: torch.Tensor, ground_truth: torch.Tensor, weights: torch.Tensor) -> torch.Tensor:
-
         loss = self._loss(logits, ground_truth)
 
         loss *= weights
@@ -137,13 +141,19 @@ class EvidentialLoss(torch.nn.Module):
         self._loss = loss_dict[loss["type"]]
 
         EventManager.add_event_listener(event_name="before_criterion", handler=AddEpochEventHandler())
-        
+
         if self._loss_type == "classification" or self._loss_type == "classification_masked":
-            EventManager.add_event_listener(event_name="before_tracker_update", handler=EvidentialClassificationProcessingHandler())
-            EventManager.add_event_listener(event_name="after_val_inference", handler=EvidentialClassificationInferenceHandler())
+            EventManager.add_event_listener(
+                event_name="before_tracker_update", handler=EvidentialClassificationProcessingHandler()
+            )
+            EventManager.add_event_listener(
+                event_name="after_val_inference", handler=EvidentialClassificationInferenceHandler()
+            )
             EventManager.add_event_listener(event_name="after_predict", handler=EvidentialClassificationInferenceHandler())
         else:
-            EventManager.add_event_listener(event_name="before_tracker_update", handler=EvidentialRegressionProcessingHandler())
+            EventManager.add_event_listener(
+                event_name="before_tracker_update", handler=EvidentialRegressionProcessingHandler()
+            )
             EventManager.add_event_listener(event_name="after_val_inference", handler=EvidentialRegressionInferenceHandler())
             EventManager.add_event_listener(event_name="after_predict", handler=EvidentialRegressionInferenceHandler())
 
@@ -151,6 +161,7 @@ class EvidentialLoss(torch.nn.Module):
         loss = self._loss(outputs, labels, epoch=epoch, loss_annealing=self._loss_annealing)
 
         return loss
+
 
 class PaddedLoss(torch.nn.Module):
     def __init__(self, loss: torch.nn.Module, padding_value: int = -1, tokenized: bool = False):

@@ -1,5 +1,5 @@
-from ..core.config import ScriptConfig
-from ..core.helpers import SuperFactory
+from kmol.core.config import ScriptConfig
+from kmol.core.helpers import SuperFactory
 from mila.factories import AbstractScript
 from mila.scripts import *
 from .lr_finder import LrFinderScript

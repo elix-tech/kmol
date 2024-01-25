@@ -6,13 +6,13 @@ from typing import Callable, Any
 import grpc
 from kmol.core.logger import LOGGER as logging
 
-from ...protocol_buffers import mila_pb2, mila_pb2_grpc
-from ...exceptions import InvalidNameError
-from .abstract_client import AbstractClient
-from ...configs import ClientConfiguration
+from mila.protocol_buffers import mila_pb2, mila_pb2_grpc
+from mila.exceptions import InvalidNameError
+from mila.services.clients.abstract_client import AbstractClient
+from mila.configs import ClientConfiguration
+
 
 class GrpcClient(AbstractClient):
-
     def __init__(self, config: ClientConfiguration) -> None:
         super().__init__(config)
         self._cfg_grpc = self._config.grpc_configuration
@@ -38,7 +38,7 @@ class GrpcClient(AbstractClient):
                         continue
 
                     raise e
-    
+
     def _connect(self) -> grpc.Channel:
         if self._cfg_grpc.use_secure_connection:
             credentials = self._get_credentials()
@@ -58,7 +58,6 @@ class GrpcClient(AbstractClient):
 
     def _heartbeat_daemon(self) -> None:
         while True:
-
             if not self._token:
                 break
 
@@ -97,7 +96,6 @@ class GrpcClient(AbstractClient):
             write_buffer.write(checkpoint)
 
         return checkpoint_path
-
 
     def send_checkpoint(self, checkpoint_path: str, stub: mila_pb2_grpc.MilaStub) -> None:
         with open(checkpoint_path, "rb") as read_buffer:
