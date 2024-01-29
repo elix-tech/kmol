@@ -84,7 +84,9 @@ class AbstractPreprocessor(metaclass=ABCMeta):
                 # Add a counter for "good" estimation of the advancement
                 _progress = manager.Value("i", 0)
                 func = partial(self._wrapper_mp_worker, func, _progress)
-                overall_progress_task = progress.add_task("[green] Progress:", total=len(loader))
+                overall_progress_task = progress.add_task(
+                    f"[green] Progress ({self._config.featurization_jobs} jobs):", total=len(loader)
+                )
 
                 dataset = CacheDiskList(tmp_dir=disk_dir) if disk_dir is not None else []
                 for i, result in enumerate(executor.imap(func, loader, chunksize=100)):
