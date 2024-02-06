@@ -20,7 +20,10 @@ class EventManager:
     _LISTENERS: DefaultDict[str, List[AbstractEventHandler]] = defaultdict(list)
 
     @staticmethod
-    def add_event_listener(event_name: str, handler: AbstractEventHandler) -> None:
+    def add_event_listener(event_name: str, handler: AbstractEventHandler, skip_if_exists: bool = False) -> None:
+        if skip_if_exists:
+            if any([isinstance(event, type(handler)) for event in EventManager._LISTENERS[event_name]]):
+                return 
         EventManager._LISTENERS[event_name].append(handler)
 
     @staticmethod

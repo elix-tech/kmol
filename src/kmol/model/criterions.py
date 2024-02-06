@@ -140,22 +140,22 @@ class EvidentialLoss(torch.nn.Module):
         }
         self._loss = loss_dict[loss["type"]]
 
-        EventManager.add_event_listener(event_name="before_criterion", handler=AddEpochEventHandler())
+        EventManager.add_event_listener(event_name="before_criterion", handler=AddEpochEventHandler(), skip_if_exists=True)
 
         if self._loss_type == "classification" or self._loss_type == "classification_masked":
             EventManager.add_event_listener(
-                event_name="before_tracker_update", handler=EvidentialClassificationProcessingHandler()
+                event_name="before_tracker_update", handler=EvidentialClassificationProcessingHandler(), skip_if_exists=True
             )
             EventManager.add_event_listener(
-                event_name="after_val_inference", handler=EvidentialClassificationInferenceHandler()
+                event_name="after_val_inference", handler=EvidentialClassificationInferenceHandler(), skip_if_exists=True
             )
-            EventManager.add_event_listener(event_name="after_predict", handler=EvidentialClassificationInferenceHandler())
+            EventManager.add_event_listener(event_name="after_predict", handler=EvidentialClassificationInferenceHandler(), skip_if_exists=True)
         else:
             EventManager.add_event_listener(
-                event_name="before_tracker_update", handler=EvidentialRegressionProcessingHandler()
+                event_name="before_tracker_update", handler=EvidentialRegressionProcessingHandler(), skip_if_exists=True
             )
-            EventManager.add_event_listener(event_name="after_val_inference", handler=EvidentialRegressionInferenceHandler())
-            EventManager.add_event_listener(event_name="after_predict", handler=EvidentialRegressionInferenceHandler())
+            EventManager.add_event_listener(event_name="after_val_inference", handler=EvidentialRegressionInferenceHandler(), skip_if_exists=True)
+            EventManager.add_event_listener(event_name="after_predict", handler=EvidentialRegressionInferenceHandler(), skip_if_exists=True)
 
     def forward(self, outputs: torch.Tensor, labels: torch.Tensor, epoch: int) -> torch.Tensor:
         loss = self._loss(outputs, labels, epoch=epoch, loss_annealing=self._loss_annealing)
