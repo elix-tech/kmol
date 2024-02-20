@@ -39,11 +39,6 @@ class CsvLoader(AbstractLoader):
 
         self._dataset = pd.read_csv(input_path)
 
-        # Add target column if none defined
-        self._dataset = self._dataset.assign(
-            **{col: None for col in target_column_names if col not in self._dataset.columns}
-        )
-
     def __len__(self) -> int:
         return self._dataset.shape[0]
 
@@ -53,7 +48,7 @@ class CsvLoader(AbstractLoader):
             id_=id_,
             labels=self._target_columns,
             inputs={**entry[self._input_columns]},
-            outputs=entry[self._target_columns].to_list(),
+            outputs=entry[self._target_columns].to_list() if len(self._target_columns) else [],
         )
 
     def get_all(self) -> List[DataPoint]:
