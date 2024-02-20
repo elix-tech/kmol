@@ -60,7 +60,7 @@ class AbstractPreprocessor(metaclass=ABCMeta):
         for transformer in reversed(self._transformers):
             transformer.reverse(sample)
 
-    def _wrapper_mp_worker(self, func, progress, sample):
+    def _wrapper_mp_worker(self, func, job_counter, sample):
         logger.stdout_handler.setLevel(self._config.log_level.upper())
         try:
             data = func(sample)
@@ -73,27 +73,35 @@ class AbstractPreprocessor(metaclass=ABCMeta):
             smiles = sample.inputs["smiles"] if "smiles" in sample.inputs else ""
             logger.error(f"{sample} {smiles} - {e}\n{tb_str}")
             return None
-        progress.set(progress.get() + 1)
+        job_counter.set(job_counter.get() + 1)
         # We are pickling the data to avoid any mmap errors
         buffer = pickle.dumps(data, protocol=-1)
         return np.frombuffer(buffer, dtype=np.uint8)
 
-    def _run_parrallel(self, func, loader, disk_dir=None):
+    def _run_progress_bar(self, job_counter, n_jobs, total):
         with progress_bar() as progress:
-            with multiprocessing.Manager() as manager, multiprocessing.Pool(self._config.featurization_jobs) as executor:
-                # Add a counter for "good" estimation of the advancement
-                _progress = manager.Value("i", 0)
-                func = partial(self._wrapper_mp_worker, func, _progress)
-                overall_progress_task = progress.add_task(
-                    f"[green] Progress ({self._config.featurization_jobs} jobs):", total=len(loader)
-                )
+            complete = 0
+            task = progress.add_task(f"[green] Progress ({n_jobs} jobs):", total=total)
+            while complete < total:
+                complete = job_counter.get()
+                progress.update(task, completed=complete, total=total)
 
-                dataset = CacheDiskList(tmp_dir=disk_dir) if disk_dir is not None else []
-                for i, result in enumerate(executor.imap(func, loader, chunksize=100)):
-                    progress.update(overall_progress_task, completed=max(_progress.get(), i + 1), total=len(loader))
-                    if result is not None:
-                        result = pickle.loads(memoryview(result))
-                        dataset.append(result)
+    def _run_parrallel(self, func, loader, disk_dir=None):
+        with multiprocessing.Manager() as manager, multiprocessing.Pool(self._config.featurization_jobs) as executor:
+            # Add a counter for "good" estimation of the advancement
+            job_counter = manager.Value("i", 0)
+            progress = threading.Thread(
+                target=partial(self._run_progress_bar, job_counter, self._config.featurization_jobs, len(loader))
+            )
+            progress.daemon = True
+            progress.start()
+
+            func = partial(self._wrapper_mp_worker, func, job_counter)
+            dataset = CacheDiskList(tmp_dir=disk_dir) if disk_dir is not None else []
+            for result in executor.imap(func, loader, chunksize=100):
+                if result is not None:
+                    result = pickle.loads(memoryview(result))
+                    dataset.append(result)
 
         return dataset
 
