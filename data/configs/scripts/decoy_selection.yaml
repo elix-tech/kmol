@@ -1,0 +1,43 @@
+# The decoy selection computes the tanimoto similarity score between all combinations of ligand, decoy pair provided.
+
+
+# The script will compute the Tanimoto similiraty between a group of molecules
+# and a decoy set. 
+# It will filter the data in data_loader containing set of protein /
+# molecule dataset based on the protein contains in target_loader. The output
+# is a csv file with the following format: 
+# smiles, decoy smiles, tanimoto score
+
+# The various column inputs / outputs of the loaders should match. Their content will
+# be compared and regrouped during the decoy similarity computation. For example,
+# the target sequence in the target loader should have the same format as the target
+# in data_loader.
+# - `target_loader`: Loader configuration for the target dataset. This dataset
+# is used to filter out the data_loader dataset and keep only the target inside
+# target_loader.
+# - `decoy_loader`: A loader's config format for the decoy dataset. This dataset
+# contains all the decoy molecules we want to use in order to augment our
+# dataset.
+# - `data_loader`: A loader config for the overall molecule / target dataset.
+# - `fingerprint_radius`: Radius of the featurization Morgan fingerprint is used. default: 2.
+
+
+script:
+  type: "DecoyTanimotoSimilarity"
+  decoy_loader:
+    type: "sdf"
+    input_path: "data/datasets/..."
+    input_column_names: ["smiles"]
+    target_column_names: []
+
+  target_loader:
+    type: "csv"
+    input_path: "data/datasets/..."
+    input_column_names: []
+    target_column_names: ["target_sequence"]
+
+  data_loader:
+    type: "csv"
+    input_path: "/nasa/datasets/kyodai_federated/..."
+    input_column_names: ["smiles"]
+    target_column_names: ["target_sequence"]

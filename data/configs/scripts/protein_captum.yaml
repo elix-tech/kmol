@@ -1,0 +1,28 @@
+
+# This script can be used to get the explanability of a schnet model.
+# 
+# In the case of primary sequence input, featurization using one-hot is mandatory, 
+# feature quantification is to hard to map using bag-of-words, etc.
+# In the case of complex 3D structure input, the contribution is stored in the B-factor column of pdb.
+
+# ProteinCaptumScript: Generate the integrated gradient attribution of the input
+# embeddings as well as the ligand-protein interaction edges. The attribution of the
+# edge is distributed to each atom where an atom's final attribution will be the sum
+# of its embedding as well as half of all the ligand-protein interaction attribution the
+# atom is related to.
+
+# - `config_path`: is the config of them model with information about the `checkpoint_path` to be
+#   loaded as well as the `output_path` and the dataset information to run the script.
+#   Similar to what an evaluation config will look like.
+
+# WARNING: The data to be evaluated needs to be in the `test` split of the dataset.
+#           Usually define in the splitter.
+
+script:
+  type: "protein_captum"
+  # reduction: sum
+  n_steps: 50
+  default_attribution_value: 999
+
+  config_path: {path to the config to the model}
+  
