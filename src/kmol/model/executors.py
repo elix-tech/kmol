@@ -65,7 +65,7 @@ class AbstractExecutor(metaclass=ABCMeta):
             if type(v) is dict:
                 new_dict[k] = self.dict_to_device(v)
             else:
-                if isinstance(v, torch.Tensor) or issubclass(type(values), Data):
+                if isinstance(v, torch.Tensor) or issubclass(type(v), Data):
                     new_dict[k] = v.to(self._device)
                 else:
                     new_dict[k] = v
