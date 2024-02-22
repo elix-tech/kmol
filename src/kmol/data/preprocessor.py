@@ -103,7 +103,8 @@ class AbstractPreprocessor(metaclass=ABCMeta):
                 if result is not None:
                     result = pickle.loads(memoryview(result))
                     dataset.append(result)
-
+            # Join the thread to avoid broken pipe from the exiting of the manager
+            progress.join()
         return dataset
 
     @abstractmethod
