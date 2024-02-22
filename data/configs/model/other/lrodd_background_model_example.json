@@ -10,7 +10,7 @@
         "type": "csv",
         "input_path": "data/datasets/chembl.csv",
         "input_column_names": ["target_sequence"],
-        "target_column_names": ["autoencoded"]
+        "target_column_names": []
     },
     "num_workers": 8,
     "overwrite_checkpoint": true,
