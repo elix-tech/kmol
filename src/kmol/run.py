@@ -13,17 +13,17 @@ import pandas as pd
 from rich import progress as pb
 
 from mila.factories import AbstractExecutor
-from .core.config import Config
-from .core.helpers import Namespace, ConfidenceInterval, SuperFactory
-from .core.logger import LOGGER as logging
-from .core.tuning import OptunaTemplateParser
-from .data.resources import DataPoint
-from .data.loaders import AbstractLoader
-from .data.streamers import GeneralStreamer, SubsetStreamer, CrossValidationStreamer
-from .model.executors import Predictor, ThresholdFinder, LearningRareFinder, Pipeliner
-from .model.metrics import PredictionProcessor, CsvLogger
-from .data.preprocessor import AbstractPreprocessor
-from .core.utils import progress_bar
+from kmol.core.config import Config
+from kmol.core.helpers import Namespace, ConfidenceInterval, SuperFactory
+from kmol.core.logger import LOGGER as logging
+from kmol.core.tuning import OptunaTemplateParser
+from kmol.data.resources import DataPoint
+from kmol.data.loaders import AbstractLoader
+from kmol.data.streamers import GeneralStreamer, SubsetStreamer, CrossValidationStreamer
+from kmol.model.executors import Predictor, ThresholdFinder, LearningRareFinder, Pipeliner
+from kmol.model.metrics import PredictionProcessor, CsvLogger
+from kmol.data.preprocessor import AbstractPreprocessor
+from kmol.core.utils import progress_bar
 
 
 class Executor(AbstractExecutor):
@@ -390,7 +390,7 @@ class Executor(AbstractExecutor):
                 if ligand_gradients is not None:
                     results["ligand_gd"].extend(ligand_gradients.cpu().numpy())
                 if likelihood_ratio is not None:
-                  results["likelihood_ratio"].extend(likelihood_ratio.cpu().numpy())
+                    results["likelihood_ratio"].extend(likelihood_ratio.cpu().numpy())
 
                 if len(self._config.prediction_additional_columns) > 0:
                     for col_name in self._config.prediction_additional_columns:
@@ -446,11 +446,11 @@ class Executor(AbstractExecutor):
                 results[f"{label}_ligand_gd"] = results["ligand_gd"][:, i]
                 columns.append(f"{label}_ligand_gd")
             columns += self._config.prediction_additional_columns
-        
+
         if "likelihood_ratio" in results:
             results["likelihood_ratio"] = results["likelihood_ratio"].flatten()
             columns.append("likelihood_ratio")
-        
+
         results = pd.DataFrame.from_dict({c: results[c] for c in columns})
 
         predictions_dir = Path(self._config.output_path)

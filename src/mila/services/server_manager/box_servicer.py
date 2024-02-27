@@ -3,9 +3,9 @@ from pathlib import Path
 
 from kmol.core.logger import LOGGER as logging
 
-from .server_manager import ServerManager, Participant
-from ..box_utils import Box, File, User
-from ...configs import ServerConfiguration
+from mila.services.server_manager import ServerManager, Participant
+from mila.services.box_utils import Box, File, User
+from mila.configs import ServerConfiguration
 
 
 class BoxServicer(ServerManager):
@@ -25,7 +25,7 @@ class BoxServicer(ServerManager):
 
         logging.info("[{}] Successfully authenticated (clients={})".format(client, self.get_clients_count()))
         return client.token
-    
+
     def _authenticate(self):
         auth_files = [f.get() for f in self.box.auth_dir.get_items()]
         for file in auth_files:
@@ -39,7 +39,6 @@ class BoxServicer(ServerManager):
         if not self.should_wait_for_additional_clients():
             self.close_registration()
 
-
     def _heartbeat(self):
         for file in self.box.hb_dir.get_items():
             file = file.get()
@@ -49,12 +48,15 @@ class BoxServicer(ServerManager):
                 self.register_heartbeat(user.id, time_last_hb)
             else:
                 if not self._registry[user.id].cut_from_training:
-                    logging.warning(f"{str(self._registry[user.id])}: Lost connection continuing training without this client")
+                    logging.warning(
+                        f"{str(self._registry[user.id])}: Lost connection continuing training without this client"
+                    )
                     folder = self.box.get_folder_from_path(self.box.base_path)
                     name = self._registry[user.id].name
-                    self.box.upload_text(folder, f"{name}.lost_connection", f"lost connection on round {self._current_round}")
+                    self.box.upload_text(
+                        folder, f"{name}.lost_connection", f"lost connection on round {self._current_round}"
+                    )
                     self._registry[user.id].cut_from_training = True
-
 
     def _validate_token(self, token: str, file: File) -> bool:
         return self._registry[token].is_alive(self._config.heartbeat_timeout)
@@ -75,10 +77,12 @@ class BoxServicer(ServerManager):
             # Should only happen if start_point is not provided
             self.box.upload_text(folder, "no_starting_model.info", "")
 
-    def _is_aggregate_ready(self,):  
+    def _is_aggregate_ready(
+        self,
+    ):
         nb_checkpont = self.box.count_checkpoints(self.box.base_path / "rounds" / f"round_{self._current_round}")
         return nb_checkpont == self.get_clients_count()
-    
+
     def get_clients_count(self) -> int:
         return sum(1 for client in self._registry.values() if not client.cut_from_training)
 
@@ -88,7 +92,6 @@ class BoxServicer(ServerManager):
 
     def get_client_filename_for_current_round(self, client: Participant):
         return Path(self._config.save_path) / f"round_{self._current_round}" / f"{str(client.name).lower()}.pt"
-    
 
     def create_end_training_file(self, msg=f"Training finished {str(time())}"):
         file_name = "server_ended.txt"

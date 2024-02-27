@@ -6,8 +6,8 @@ from typing import Callable, Dict, Any
 
 import optuna
 
-from .config import Config
-from .helpers import Loggable
+from kmol.core.config import Config
+from kmol.core.helpers import Loggable
 
 
 class OptunaTemplateParser(Loggable):

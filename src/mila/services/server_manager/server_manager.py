@@ -7,10 +7,10 @@ import pytz
 from datetime import datetime
 
 from kmol.core.logger import LOGGER as logging
-from ...exceptions import ClientAuthenticationError
-from ...configs import ServerConfiguration
-from ...factories import AbstractAggregator
-from ...services import IOManager
+from mila.exceptions import ClientAuthenticationError
+from mila.configs import ServerConfiguration
+from mila.factories import AbstractAggregator
+from mila.services import IOManager
 
 
 @dataclass
@@ -43,7 +43,6 @@ class Participant:
 
 
 class ServerManager(IOManager):
-
     def __init__(self, config: ServerConfiguration) -> None:
         self._config = config
         self._registry: Dict[str, Participant] = {}
@@ -178,7 +177,8 @@ class ServerManager(IOManager):
     def get_clients_model_path_for_current_round(self):
         return [
             self.get_client_filename_for_current_round(client)
-            for client in self._registry.values() if client.is_alive(self._config.heartbeat_timeout)
+            for client in self._registry.values()
+            if client.is_alive(self._config.heartbeat_timeout)
         ]
 
     def get_client_filename_for_current_round(self, client):

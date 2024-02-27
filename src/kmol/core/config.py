@@ -13,9 +13,9 @@ import torch
 from openbabel import pybel
 from mila.factories import AbstractConfiguration
 
-from .helpers import SuperFactory
-from .logger import LOGGER as logging
-from .observers import AbstractEventHandler, EventManager, DifferentialPrivacy
+from kmol.core.helpers import SuperFactory
+from kmol.core.logger import LOGGER as logging
+from kmol.core.observers import AbstractEventHandler, EventManager, DifferentialPrivacy
 
 
 @dataclass
@@ -121,6 +121,11 @@ class Config(AbstractConfiguration):
 
         if getattr(self, "observers") is None:
             setattr(self, "observers", {})
+
+        if getattr(self, "preprocessor") is not None:
+            if self.preprocessor.get("type") == "cache" and self.preprocessor.get("use_disk"):
+                logging.warning("[Warning] Fixing num_workers=1. This should not affect the performance")
+                self.num_workers = 1
 
         for element in ["augmentations", "static_augmentations"]:
             if getattr(self, element) is None:

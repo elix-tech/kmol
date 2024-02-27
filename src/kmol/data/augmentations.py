@@ -10,19 +10,17 @@ from rdkit.Chem.rdchem import BondType as BT
 from scipy.stats import bernoulli
 import torch
 from torch_geometric.data import Data as PyG_Data
-import numpy as np
-from .resources import DataPoint
 
-from ..vendor.openfold.utils.tensor_utils import tensor_tree_map
+from kmol.data.resources import DataPoint
 
-ATOM_LIST = list(range(1,120)) # Includes mask token
+ATOM_LIST = list(range(1, 120))  # Includes mask token
 NUM_ATOM_TYPE = len(ATOM_LIST)
 
 CHIRALITY_LIST = [
     Chem.rdchem.ChiralType.CHI_UNSPECIFIED,
     Chem.rdchem.ChiralType.CHI_TETRAHEDRAL_CW,
     Chem.rdchem.ChiralType.CHI_TETRAHEDRAL_CCW,
-    Chem.rdchem.ChiralType.CHI_OTHER
+    Chem.rdchem.ChiralType.CHI_OTHER,
 ]
 NUM_CHIRALITY_TAG = len(CHIRALITY_LIST)
 
@@ -33,14 +31,14 @@ BOND_LIST = [
     BT.AROMATIC,
     BT.UNSPECIFIED,
 ]
-NUM_BOND_TYPE = len(BOND_LIST) + 1 # including aromatic and self-loop edge
+NUM_BOND_TYPE = len(BOND_LIST) + 1  # including aromatic and self-loop edge
 
 
 BONDDIR_LIST = [
     Chem.rdchem.BondDir.NONE,
     Chem.rdchem.BondDir.ENDUPRIGHT,
     Chem.rdchem.BondDir.ENDDOWNRIGHT,
-    Chem.rdchem.BondDir.EITHERDOUBLE
+    Chem.rdchem.BondDir.EITHERDOUBLE,
 ]
 NUM_BOND_DIRECTION = len(BONDDIR_LIST)
 
@@ -49,6 +47,7 @@ class AbstractAugmentation(metaclass=ABCMeta):
     @abstractmethod
     def __call__(self, data: Dict, seed=None) -> None:
         raise NotImplementedError
+
 
 class BaseTransform(AbstractAugmentation):
     def __init__(self, prob: float = 1.0, input_field=None):
@@ -59,7 +58,7 @@ class BaseTransform(AbstractAugmentation):
         @param input_field: the name of the generated input containing the smile information
             should be a PyG_Data object
         """
-        if(isinstance(prob, list)):
+        if isinstance(prob, list):
             assert 0 <= prob[0] <= 1.0
             assert 0 <= prob[1] <= 1.0
             assert prob[0] < prob[1]
@@ -80,7 +79,7 @@ class BaseTransform(AbstractAugmentation):
             the inputted list. If set to None, no metadata will be appended or returned
         @returns: Augmented PyG Data
         """
-        if(isinstance(self.prob, list)):
+        if isinstance(self.prob, list):
             self.p = random.uniform(self.prob[0], self.prob[1])
         else:
             self.p = self.prob
@@ -110,6 +109,7 @@ class RandomAtomMaskAugmentation(BaseTransform):
     """
     Base logic taken form Auglichem https://baratilab.github.io/AugLiChem/molecule.html
     """
+
     def __init__(self, p: float = 1.0, input_field=None):
         """
         @param p: the probability of the transform being applied; default value is 1.0
@@ -125,15 +125,15 @@ class RandomAtomMaskAugmentation(BaseTransform):
         @param seed:
         @returns: Augmented PyG Data
         """
-        if(seed is not None):
+        if seed is not None:
             random.seed(seed)
         N = mol_graph.x.size(0)
-        num_mask_nodes = max([1, math.floor(self.p*N)])
+        num_mask_nodes = max([1, math.floor(self.p * N)])
         mask_nodes = random.sample(list(range(N)), num_mask_nodes)
 
         aug_mol_graph = deepcopy(mol_graph)
         for atom_idx in mask_nodes:
-            aug_mol_graph.x[atom_idx,:] = torch.tensor(aug_mol_graph.x[atom_idx,:].shape)
+            aug_mol_graph.x[atom_idx, :] = torch.tensor(aug_mol_graph.x[atom_idx, :].shape)
 
         return aug_mol_graph
 
@@ -145,6 +145,7 @@ class RandomBondDeleteAugmentation(BaseTransform):
     """
     Base logic taken form Auglichem https://baratilab.github.io/AugLiChem/molecule.html
     """
+
     def __init__(self, p: float = 1.0, input_field=None):
         """
         @param p: the probability of the transform being applied; default value is 1.0
@@ -159,23 +160,25 @@ class RandomBondDeleteAugmentation(BaseTransform):
         @param mol_graph: PyG Data to be augmented
         @returns: Augmented PyG Data
         """
-        if len(mol_graph.edge_attr.shape) == 1: # No edge case
+        if len(mol_graph.edge_attr.shape) == 1:  # No edge case
             return mol_graph
-        if(seed is not None):
+        if seed is not None:
             random.seed(seed)
         M = mol_graph.edge_index.size(1) // 2
-        num_mask_edges = max([0, math.floor(self.p*M)])
+        num_mask_edges = max([0, math.floor(self.p * M)])
         mask_edges_single = random.sample(list(range(M)), num_mask_edges)
-        mask_edges = [2*i for i in mask_edges_single] + [2*i+1 for i in mask_edges_single]
+        mask_edges = [2 * i for i in mask_edges_single] + [2 * i + 1 for i in mask_edges_single]
 
         aug_mol_graph = deepcopy(mol_graph)
-        aug_mol_graph.edge_index = torch.zeros((2, 2*(M-num_mask_edges)), dtype=torch.int64)
-        aug_mol_graph.edge_attr = torch.zeros((2*(M-num_mask_edges), aug_mol_graph.edge_attr.size(1)), dtype=torch.float32)
+        aug_mol_graph.edge_index = torch.zeros((2, 2 * (M - num_mask_edges)), dtype=torch.int64)
+        aug_mol_graph.edge_attr = torch.zeros(
+            (2 * (M - num_mask_edges), aug_mol_graph.edge_attr.size(1)), dtype=torch.float32
+        )
         count = 0
-        for bond_idx in range(2*M):
+        for bond_idx in range(2 * M):
             if bond_idx not in mask_edges:
-                aug_mol_graph.edge_index[:,count] = mol_graph.edge_index[:,bond_idx]
-                aug_mol_graph.edge_attr[count,:] = mol_graph.edge_attr[bond_idx,:]
+                aug_mol_graph.edge_index[:, count] = mol_graph.edge_index[:, bond_idx]
+                aug_mol_graph.edge_attr[count, :] = mol_graph.edge_attr[bond_idx, :]
                 count += 1
 
         return aug_mol_graph
@@ -183,8 +186,16 @@ class RandomBondDeleteAugmentation(BaseTransform):
     def __str__(self):
         return "RandomBondDelete(p = {})".format(self.prob)
 
+
 class AbstractProteinPertubationAugmentation(AbstractAugmentation):
-    def __init__(self, vocabulary: List[str], p: float = 0.2, input_field: str = "target_sequence", output_field: str = "protein_index", autoencoder: bool = False):
+    def __init__(
+        self,
+        vocabulary: List[str],
+        p: float = 0.2,
+        input_field: str = "target_sequence",
+        output_field: str = "protein_index",
+        autoencoder: bool = False,
+    ):
         self._original_vocabulary = vocabulary
         self._bernoulli_prob = p
         self._input = input_field
@@ -197,24 +208,34 @@ class AbstractProteinPertubationAugmentation(AbstractAugmentation):
         for i in range(len(data)):
             if bern_seq[i]:
                 l_data[i] = random.choice(self._original_vocabulary)
-        return ''.join(l_data)
-    
+        return "".join(l_data)
+
     def __call__(self, data: DataPoint, seed=None) -> DataPoint:
         data.inputs = self.process_input(data.inputs, seed)
         if self._autoencoder:
             data.outputs = data.inputs[self._output]
 
         return data
-    
+
     @abstractmethod
     def process_input(self, data: dict, seed=None) -> dict:
         raise NotImplementedError
+
 
 class ProteinPerturbationBaggedAugmentation(AbstractProteinPertubationAugmentation):
     """
     Augmentation useful for pseudo lrodd background network. Perturb the protein following a Bernoulli distribution.
     """
-    def __init__(self, vocabulary: List[str], max_length: int, p: float = 0.2, input_field: str = "target_sequence", output_field: str = "protein", autoencoder: bool = False):
+
+    def __init__(
+        self,
+        vocabulary: List[str],
+        max_length: int,
+        p: float = 0.2,
+        input_field: str = "target_sequence",
+        output_field: str = "protein",
+        autoencoder: bool = False,
+    ):
         super().__init__(vocabulary, p, input_field, output_field, autoencoder)
         self._vocabulary = self._get_combinations(vocabulary, max_length)
         self._max_length = max_length
@@ -227,7 +248,7 @@ class ProteinPerturbationBaggedAugmentation(AbstractProteinPertubationAugmentati
                 combinations.append("".join(variation))
 
         return combinations
-    
+
     def process_input(self, data: dict, seed=None) -> dict:
         target_sequence = data[self._input]
         target_sequence = self._perturb(target_sequence)
@@ -236,16 +257,25 @@ class ProteinPerturbationBaggedAugmentation(AbstractProteinPertubationAugmentati
 
         for length in range(1, self._max_length + 1):
             for start_index in range(0, len(target_sequence) - length + 1):
-                sample[target_sequence[start_index:start_index + length]] += 1
+                sample[target_sequence[start_index : start_index + length]] += 1
 
         data[self._output] = torch.FloatTensor(list(sample.values()))
         return data
+
 
 class ProteinPerturbationSequenceAugmentation(AbstractProteinPertubationAugmentation):
     """
     Augmentation useful for lrodd generative bg network. Perturb the protein following a Bernoulli distribution.
     """
-    def __init__(self, vocabulary: List[str], p: float = 0.2, input_field: str = "target_sequence", output_field: str = "protein_index", autoencoder: bool = False):
+
+    def __init__(
+        self,
+        vocabulary: List[str],
+        p: float = 0.2,
+        input_field: str = "target_sequence",
+        output_field: str = "protein_index",
+        autoencoder: bool = False,
+    ):
         super().__init__(vocabulary, p, input_field, output_field, autoencoder)
         self._to_index_dict = self._create_index_dict()
         self._autoencoder = autoencoder

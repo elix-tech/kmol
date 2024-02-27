@@ -13,17 +13,17 @@ from torch.optim import Optimizer as AbstractOptimizer
 from torch.optim.lr_scheduler import _LRScheduler as AbstractLearningRateScheduler, ExponentialLR
 from torch_geometric.data import Data
 
-from .architectures import AbstractNetwork, EnsembleNetwork
-from .metrics import PredictionProcessor
-from .trackers import ExponentialAverageMeter
-from ..core.config import Config
-from ..core.exceptions import CheckpointNotFound
-from ..core.logger import LOGGER as logging
-from ..core.helpers import Timer, SuperFactory, Namespace, HookProbe
-from ..core.observers import EventManager
-from ..core.custom_dataparallel import CustomDataParallel
-from ..data.resources import Batch, LoadedContent
-from ..core.utils import progress_bar
+from kmol.model.architectures import AbstractNetwork, EnsembleNetwork
+from kmol.model.metrics import PredictionProcessor
+from kmol.model.trackers import ExponentialAverageMeter
+from kmol.core.config import Config
+from kmol.core.exceptions import CheckpointNotFound
+from kmol.core.logger import LOGGER as logging
+from kmol.core.helpers import Timer, SuperFactory, Namespace, HookProbe
+from kmol.core.observers import EventManager
+from kmol.core.custom_dataparallel import CustomDataParallel
+from kmol.data.resources import Batch, LoadedContent
+from kmol.core.utils import progress_bar
 
 
 class AbstractExecutor(metaclass=ABCMeta):
@@ -65,7 +65,7 @@ class AbstractExecutor(metaclass=ABCMeta):
             if type(v) is dict:
                 new_dict[k] = self.dict_to_device(v)
             else:
-                if isinstance(v, torch.Tensor) or issubclass(type(values), Data):
+                if isinstance(v, torch.Tensor) or issubclass(type(v), Data):
                     new_dict[k] = v.to(self._device)
                 else:
                     new_dict[k] = v
@@ -180,7 +180,7 @@ class Trainer(AbstractExecutor):
         EventManager.dispatch_event(event_name="before_tracker_update", payload=payload)
 
         outputs = payload.outputs
-        
+
         self._update_trackers(loss.item(), batch.outputs, outputs)
 
     def _train_epoch(self, train_loader, epoch):

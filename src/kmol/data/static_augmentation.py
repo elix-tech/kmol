@@ -12,11 +12,11 @@ from rdkit.Chem.BRICS import BRICSDecompose
 from torch_geometric.data import Data as PyG_Data
 from torch.utils.data import Subset
 
-from ..core.helpers import SuperFactory
-from ..core.logger import LOGGER as logging
-from ..core.utils import progress_bar
-from .loaders import AbstractLoader
-from .resources import DataPoint
+from kmol.core.helpers import SuperFactory
+from kmol.core.logger import LOGGER as logging
+from kmol.core.utils import progress_bar
+from kmol.data.loaders import AbstractLoader
+from kmol.data.resources import DataPoint
 from mila.factories import AbstractScript
 
 

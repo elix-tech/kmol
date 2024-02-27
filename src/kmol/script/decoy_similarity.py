@@ -9,9 +9,9 @@ import pandas as pd
 from itertools import product
 
 from mila.factories import AbstractScript
-from ..core.helpers import SuperFactory
-from ..core.logger import LOGGER as logging
-from ..data.loaders import AbstractLoader
+from kmol.core.helpers import SuperFactory
+from kmol.core.logger import LOGGER as logging
+from kmol.data.loaders import AbstractLoader
 
 
 class DecoyTanimotoSimilarityScript(AbstractScript):

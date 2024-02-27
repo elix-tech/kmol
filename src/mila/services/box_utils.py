@@ -10,12 +10,13 @@ import pytz
 from boxsdk import JWTAuth, Client, BoxAPIException
 
 from boxsdk import Client, user, folder, file
+
 Folder = folder.Folder
 User = user.User
 File = file.File
 
 from kmol.core.logger import LOGGER as logging
-from ..configs import BoxConfiguration
+from mila.configs import BoxConfiguration
 
 
 def retry(ExceptionToCheck, tries=10, delay=10, logger=None):
@@ -27,8 +28,8 @@ def retry(ExceptionToCheck, tries=10, delay=10, logger=None):
     :type tries: int
     :param logger: logging.Logger instance: logger to use. If None, print
     """
-    def deco_retry(f):
 
+    def deco_retry(f):
         @wraps(f)
         def f_retry(*args, **kwargs):
             mtries, mdelay = tries, delay
@@ -59,8 +60,8 @@ class Box:
         self.user = self.client
         self.base_path = self.get_base_path(role)
 
-        self.path_auth_dir = self.base_path / 'authentifications'
-        self.path_hb_dir = self.base_path / 'heartbeats'
+        self.path_auth_dir = self.base_path / "authentifications"
+        self.path_hb_dir = self.base_path / "heartbeats"
         self.auth_dir = self.get_folder_from_path(self.path_auth_dir, mkdir=mkdir)
         self.hb_dir = self.get_folder_from_path(self.path_hb_dir, mkdir=mkdir)
 
@@ -68,7 +69,7 @@ class Box:
     def get_base_path(self, role):
         base_path = Path(self.cfg.shared_dir_name) / self.cfg.save_path
         if role == "server":
-            date = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+            date = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             return base_path / date
         else:
             base_folder = self.get_folder_from_path(base_path)
@@ -83,12 +84,12 @@ class Box:
         else:
             user = self.client.create_user(name, login=None)
         self.add_user_to_group(user)
-        
-        self.user = self.client.as_user(user) 
+
+        self.user = self.client.as_user(user)
         self.auth_dir = self.auth_dir.as_user(user)
         self.hb_dir = self.hb_dir.as_user(user)
 
-    @retry(BoxAPIException, logger=logging) 
+    @retry(BoxAPIException, logger=logging)
     def add_user_to_group(self, user: User):
         groups = [g for g in self.client.get_groups(name=self.cfg.group_name)]
         if len(groups) > 0:
@@ -96,7 +97,7 @@ class Box:
             group_id = groups[0].id
         if not self.is_user_in_group(user, group_id):
             self.client.group(group_id=group_id).add_member(user)
-    
+
     @retry(BoxAPIException, logger=logging)
     def get_users_with_names(self, name):
         return [u for u in self.client.users(filter_term=name) if u.name == name]
@@ -117,14 +118,14 @@ class Box:
             raise FileNotFoundError(f"Missing folder '{name}' in folder '{folder}'")
 
     @retry(BoxAPIException, logger=logging)
-    def get_folder_from_path(self, path:str, mkdir=False) -> Folder:
-        folder = self.user.folder('0')
+    def get_folder_from_path(self, path: str, mkdir=False) -> Folder:
+        folder = self.user.folder("0")
         for part in Path(path).parts:
             folder = self.get_folders_from_name(folder, part, mkdir=mkdir)
-        return folder        
+        return folder
 
     @retry(BoxAPIException, logger=logging)
-    def get_file_if_exist(self, folder: Folder, filename:str):
+    def get_file_if_exist(self, folder: Folder, filename: str):
         files = [i for i in folder.get_items() if i.name == filename and type(i) == File]
         if len(files) == 1:
             return files[0]
@@ -175,7 +176,7 @@ class Box:
     def count_checkpoints(self, folder_path: str) -> int:
         folder = self.get_folder_from_path(folder_path)
         files = folder.get_items(limit=100, offset=0)
-        
+
         checkpoints_count = 0
         for file in files:
             if file.name.endswith(".pt"):
@@ -200,6 +201,5 @@ class Box:
     def download_file(self, file: File, save_path: str):
         if not Path(save_path).exists():
             Path(save_path).mkdir(parents=True)
-        with open(os.path.join(save_path, file.name), 'wb') as open_file:
+        with open(os.path.join(save_path, file.name), "wb") as open_file:
             return self.user.file(file.id).download_to(open_file)
-        

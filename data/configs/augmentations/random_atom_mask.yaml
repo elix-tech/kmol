@@ -1,0 +1,10 @@
+
+# Random atom masking replaces selected node attributes with a mask token.
+# In the graph representation, the atoms are still there, but masked atoms are all represented by the same token.
+# - p: Proportion of atom to mask, ie 0.3 will mask 30\% of the atoms, default: 1.0
+# - input_field: The name of the input to use the augmentation on. It should be the same as the output field of a graph featurization.
+
+augmentations:
+  - type: "random_atom_mask"
+    p: 0.3
+    input_field: "ligand"

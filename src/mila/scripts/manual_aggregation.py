@@ -5,19 +5,18 @@ from typing import Dict
 
 from kmol.core.logger import LOGGER as logging
 
-from ..factories import AbstractAggregator, AbstractScript
-from ..services import IOManager
+from mila.factories import AbstractAggregator, AbstractScript
+from mila.services import IOManager
 
 
 class ManualAggregationScript(AbstractScript, IOManager):
     def __init__(
-        self, 
-        chekpoint_paths: list, 
-        aggregator_type: str, 
-        aggregator_options: Dict = {}, 
-        save_path: str = "data/logs/local/manual_aggregator.pt"
+        self,
+        chekpoint_paths: list,
+        aggregator_type: str,
+        aggregator_options: Dict = {},
+        save_path: str = "data/logs/local/manual_aggregator.pt",
     ) -> None:
-
         self.chekpoint_paths = chekpoint_paths
         self.aggregator_type = aggregator_type
         self.aggregator_options = aggregator_options
@@ -34,7 +33,7 @@ class ManualAggregationScript(AbstractScript, IOManager):
         aggregator(**self.aggregator_options).run(checkpoint_paths=self.chekpoint_paths, save_path=self.save_path)
 
         logging.info("Aggregate model saved: [{}]".format(self.save_path))
-    
+
     def create_tmp_weights(self) -> None:
         assert "weights" in self.aggregator_options.keys(), "WeightedTorchAggregator needs weights argument"
         weights = {}
@@ -48,14 +47,14 @@ class ManualAggregationScript(AbstractScript, IOManager):
             Path(tmp_path).symlink_to(Path(checkpoint_path).absolute())
             tmp_paths.append(str(tmp_path))
             weights.update({k: weight})
-        
+
         self.chekpoint_paths = tmp_paths
         self.aggregator_options["weights"] = weights
-            
+
     def clean_up(self) -> None:
         if hasattr(self, "dir_name"):
             shutil.rmtree(self.dir_name, ignore_errors=True)
-    
+
     def run(self) -> None:
         # Box related stuffs maybe
         try:

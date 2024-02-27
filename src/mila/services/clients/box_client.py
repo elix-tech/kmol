@@ -6,13 +6,13 @@ from typing import Callable, Any
 
 from kmol.core.logger import LOGGER as logging
 
-from .abstract_client import AbstractClient
-from ...configs import ClientConfiguration
-from ..box_utils import Box, File
-from ...exceptions import ClientAuthenticationError
+from mila.configs import ClientConfiguration
+from mila.exceptions import ClientAuthenticationError
+from mila.services.box_utils import Box, File
+from mila.services.clients.abstract_client import AbstractClient
+
 
 class BoxClient(AbstractClient):
-
     def __init__(self, config: ClientConfiguration) -> None:
         super().__init__(config)
         self.box = Box(self._config.box_configuration)
@@ -33,14 +33,14 @@ class BoxClient(AbstractClient):
         """
         auth_file_name = f"{self._config.name}_authentification.txt"
         auth_file = self.box.upload_text(self.box.auth_dir, auth_file_name, "")
-        
+
         # Create first heartbeat file
         hb_file_name = f"{self._config.name}_heartbeat.txt"
         hb_file = self.box.upload_text(self.box.hb_dir, hb_file_name, str(time()))
 
         self.wait_for_authentification(auth_file)
         return hb_file
-    
+
     def wait_for_authentification(self, file: File):
         while not self.connection_ended():
             content = file.content().decode()
@@ -65,14 +65,14 @@ class BoxClient(AbstractClient):
         file = self.box.get_file_if_exist(folder, "cfg.json")
         # return bytes ?
         self.box.download_file(file, Path(self._config.save_path))
-        with open(Path(self._config.save_path) / "cfg.json", 'rb') as file:
+        with open(Path(self._config.save_path) / "cfg.json", "rb") as file:
             # Read the file's content in bytes
             return file.read()
         # return Path(self._config.save_path) / "cfg.json"
 
     def download_server_model(self, round_id) -> str:
         agg_file = info_file = None
-        while (agg_file is None and info_file is None):
+        while agg_file is None and info_file is None:
             if self.connection_ended():
                 return
             try:
@@ -82,20 +82,20 @@ class BoxClient(AbstractClient):
                     info_file = self.box.get_file_if_exist(folder, "no_starting_model.info")
             except:
                 sleep(3)
-        
+
         checkpoint_path = Path(self._config.save_path) / f"round_{round_id}" / "server.agg"
         if agg_file is not None:
             logging.info(f"Downloading aggregate model from the server for round {round_id}")
             self.box.download_file(agg_file, checkpoint_path.parent)
         else:
             logging.info(f"No starting point, strating the training")
-        
+
         return checkpoint_path
-        
+
     def upload_checkpoint(self, checkpoint_path: str, round_id) -> None:
         folder = self.box.get_folder_from_path(self.box.base_path / "rounds" / f"round_{round_id}")
         self.box.upload_file(f"{str(self._config.name).lower()}.pt", checkpoint_path, folder)
-    
+
     def connection_ended(self):
         folder = self.box.get_folder_from_path(self.box.base_path)
         end_file = self.box.get_file_if_exist(folder, "server_ended.txt")
@@ -132,4 +132,3 @@ class BoxClient(AbstractClient):
         except Exception as e:
             logging.error("[internal error] {}".format(e))
             self._invoke(self.close)
-

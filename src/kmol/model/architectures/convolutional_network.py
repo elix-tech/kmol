@@ -3,8 +3,8 @@ import math
 
 import torch
 
-from ..layers import LinearBlock
-from .abstract_network import AbstractNetwork
+from kmol.model.layers import LinearBlock
+from kmol.model.architectures.abstract_network import AbstractNetwork
 
 
 class ConvolutionalNetwork(AbstractNetwork):

@@ -6,11 +6,10 @@ from typing import List, Dict, Type, Any
 import numpy as np
 import torch
 
-from .factories import AbstractAggregator, AbstractConfiguration, AbstractExecutor
+from mila.factories import AbstractAggregator, AbstractConfiguration, AbstractExecutor
 
 
 class PlainTorchAggregator(AbstractAggregator):
-
     def run(self, checkpoint_paths: List[str], save_path: str) -> None:
         output = None
 
@@ -37,7 +36,6 @@ class PlainTorchAggregator(AbstractAggregator):
 
 
 class WeightedTorchAggregator(AbstractAggregator):
-
     def __init__(self, weights: Dict[str, float]):
         self._weights = weights
 
@@ -62,10 +60,8 @@ class WeightedTorchAggregator(AbstractAggregator):
 
 
 class BenchmarkedTorchAggregator(AbstractAggregator):
-
     def __init__(
-            self, config_type: str, config_path: str,
-            executor_type: str, target_metric: str, minimized_metric: bool = False
+        self, config_type: str, config_path: str, executor_type: str, target_metric: str, minimized_metric: bool = False
     ):
         self._config_instantiator: Type[AbstractConfiguration] = self._reflect(config_type)
         self._executor_instantiator: Type[AbstractExecutor] = self._reflect(executor_type)

@@ -2,9 +2,9 @@ from typing import Dict, Any, Optional, List
 
 import torch
 
-from ...core.helpers import SuperFactory
-from .abstract_network import AbstractNetwork
-from ...core.observers import EventManager, AddLossInfoHandler
+from kmol.core.helpers import SuperFactory
+from kmol.core.observers import EventManager, AddLossInfoHandler
+from kmol.model.architectures.abstract_network import AbstractNetwork
 
 
 class EnsembleNetwork(AbstractNetwork):

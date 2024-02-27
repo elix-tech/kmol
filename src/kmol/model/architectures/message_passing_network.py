@@ -3,21 +3,22 @@ from typing import Dict, Any, List
 import torch
 import torch_geometric as geometric
 
-from .abstract_network import AbstractNetwork
+from kmol.model.architectures.abstract_network import AbstractNetwork
+
 
 class MessagePassingNetwork(AbstractNetwork):
     def __init__(
-            self,
-            in_features: int,
-            hidden_features: int,
-            out_features: int,
-            edge_features: int,
-            edge_hidden: int,
-            steps: int,
-            dropout: float = 0,
-            aggregation: str = "add",
-            set2set_layers: int = 3,
-            set2set_steps: int = 6,
+        self,
+        in_features: int,
+        hidden_features: int,
+        out_features: int,
+        edge_features: int,
+        edge_hidden: int,
+        steps: int,
+        dropout: float = 0,
+        aggregation: str = "add",
+        set2set_layers: int = 3,
+        set2set_steps: int = 6,
     ):
         super().__init__()
         self.out_features = out_features
