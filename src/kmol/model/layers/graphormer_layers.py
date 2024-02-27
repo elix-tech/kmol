@@ -3,10 +3,10 @@ from typing import Callable, Optional, Tuple
 
 import torch
 
-from ...core.helpers import SuperFactory
+from kmol.core.helpers import SuperFactory
 
-from ...vendor.fairseq.modules.quant_noise import quant_noise
-from ...vendor.fairseq.modules.layer_drop import LayerDropModuleList
+from kmol.vendor.fairseq.modules.quant_noise import quant_noise
+from kmol.vendor.fairseq.modules.layer_drop import LayerDropModuleList
 
 
 def init_graphormer_params(module):
@@ -142,7 +142,9 @@ class GraphAttnBias(torch.nn.Module):
 
         n_graph, n_node = x.size()[:2]
         graph_attn_bias = attn_bias.clone()
-        graph_attn_bias = graph_attn_bias.unsqueeze(1).repeat(1, self.num_heads, 1, 1)  # [n_graph, n_head, n_node+1, n_node+1]
+        graph_attn_bias = graph_attn_bias.unsqueeze(1).repeat(
+            1, self.num_heads, 1, 1
+        )  # [n_graph, n_head, n_node+1, n_node+1]
 
         # spatial pos
         # [n_graph, n_node, n_node, n_head] -> [n_graph, n_head, n_node, n_node]
@@ -547,7 +549,6 @@ class GraphormerGraphEncoder(torch.nn.Module):
         q_noise: float = 0.0,
         qn_block_size: int = 8,
     ) -> None:
-
         super().__init__()
         self.dropout_module = GraphormerDropoutWrapper(dropout, module_name=self.__class__.__name__)
         self.layerdrop = layerdrop

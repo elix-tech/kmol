@@ -6,7 +6,7 @@ from typing import Any, Dict, Union, List, Optional, Iterable
 import numpy as np
 import torch
 from torch_geometric.loader.dataloader import Collater as TorchGeometricCollater
-from ..vendor.graphormer import collater
+from kmol.vendor.graphormer import collater
 
 
 @dataclass
@@ -24,9 +24,9 @@ class Batch:
     inputs: Dict[str, torch.Tensor]
     outputs: torch.FloatTensor
 
+
 @dataclass
 class LoadedContent:
-
     dataset: Iterable[Batch]
     samples: int
     batches: int
@@ -61,7 +61,6 @@ class GeneralCollater(AbstractCollater):
         return Batch(ids=ids, labels=batch[0].labels, inputs=inputs, outputs=outputs)
 
     def apply(self, batch: List[DataPoint]) -> Batch:
-
         batch = self._unpack(batch)
         for key, values in batch.inputs.items():
             batch.inputs[key] = self._collater.collate(values)
@@ -97,10 +96,10 @@ class PaddedCollater(GeneralCollater):
     def _pad_seq(self, seqs, dtype=torch.long):
         max_length = max([len(seq) for seq in seqs])
         # padding value is -1
-        padded_seqs = [-1*torch.ones(max_length, dtype=dtype) for _ in range(len(seqs))]
+        padded_seqs = [-1 * torch.ones(max_length, dtype=dtype) for _ in range(len(seqs))]
         for i, seq in enumerate(seqs):
             seq_tensor = seq if torch.is_tensor(seq) else torch.tensor(seq, dtype=dtype)
-            padded_seqs[i][:len(seq)] = seq_tensor.clone().detach()
+            padded_seqs[i][: len(seq)] = seq_tensor.clone().detach()
 
         return padded_seqs
 
@@ -116,9 +115,9 @@ class PaddedCollater(GeneralCollater):
                 inputs[key].append(value)
 
             outputs.append(entry.outputs)
-        
+
         inputs_padded = defaultdict(list)
-        
+
         for key, values in inputs.items():
             if key == self.padded_column:
                 inputs_padded[key] = self._pad_seq(values)
@@ -127,7 +126,7 @@ class PaddedCollater(GeneralCollater):
 
         outputs_padded = self._pad_seq(outputs, dtype=torch.float)
         outputs_padded = torch.stack(outputs_padded)
-        
+
         inputs_padded = dict(inputs_padded)
 
         return Batch(ids=ids, labels=batch[0].labels, inputs=inputs_padded, outputs=outputs_padded)

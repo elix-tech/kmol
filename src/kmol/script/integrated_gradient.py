@@ -11,14 +11,14 @@ from torch_geometric.data import Batch
 
 from mila.factories import AbstractScript
 
-from ..core.config import Config
-from ..model.executors import Predictor
-from ..core.helpers import SuperFactory
-from ..data.streamers import GeneralStreamer
-from ..data.loaders import AbstractLoader
-from ..model.architectures.abstract_network import AbstractNetwork
+from kmol.core.config import Config
+from kmol.model.executors import Predictor
+from kmol.core.helpers import SuperFactory
+from kmol.data.streamers import GeneralStreamer
+from kmol.data.loaders import AbstractLoader
+from kmol.model.architectures.abstract_network import AbstractNetwork
 
-from ..core.logger import LOGGER as logging
+from kmol.core.logger import LOGGER as logging
 
 GRAPH_CAPTUM_FEAT = ["x", "molecule_features", "edge_attr"]
 
@@ -68,7 +68,7 @@ class CaptumScript(AbstractScript):
     def compute_attribute(self, data, attributions, target):
         self.tmp_executor._to_device(data)
         try:
-            attribute_dict = self.attributor.attribute(data.inputs, target=0, n_steps=self.n_steps)
+            attribute_dict = self.attributor.attribute(data.inputs, target=target, n_steps=self.n_steps)
             attribute_dict = self.regroup_results(attribute_dict)
             attributions = self.update_dict(attributions, attribute_dict, target)
         except Exception as e:

@@ -9,10 +9,10 @@ from typing import Dict, List, Union, Tuple
 import pandas as pd
 from rdkit import Chem
 
-from .loaders import AbstractLoader
-from ..core.exceptions import SplitError
-from ..core.logger import LOGGER as logging
-from ..core.utils import progress_bar
+from kmol.data.loaders import AbstractLoader
+from kmol.core.exceptions import SplitError
+from kmol.core.logger import LOGGER as logging
+from kmol.core.utils import progress_bar
 
 
 class AbstractSplitter(metaclass=ABCMeta):
@@ -168,7 +168,9 @@ class ScaffoldBalancerSplitter(AbstractSplitter):
 
         logging.info("[SPLITTER] Extracting Scaffolds...")
         with progress_bar() as progress:
-            return {entry.id_: MurckoScaffoldSmiles(entry.inputs[self.smiles_field]) for entry in progress.track(data_loader)}
+            return {
+                entry.id_: MurckoScaffoldSmiles(entry.inputs[self.smiles_field]) for entry in progress.track(data_loader)
+            }
 
     def apply(self, data_loader: AbstractLoader) -> Dict[str, List[Union[int, str]]]:
         from sklearn.model_selection import train_test_split
@@ -269,14 +271,15 @@ class ScaffoldDividerSplitter(AbstractSplitter):
 
 
 class ButinaClusterer:
-    def __init__(self, butina_cutoff: float = 0.5, fingerprint_size: int = 1024, radius: int = 2, smiles_field: str = "smiles"):
+    def __init__(
+        self, butina_cutoff: float = 0.5, fingerprint_size: int = 1024, radius: int = 2, smiles_field: str = "smiles"
+    ):
         self._butina_cutoff = butina_cutoff
         self._fingerprint_size = fingerprint_size
         self._radius = radius
         self.smiles_field = smiles_field
 
     def _generate_clusters(self, data_loader: AbstractLoader) -> Tuple[List[Union[str, int]], Tuple[Tuple[int, ...]]]:
-
         from rdkit import DataStructs
         from rdkit.Chem import AllChem
         from rdkit.ML.Cluster import Butina

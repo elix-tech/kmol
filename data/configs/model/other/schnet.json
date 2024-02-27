@@ -1,0 +1,148 @@
+{
+    "model": {
+      "type": "protein_schnet",
+      "out_feature": 1,
+      "num_atomtype_ligand": 1,
+      "num_atomtype_protein": 2
+    },
+    "loader": {
+      "type": "csv",
+      "input_path": "path_to_dataset_with_pdbqt_filepath_in_one_column",
+      "input_column_names": [
+        "pdbqt_filepath"
+      ],
+      "target_column_names": [
+        "pchembl_value"
+      ]
+    },
+    "splitter": {
+      "type": "random",
+      "splits": {
+        "train": 0.8,
+        "valid": 0.1,
+        "test": 0.1
+      },
+      "seed": 42
+    },
+    "featurizers": [
+      {
+        "type": "pdbqt_to_pdb",
+        "inputs": [
+          "pdbqt_filepath"
+        ],
+        "outputs": [
+          "path_pdb"
+        ],
+        "pdqt_dir": "data/pdqt_dir",
+        "dir_to_save": "data/logs/features/pdb",
+        "protonize": true
+      },
+      {
+        "type": "atom_type_extension_pdb",
+        "inputs": [
+          "path_pdb"
+        ],
+        "outputs": [
+          "path_mol2"
+        ],
+        "ligand_residue": [
+          "UNL"
+        ],
+        "protein_atom_type": [
+          "SYBYL",
+          "PDB"
+        ],
+        "ligand_atom_type": [
+          "SYBYL"
+        ],
+        "dir_to_save": "data/logs/features/antechamber",
+        "tokenize_atom_type": true
+      },
+      {
+        "type": "intdesc",
+        "inputs": [
+          "path_mol2"
+        ],
+        "outputs": [
+          "schnet_inputs"
+        ],
+        "ligand_residue": [
+          "UNL"
+        ],
+        "dir_to_save": "data/logs/features/intdesc"
+      }
+    ],
+    "transformers": [],
+    "criterion": {
+      "type": "torch.nn.MSELoss"
+    },
+    "optimizer": {
+      "type": "torch.optim.AdamW",
+      "lr": 1.4e-05,
+      "weight_decay": 4e-06
+    },
+    "scheduler": {
+      "type": "torch.optim.lr_scheduler.OneCycleLR",
+      "max_lr": 0.00014,
+      "epochs": 60,
+      "final_div_factor": 1000
+    },
+    "output_path": "data/logs/schnet/",
+    "collater": {
+      "type": "general"
+    },
+    "is_stepwise_scheduler": true,
+    "is_finetuning": false,
+    "checkpoint_path": null,
+    "threshold": null,
+    "inference_mode": "null",
+    "cross_validation_folds": 5,
+    "mc_dropout_iterations": 10,
+    "mc_dropout_probability": 0.1,
+    "probe_layer": null,
+    "train_split": "train",
+    "train_metrics": [
+      "r2",
+      "mae"
+    ],
+    "validation_split": "valid",
+    "test_split": "test",
+    "test_metrics": [
+      "r2",
+      "mae",
+      "rmse"
+    ],
+    "prediction_additional_columns": [],
+    "epochs": 60,
+    "batch_size": 128,
+    "drop_last_batch": false,
+    "use_cuda": true,
+    "enabled_gpus": [
+      0
+    ],
+    "num_workers": 0,
+    "featurization_jobs": 6,
+    "preprocessor": {
+      "type": "cache",
+      "use_disk": true,
+      "disk_dir": "data/cache"
+    },
+    "cache_location": "data/cache",
+    "clear_cache": false,
+    "log_level": "info",
+    "log_format": "",
+    "log_frequency": 20,
+    "overwrite_checkpoint": true,
+    "observers": {},
+    "differential_privacy": {
+      "enabled": false
+    },
+    "target_metric": "r2",
+    "optuna_trials": 1000,
+    "optuna_init": null,
+    "subset": null,
+    "visualizer": null,
+    "augmentations": [],
+    "static_augmentations": [],
+    "seed": 42
+  }

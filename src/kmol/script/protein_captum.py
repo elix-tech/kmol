@@ -6,8 +6,8 @@ import numpy as np
 from openbabel import pybel
 import pandas as pd
 
-from ..model.architectures import ProteinSchnetNetwork
-from .integrated_gradient import CaptumScript, GRAPH_CAPTUM_FEAT
+from kmol.model.architectures import ProteinSchnetNetwork
+from kmol.script.integrated_gradient import CaptumScript, GRAPH_CAPTUM_FEAT
 
 PROTEIN_FEATURES = ["protein", "schnet_input"]
 GRAPH_CAPTUM_FEAT += ["z", "z_protein", "coords", "edge_attr"]

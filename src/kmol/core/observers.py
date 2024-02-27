@@ -5,9 +5,9 @@ from typing import DefaultDict, List
 import torch
 from torch.nn.modules.batchnorm import _BatchNorm as BatchNormLayer
 
-from .helpers import Namespace
-from .logger import LOGGER as logging
-from ..model.evidential_losses import prepare_edl_classification_output
+from kmol.core.helpers import Namespace
+from kmol.core.logger import LOGGER as logging
+from kmol.model.evidential_losses import prepare_edl_classification_output
 
 
 class AbstractEventHandler(metaclass=ABCMeta):
@@ -20,7 +20,10 @@ class EventManager:
     _LISTENERS: DefaultDict[str, List[AbstractEventHandler]] = defaultdict(list)
 
     @staticmethod
-    def add_event_listener(event_name: str, handler: AbstractEventHandler) -> None:
+    def add_event_listener(event_name: str, handler: AbstractEventHandler, skip_if_exists: bool = False) -> None:
+        if skip_if_exists:
+            if any([isinstance(event, type(handler)) for event in EventManager._LISTENERS[event_name]]):
+                return 
         EventManager._LISTENERS[event_name].append(handler)
 
     @staticmethod
@@ -120,22 +123,22 @@ class EvidentialClassificationInferenceHandler(AbstractEventHandler):
         outputs = payload.logits
         outputs, alpha = prepare_edl_classification_output(outputs)
         uncertainty = (2 / torch.sum(alpha, dim=-1, keepdim=True)).squeeze()
-        
-        # logic is reversed as 0 is true and 1 is false
-        logits = (torch.log(alpha[..., 0]) - torch.log(alpha[..., 1]))
 
-        softmax_score = (alpha[..., 0] / torch.sum(alpha, dim=-1))
+        # logic is reversed as 0 is true and 1 is false
+        logits = torch.log(alpha[..., 0]) - torch.log(alpha[..., 1])
+
+        softmax_score = alpha[..., 0] / torch.sum(alpha, dim=-1)
 
         payload.logits = logits
         payload.logits_var = uncertainty
         payload.softmax_score = softmax_score
-        
+
 
 class EvidentialRegressionInferenceHandler(AbstractEventHandler):
     """event: after_val_inference|after_predict"""
 
     def run(self, payload: Namespace):
-        outputs = self.forward(payload.logits)
+        outputs = payload.logits
         mu, v, alpha, beta = torch.chunk(outputs, 4, dim=-1)
 
         v = torch.abs(v) + 1.0
@@ -275,7 +278,7 @@ class DifferentialPrivacy:
                 module=network,
                 batch_size=trainer.config.batch_size,
                 sample_size=len(payload.data_loader.dataset),
-                **self._options
+                **self._options,
             )
 
             privacy_engine.attach(trainer.optimizer)

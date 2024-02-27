@@ -2,9 +2,9 @@
 # Copyright (c) Facebook, Inc. and its affiliates.
 
 import random
-from typing import Any, Dict, List, Optional
+from typing import List
 
-from .augmentations import BaseTransform
+from kmol.data.augmentations import BaseTransform
 
 """
 Composition Operators:
@@ -82,7 +82,7 @@ class OneOf(BaseComposition):
         probs_sum = sum(transform_probs)
         self.transform_probs = [t / probs_sum for t in transform_probs]
 
-    def __call__(self, molecule, seed=None):
+    def __call__(self, molecule, seed=None, metadata=None):
         """
         Applies one of the transforms to the molecule
         @param molecule: PIL Image to be augmented

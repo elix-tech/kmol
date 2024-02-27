@@ -1,9 +1,10 @@
 from argparse import ArgumentParser
 
-from .configs import ServerConfiguration, ClientConfiguration
-from .services.clients import AbstractClient
-from .services.servers import AbstractServer
-from .services.server_manager import ServerManager
+from mila.configs import ServerConfiguration, ClientConfiguration
+from mila.services.clients import AbstractClient
+from mila.services.servers import AbstractServer
+from mila.services.server_manager import ServerManager
+
 
 class Executor:
     def __init__(self, config_path: str):
@@ -29,7 +30,7 @@ class Executor:
 
         # client = Client(config=config)
         client = AbstractClient._reflect(config.client_type)(config=config)
-        client.run()  
+        client.run()
 
 
 def main():

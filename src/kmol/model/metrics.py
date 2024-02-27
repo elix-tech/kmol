@@ -25,9 +25,9 @@ from sklearn.metrics import (
     roc_curve,
 )
 
-from ..core.helpers import Namespace
-from ..core.logger import LOGGER as logging
-from ..core.observers import EventManager
+from kmol.core.helpers import Namespace
+from kmol.core.logger import LOGGER as logging
+from kmol.core.observers import EventManager
 
 
 class MetricType(Enum):
@@ -157,7 +157,6 @@ class PredictionProcessor:
         metrics: Namespace,
         statistics: Iterable[Callable] = (np.min, np.max, np.mean, np.median, np.std),
     ) -> Namespace:
-
         results = defaultdict(list)
         for name, values in vars(metrics).items():
             for statistic in statistics:

@@ -29,16 +29,15 @@ from moleculekit.molecule import Molecule
 from openbabel import openbabel, pybel
 
 from kmol.data.resources import DataPoint
-from .resources import DataPoint
-from ..core.exceptions import FeaturizationError
-from ..core.helpers import SuperFactory
-from ..core.logger import LOGGER as logger
-from ..vendor.openfold.data import templates, data_pipeline, feature_pipeline
-from ..vendor.openfold.config import model_config
-from ..vendor.openfold.utils.tensor_utils import tensor_tree_map
-from ..model.architectures import AlphaFold
-from ..vendor.riken.intDesc.interaction_descriptor import calculate
-from .loaders import ListLoader
+from kmol.data.loaders import ListLoader
+from kmol.core.exceptions import FeaturizationError
+from kmol.core.helpers import SuperFactory
+from kmol.core.logger import LOGGER as logger
+from kmol.model.architectures import AlphaFold
+from kmol.vendor.openfold.data import templates, data_pipeline, feature_pipeline
+from kmol.vendor.openfold.config import model_config
+from kmol.vendor.openfold.utils.tensor_utils import tensor_tree_map
+from kmol.vendor.riken.intDesc.interaction_descriptor import calculate
 
 import algos
 
@@ -179,6 +178,7 @@ class MordredDescriptorComputer(AbstractDescriptorComputer):
     """
     There is 1613 feature generated with this computer
     """
+
     def __init__(self):
         from mordred import Calculator, descriptors
 
@@ -476,6 +476,7 @@ class BagOfWordsFeaturizer(AbstractFeaturizer):
 
         return torch.FloatTensor(list(sample.values()))
 
+
 class IndexFeaturizer(AbstractFeaturizer):
     def __init__(
         self,
@@ -497,6 +498,7 @@ class IndexFeaturizer(AbstractFeaturizer):
     def _process(self, data: str, entry: DataPoint) -> torch.FloatTensor:
         sample = [self._to_index_dict[amino_acid] for amino_acid in data]
         return torch.LongTensor(sample)
+
 
 class PerturbedBagOfWordsFeaturizer(BagOfWordsFeaturizer):
     def __init__(

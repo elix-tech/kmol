@@ -1,8 +1,8 @@
 import torch
 from typing import Dict, Any, List
 
-from ..layers import LinearBlock
-from .abstract_network import AbstractNetwork
+from kmol.model.layers import LinearBlock
+from kmol.model.architectures.abstract_network import AbstractNetwork
 
 
 class LinearNetwork(AbstractNetwork, LinearBlock):

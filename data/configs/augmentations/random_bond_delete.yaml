@@ -1,0 +1,9 @@
+
+# Radomly delete a bond from the graph
+# - p: Proportion of atom to mask, ie 0.3 will mask 30\% of the atoms, default: 1.0
+# -input_field: The name of the input to use the augmentation on. It should be the same as the output field of a graph featurization.
+
+augmentations:
+  - type: "random_bond_delete"
+    p: 0.3
+    input_field: "ligand"

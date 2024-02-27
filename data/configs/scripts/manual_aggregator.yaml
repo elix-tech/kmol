@@ -1,3 +1,6 @@
+
+# This script is used for federated learning in order to aggregate multiple checkpoint by hand.
+
 script:
   type: "manual_aggregation"
   chekpoint_paths: 

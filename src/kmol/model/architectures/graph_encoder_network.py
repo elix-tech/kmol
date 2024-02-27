@@ -2,10 +2,9 @@ from typing import Dict, Any, List
 
 import torch
 
-from ...core.helpers import SuperFactory
-from ..layers import GraphormerGraphEncoder
-
-from .abstract_network import AbstractNetwork
+from kmol.core.helpers import SuperFactory
+from kmol.model.layers import GraphormerGraphEncoder
+from kmol.model.architectures.abstract_network import AbstractNetwork
 
 
 class GraphormerEncoderNetwork(AbstractNetwork):

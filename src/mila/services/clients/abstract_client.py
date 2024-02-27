@@ -7,13 +7,12 @@ from typing import Dict, Callable, Any, Type, Optional
 
 from kmol.core.logger import LOGGER as logging
 
-from ...configs import ClientConfiguration
-from ...factories import AbstractConfiguration, AbstractExecutor
-from ...services import IOManager
+from mila.configs import ClientConfiguration
+from mila.factories import AbstractConfiguration, AbstractExecutor
+from mila.services import IOManager
 
 
 class AbstractClient(IOManager):
-    
     def __init__(self, config: ClientConfiguration) -> None:
         self._config = config
         self._token = None
@@ -53,7 +52,6 @@ class AbstractClient(IOManager):
 
     def _heartbeat_daemon(self) -> None:
         while True:
-
             if not self._token:
                 break
 
@@ -71,7 +69,7 @@ class AbstractClient(IOManager):
 
     def request_model(self) -> str:
         pass
-        
+
     def send_checkpoint(self, checkpoint_path: str) -> None:
         pass
 

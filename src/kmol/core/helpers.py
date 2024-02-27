@@ -16,10 +16,11 @@ import humps
 import numpy as np
 import torch
 from filelock import FileLock
-
-from .exceptions import ReflectionError
-from .logger import LOGGER as logging
 from disklist import DiskList
+from multiprocessing import Manager
+
+from kmol.core.exceptions import ReflectionError
+from kmol.core.logger import LOGGER as logging
 
 
 class Timer:

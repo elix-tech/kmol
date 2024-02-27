@@ -1,0 +1,18 @@
+
+
+"""
+  |path_protein_folder|: path to a dir containing all the .fasta file of the protein to process.
+  |output_dir_path|: output directory where the msa will be save, each protein will have a directory created with its relevant file.
+  |data_path|: path to the alphafold dataset, all needed dataset directory 
+    should be accessible from the root of this directory. ie, uniref90, mgnify, pdb70, uniclust30 and bfd.
+  |cpus|: Number of cpu to use per thread
+  |nb_thread|: Number of parallel processing.
+"""
+
+script:
+  type: "GenerateMsa"
+  path_protein_folder: ./fasta_dir/
+  output_dir_path: ./protein_msa/
+  data_path: ./alphafold_dataset
+  cpus: 10
+  nb_thread: 1

@@ -5,7 +5,7 @@ import torch_geometric
 from torch.nn.functional import leaky_relu
 from torch_scatter import scatter_mean, scatter_std, scatter
 
-from ...core.helpers import SuperFactory
+from kmol.core.helpers import SuperFactory
 
 
 class GraphConvolutionWrapper(torch.nn.Module):
@@ -39,7 +39,6 @@ class GraphConvolutionWrapper(torch.nn.Module):
     def _get_layer_arguments(
         self, x: torch.Tensor, edge_index: torch.Tensor, edge_attr: torch.Tensor
     ) -> Dict[str, torch.Tensor]:
-
         arguments = {"x": x, "edge_index": edge_index}
         if self._propagate_edge_features:
             arguments["edge_attr"] = edge_attr
@@ -47,7 +46,6 @@ class GraphConvolutionWrapper(torch.nn.Module):
         return arguments
 
     def _add_edge_features(self, x: torch.Tensor, edge_index: torch.Tensor, edge_attr: torch.Tensor) -> torch.Tensor:
-
         if self._edge_features and not self._propagate_edge_features:
             last_atom_index = x.size(0) - 1
 
@@ -82,7 +80,6 @@ class GraphConvolutionWrapper(torch.nn.Module):
         edge_attr: torch.Tensor,
         batch: torch.Tensor,
     ) -> torch.Tensor:
-
         x = self._add_edge_features(x, edge_index, edge_attr)
         identity = x
 
@@ -260,7 +257,6 @@ class GraphNorm(torch.nn.Module):
         torch.nn.init.zeros_(self.bias)
 
     def forward(self, x: torch.Tensor, batch: torch.LongTensor):
-
         mean = scatter_mean(x, batch, dim=0)
         std = scatter_std(x, batch, dim=0)
         std = torch.add(std, self.epsilon)

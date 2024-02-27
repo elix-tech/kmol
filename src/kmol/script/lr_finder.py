@@ -5,10 +5,10 @@ from torch.nn.modules.loss import _Loss as AbstractCriterion
 from torch.optim import Optimizer as AbstractOptimizer
 
 from mila.factories import AbstractScript
-from ..core.config import Config
-from ..data.streamers import GeneralStreamer
-from ..core.helpers import SuperFactory
-from ..model.architectures import AbstractNetwork
+from kmol.core.config import Config
+from kmol.data.streamers import GeneralStreamer
+from kmol.core.helpers import SuperFactory
+from kmol.model.architectures import AbstractNetwork
 
 
 class CustomTrainIter(TrainDataLoaderIter, ValDataLoaderIter):

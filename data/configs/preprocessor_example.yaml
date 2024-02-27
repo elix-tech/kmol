@@ -1,0 +1,82 @@
+
+"""
+There is 3 type of preprocessor in kmol. We will present them in this file.
+"""
+
+# ----- CachePreprocessor
+#By default (if undefined), the configuration is setup with the following configuration:
+
+"preprocessor": {
+    "type": "cache", "use_disk": false, "disk_dir": ""
+}
+
+#This uses in-memory caching by default and does not write chunks of temporarily data to the disk. 
+#This is a faster approach, but with a major caveat that it requires large amount of memory to temporarily hold featurized data.
+
+
+
+#In cases where in-memory caching cannot be used (i.e. too much memory is consumed), one can switch to disk-based caching by configuring the following option:
+
+"preprocessor": {
+    "type": "cache", "use_disk": true, "disk_dir": "/tmp/cache"
+}
+
+# This will utilize `/tmp/cache` as the directory to temporarily write chunks which will then be merged into a single cache file later. 
+# Please ensure that kMol has write access to `/tmp/cache` folder and it should be pre-created beforehand.
+
+# Sum up of CachePreprocessor:
+# `CachePreprocessor`: Run the featurization before the start of the training and 
+#   keep all feature in memory, enabling fast training. Ideal when the featurization is 
+#   time-consuming and there is no need to inspect the generated features. If the
+#   dataset is too large the `use_disk` option can be use.
+# For CachePreprocess, the following options has to be configured.
+#   - use_disk: if True, caching will will be saved to disk in chunks, freeing up the available memory at a given time.
+#   - disk_dir: The location where the cache's chunk data will be temporarily saved.
+
+
+# ------ OnlinePreprocessor
+# In cases where caching is not a preferable option, the preprocessing can be configured to utilize on-the-fly training option
+
+"preprocessor": {
+    "type": "online"
+}
+
+# This will perform featurization each time the training loop reads the data. 
+# Do note that this approach works best when featurization does not take a considerable amount of time. 
+# Otherwise, it is always advisable to use the caching option.
+
+# `OnlinePreprocessor`: Will run the featurization at each step of the training. 
+# No features will be saved. Ideal when the dataset is very large and cannot be kept in memory but the featurization is not a bottleneck.
+
+
+
+# ------- FilePreprocessor
+
+# FilePreprocessor: This preprocessor will save features in an uncompressed, 
+#   human-readable format such that the user can then inspect and modify them. 
+#   This contrasts with CachePreprocessor where features are saved in a compressed format. 
+#   To effectively use this preprocessor, the following steps should be performed sequentially.
+
+#   First, run the featurization task with this preprocessor to save the features in a human-readble format.
+#  For example with the following configuration:
+"preprocessor": {
+  "type": "file",
+  "folder_path": "data/reduce_msa_featurizer_512",
+  "outputs_to_save": [
+    "protein" # The name of the feature we want to save after the featurization
+  ],
+  "input_to_use_has_filename": [
+    "protein_tag" # unique key to use from the dataset. Avoid recomputing the same featurizer, for the same protein.
+  ]
+}
+#   Second, use OnlinePreprocessor and load the generated feature with PickleLoadFeaturizer.
+
+#   Relevant Parameters:
+
+#     - folder_path: Folder where the features will be save. Additional folder will be created based on the name of the feature to save.
+#     - feature_to_save: Name after the featurization of which field to save. Will be used as additional folder name.
+#     - input_to_use_has_filename: unique name for each file generated. 
+#          This field can be used to skip the processing of identical feature and 
+#          so speed up the preprocessing. For example if we have a protein / ligand 
+#          dataset and we want to compute a protein only feature using a unique protein 
+#          identifier will compute `num_protein` featurization.
