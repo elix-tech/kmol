@@ -5,13 +5,16 @@ from functools import partial
 from pathlib import Path
 from typing import List, Optional, Tuple
 import gc
+import json
 
 import numpy as np
 import torch
 from torch.nn.modules.loss import _Loss as AbstractCriterion
 from torch.optim import Optimizer as AbstractOptimizer
-from torch.optim.lr_scheduler import _LRScheduler as AbstractLearningRateScheduler, ExponentialLR
+from torch.optim.lr_scheduler import _LRScheduler as AbstractLearningRateScheduler
 from torch_geometric.data import Data
+from torch_lr_finder import LRFinder
+from torch_lr_finder.lr_finder import ExponentialLR
 
 from kmol.model.architectures import AbstractNetwork, EnsembleNetwork
 from kmol.model.metrics import PredictionProcessor
@@ -429,71 +432,88 @@ class ThresholdFinder(Evaluator):
         return self._processor.find_best_threshold(ground_truth=ground_truth, logits=logits)
 
 
-class LearningRareFinder(Trainer):
+class LearningRareFinder(Trainer, LRFinder):
     """
     Runs training for a given number of steps to find appropriate lr value.
     https://sgugger.github.io/how-do-you-find-a-good-learning-rate.html
+    https://github.com/davidtvs/pytorch-lr-finder
     """
 
-    MAXIMUM_LEARNING_RATE = 0.1
-    MINIMUM_LEARNING_RATE = 1e-5
+    END_LEARNING_RATE = 100
+    START_LR = 1e-5
+    NUM_ITERATION = 100
+    DIVERGENCE_THRESHOLD = 5
+    SMOOTHING_FACTOR = 0.05
 
     def _initialize_scheduler(self, optimizer: AbstractOptimizer, training_examples: int) -> AbstractLearningRateScheduler:
-        gamma = max(training_examples // self.config.batch_size, 1)
-        gamma = np.log(self.MAXIMUM_LEARNING_RATE / self.MINIMUM_LEARNING_RATE) / gamma
-        gamma = float(np.exp(gamma))
+        return ExponentialLR(optimizer, self.END_LEARNING_RATE, self.NUM_ITERATION)
 
-        return ExponentialLR(optimizer=optimizer, gamma=gamma)
+    def _set_learning_rate(self, new_lr):
+        new_lrs = [new_lr] * len(self.optimizer.param_groups)
+        for param_group, new_lr in zip(self.optimizer.param_groups, new_lrs):
+            param_group["lr"] = new_lr
 
     def run(self, data_loader: LoadedContent) -> None:
-        self._setup(training_examples=data_loader.samples)
+        self.history = {"lr": [], "loss": []}
+        self.best_loss = None
 
+        self._setup(training_examples=data_loader.batches)
+        self._set_learning_rate(self.START_LR)
         payload = Namespace(trainer=self, data_loader=data_loader)
         EventManager.dispatch_event(event_name="before_train_start", payload=payload)
 
-        learning_rate_records = []
-        loss_records = []
+        self._iterator = iter(data_loader.dataset)
+        with progress_bar() as progress:
+            task = progress.add_task("Loss: ", total=self.NUM_ITERATION)
+            for iteration in range(self.NUM_ITERATION):
+                try:
+                    data = next(self._iterator)
+                except StopIteration:
+                    self._iterator = iter(data_loader.dataset)
+                    data = next(self._iterator)
+                self._to_device(data)
+                self.optimizer.zero_grad()
+                outputs = self.network(data.inputs)
 
-        try:
-            with progress_bar() as progress:
-                description = f"Loss : {loss_records[-1]:.5f}"
-                task = progress.add_task(description, total=len(data_loader.dataset))
-                # with progress.track(total=data_loader.batches) as progress_bar:
-                for iteration, data in enumerate(data_loader.dataset, start=1):
-                    self._to_device(data)
-                    self.optimizer.zero_grad()
-                    outputs = self.network(data.inputs)
+                payload = Namespace(features=data, logits=outputs, extras=[])
+                EventManager.dispatch_event(event_name="before_criterion", payload=payload)
+                loss = self.criterion(payload.logits, payload.features.outputs, *payload.extras)
+                loss.backward()
 
-                    payload = Namespace(features=data, logits=outputs, extras=[])
-                    EventManager.dispatch_event(event_name="before_criterion", payload=payload)
+                self._loss_tracker.update(loss.item())
+                smoothed_loss = self.track_best_loss(iteration, loss.item())
+                self.history["lr"].append(self._get_learning_rate())
+                self.optimizer.step()
+                self.scheduler.step()
+                self.history["loss"].append(smoothed_loss)
+                description = f"Loss : {smoothed_loss:.5f} Lr: {self._get_learning_rate()}"
+                progress.update(task, description=description)
+                progress.advance(task, 1)
+                del payload
+                gc.collect()
+                torch.cuda.empty_cache()
+                if smoothed_loss > self.DIVERGENCE_THRESHOLD * self.best_loss:
+                    break
 
-                    loss = self.criterion(payload.logits, payload.features.outputs, *payload.extras)
-                    loss.backward()
+        logging.info(
+            "Learning rate search finished. The value below in an indication see the graph in the output directory for analysis"
+        )
+        self.plot(log_lr=True, skip_start=0, skip_end=2)
+        plt.savefig(Path(self.config.output_path) / "lr_finder_results.png")
+        with open(Path(self.config.output_path) / "history.json", "w") as file:
+            json.dump(self.history, file)
 
-                    self.optimizer.step()
-                    self.scheduler.step()
-                    self._loss_tracker.update(loss.item())
+    def track_best_loss(self, iteration, loss):
+        if iteration == 0:
+            self.best_loss = loss
+            return loss
 
-                    learning_rate_records.append(self._get_learning_rate())
-                    loss_records.append(self._loss_tracker.get())
-                    if iteration % 20 == 0:
-                        progress.update(task, description=description)
-                    progress.advance(task, 1)
-        except (KeyboardInterrupt, RuntimeError):
-            pass
+        if self.SMOOTHING_FACTOR > 0:
+            smooth_loss = self.SMOOTHING_FACTOR * loss + (1 - self.SMOOTHING_FACTOR) * self.history["loss"][-1]
+        if smooth_loss < self.best_loss:
+            self.best_loss = smooth_loss
 
-        self._plot(learning_rate_records, loss_records)
+        return smooth_loss
 
     def _get_learning_rate(self) -> float:
         return self.optimizer.param_groups[0]["lr"]
-
-    def _plot(self, learning_rate_records: List[float], loss_records: List[float]) -> None:
-        import matplotlib.pyplot as plt
-
-        plt.plot(learning_rate_records, loss_records)
-        plt.xscale("log")
-
-        plt.xlabel("Learning Rate")
-        plt.ylabel("Loss")
-
-        plt.savefig(Path(self.config.output_path) / "lr_finder_results.png")
