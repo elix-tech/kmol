@@ -282,9 +282,11 @@ class CachePreprocessor(AbstractPreprocessor):
 
     def _add_static_aug_dataset(self, dataset: ListLoader):
         tmp_dataset = dataset._dataset
+        indices = dataset.list_ids()
         for a in self._static_augmentations:
             tmp_dataset += a.aug_dataset
-        return ListLoader(tmp_dataset, range(len(tmp_dataset)))
+            indices += list(range(indices[-1] + 1, indices[-1] + 1 + len(a.aug_dataset)))
+        return ListLoader(tmp_dataset, indices)
 
 
 class FilePreprocessor(AbstractPreprocessor):
