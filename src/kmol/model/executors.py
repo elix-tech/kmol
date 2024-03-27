@@ -200,7 +200,6 @@ class Trainer(AbstractExecutor):
                 iteration += 1
             if not self.config.is_stepwise_scheduler:
                 self.scheduler.step()
-            logging.only_log_file(str(train_loader.dataset))
 
     @torch.no_grad()
     def _validation(self, val_loader):

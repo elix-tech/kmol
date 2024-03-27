@@ -68,6 +68,7 @@ class __Logger(logging.Logger):
             self.stdout_handler = logging.StreamHandler(sys.stdout)
             self.stdout_handler.setFormatter(formatter)
             self._logger.addHandler(self.stdout_handler)
+            self._logger.setLevel("DEBUG")
 
         self.propagate = False
         sys.excepthook = self.handle_excepthook
@@ -76,7 +77,9 @@ class __Logger(logging.Logger):
         return getattr(self._logger, key)
 
     def handle_excepthook(self, type, message, stack):
-        self._logger.error(f"An unhandled exception of type {type.__name__} occured: {message}. Traceback: \n{''.join(traceback.format_tb(stack))}")
+        self._logger.error(
+            f"An unhandled exception of type {type.__name__} occured: {message}. Traceback: \n{''.join(traceback.format_tb(stack))}"
+        )
 
     def _get_formatter(self, **kwargs):
         return CustomFormatter(
