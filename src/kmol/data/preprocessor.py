@@ -247,7 +247,7 @@ class CachePreprocessor(AbstractPreprocessor):
     def _prepare_dataset(self) -> ListLoader:
         loader = SuperFactory.create(AbstractLoader, self._config.loader)
         logger.info("Starting featurization...")
-        dataset = self._run_parrallel(self.preprocess, loader, self._disk_dir)
+        dataset = self._run_parallel(self.preprocess, loader, self._disk_dir)
 
         ids = [sample.id_ for sample in dataset]
         return ListLoader(dataset, ids)
@@ -277,7 +277,7 @@ class CachePreprocessor(AbstractPreprocessor):
         logger.info(f"Starting {type(a)} augmentation...")
         a.generate_augmented_data(loader)
         logger.info(f"Starting Featurization of  {type(a)} augmented data...")
-        a.aug_dataset = self._run_parrallel(self.preprocess, a.aug_dataset)
+        a.aug_dataset = self._run_parallel(self.preprocess, a.aug_dataset)
         return a
 
     def _add_static_aug_dataset(self, dataset: ListLoader):
