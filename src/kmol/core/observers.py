@@ -1,12 +1,12 @@
 from abc import ABCMeta, abstractmethod
 from collections import defaultdict, OrderedDict
-from typing import DefaultDict, List
+from typing import DefaultDict, List, Dict
 
 import torch
 from torch.nn.modules.batchnorm import _BatchNorm as BatchNormLayer
 
 from kmol.core.helpers import Namespace
-from kmol.core.logger import LOGGER as logging
+from kmol.core.logger import LOGGER as logger
 from kmol.model.evidential_losses import prepare_edl_classification_output
 
 
@@ -23,7 +23,7 @@ class EventManager:
     def add_event_listener(event_name: str, handler: AbstractEventHandler, skip_if_exists: bool = False) -> None:
         if skip_if_exists:
             if any([isinstance(event, type(handler)) for event in EventManager._LISTENERS[event_name]]):
-                return 
+                return
         EventManager._LISTENERS[event_name].append(handler)
 
     @staticmethod
@@ -241,7 +241,7 @@ class AddFedproxRegularizationEventHandler(AbstractEventHandler):
 
     def run(self, payload: Namespace) -> None:
         if payload.executor.config.checkpoint_path is None:
-            logging.info("Skipping FedProx regularization (no checkpoint found). This is normal for the first round.")
+            logger.info("Skipping FedProx regularization (no checkpoint found). This is normal for the first round.")
             return
 
         local_weights = payload.executor.network.state_dict()
@@ -309,3 +309,121 @@ class DifferentialPrivacy:
             "before_train_progress_log",
             DifferentialPrivacy.LogPrivacyCostEventHandler(delta),
         )
+
+
+class FreezeLayerEventHandler(AbstractEventHandler):
+    """after_network_create"""
+
+    def __init__(self, freeze_layers: List[str]):
+        self.freeze_layers = freeze_layers
+
+    def is_in_state_dict(self, part_key: str, state_dict):
+        return any([key.startswith(part_key) for key in state_dict.keys()])
+
+    def run(self, payload: Namespace):
+        network = payload.executor.network
+        missing_layer = [
+            layer_name for layer_name in self.freeze_layers if not self.is_in_state_dict(layer_name, network.state_dict())
+        ]
+        if len(missing_layer) > 0:
+            error_message = (
+                "During the FreezeLayerEventHandler some layer provided are missing.\n"
+                "Below are the list of layers in the Network:\n" + "\n".join(network.state_dict().keys()) + "\n"
+                "---------\nMissing keys provided in the config: " + str(missing_layer) + "\n\n"
+            )
+            raise ValueError(error_message)
+        logger.info(f"Freezing the following layers: {self.freeze_layers}")
+        for name, param in network.named_parameters():
+            if any([name.startswith(layer_name) for layer_name in self.freeze_layers]):
+                logger.debug(f"Freezing layer: {name}")
+                param.requires_grad = False
+
+
+class PartialCheckpointLoadEventHandler(AbstractEventHandler):
+    """
+    event: before_model_checkpoint_load
+    Event Handler to load parts of a model's state_dict.
+    """
+
+    def __init__(self, replace_layers: Dict[str, str] = None, delete_layers: List[str] = None):
+        """
+        Initializes the event handler.
+        Parameters:
+        - replace_layers: A dictionary where each key-value pair represents a source (key)
+        and target (value) layer name for replacing weights.
+        - delete_layers: A list of keys (layer names) to be removed from the state_dict.
+        - key_to_keep: keys in the state_dict to keep. (Example epoch, optimizer)
+        """
+        self.replace_layers = replace_layers if replace_layers else {}
+        self.delete_layers = delete_layers if delete_layers else []
+
+    def replace_state_dict_keys(self, state_dict: Dict[str, torch.Tensor]):
+        """
+        Replaces keys in the state_dict according to self.replace_layers.
+        """
+        new_state_dict = {}
+        for key, value in state_dict.items():
+            new_key = key
+            for source_key, target_key in self.replace_layers.items():
+                if key.startswith(source_key):
+                    new_key = key.replace(source_key, target_key, 1)  # Replace only the first occurrence
+                    break
+            new_state_dict[new_key] = value
+        return new_state_dict
+
+    def delete_state_dict_keys(self, state_dict: Dict[str, torch.Tensor]):
+        """
+        Deletes keys from the state_dict according to self.delete_layers.
+        """
+        return {
+            key: value
+            for key, value in state_dict.items()
+            if not any(key.startswith(del_key) for del_key in self.delete_layers)
+        }
+
+    def validate_keys(self, state_dict: Dict[str, torch.Tensor], network: torch.nn.Module):
+        """
+        Validates that all keys in configs correspond to keys in the networks.
+        """
+
+        def is_in_state_dict(part_key: str, state_dict):
+            return any([key.startswith(part_key) for key in state_dict.keys()])
+
+        absent_network_keys = [
+            part_key for part_key in self.replace_layers.values() if not is_in_state_dict(part_key, network.state_dict())
+        ]
+        absent_checkpoint_keys = [
+            part_key for part_key in self.replace_layers.keys() if not is_in_state_dict(part_key, state_dict)
+        ]
+        absent_delete_checkpoint_keys = [
+            part_key for part_key in self.delete_layers if not is_in_state_dict(part_key, state_dict)
+        ]
+
+        if len(absent_network_keys) + len(absent_checkpoint_keys) > 0:
+            error_message = (
+                "During the PartialCheckpointLoadEventHandler some keys are missing.\n"
+                "Below are the list of keys in the Checkpoint model provided:\n" + "\n".join(state_dict.keys()) + "\n"
+                "Below are the list of keys in the Network model provided:\n" + "\n".join(network.state_dict().keys()) + "\n"
+                "---------\nMissing keys in the Checkpoint: " + str(absent_checkpoint_keys) + "\n"
+                "---------\nMissing keys in the Network: " + str(absent_network_keys) + "\n\n"
+            )
+            raise ValueError(error_message)
+        if len(absent_delete_checkpoint_keys) > 0:
+            logger.warning(
+                f"During the PartialCheckpointLoadEventHandler the following keys to delete where not found: {absent_delete_checkpoint_keys}"
+            )
+
+    def run(self, payload: Namespace):
+        """
+        Modifies the state_dict before loading it into the network.
+        Parameters:
+        - to_load_state_dict: The original state_dict to be modified.
+        - network: The network model into which the modified state_dict will be loaded.
+        """
+        self.validate_keys(payload.info["model"], payload.network)
+        # Replace keys in the state_dict
+        state_dict = self.replace_state_dict_keys(payload.info["model"])
+        # Delete keys from the state_dict
+        state_dict = self.delete_state_dict_keys(state_dict)
+
+        payload.info["model"] = state_dict
