@@ -110,6 +110,8 @@ class RandomAtomMaskAugmentation(BaseTransform):
     Base logic taken form Auglichem https://baratilab.github.io/AugLiChem/molecule.html
     """
 
+    TOKEN_VALUE = 120
+
     def __init__(self, p: float = 1.0, input_field=None):
         """
         @param p: the probability of the transform being applied; default value is 1.0
@@ -133,7 +135,7 @@ class RandomAtomMaskAugmentation(BaseTransform):
 
         aug_mol_graph = deepcopy(mol_graph)
         for atom_idx in mask_nodes:
-            aug_mol_graph.x[atom_idx, :] = torch.tensor(aug_mol_graph.x[atom_idx, :].shape)
+            aug_mol_graph.x[atom_idx, :] = torch.tensor([self.TOKEN_VALUE])
 
         return aug_mol_graph
 
