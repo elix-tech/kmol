@@ -146,3 +146,7 @@ class Config(AbstractConfiguration):
 class ScriptConfig(AbstractConfiguration):
     job_command: str
     script: Dict[str, Any]
+    log_level: Literal["debug", "info", "warn", "error", "critical"] = "info"
+
+    def __post_init__(self):
+        logging.stdout_handler.setLevel(self.log_level.upper())
