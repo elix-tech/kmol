@@ -1,4 +1,4 @@
-# This script extract the contribution of a model wit Captum. 
+# This script extract the contribution of a model wit Captum.
 
 # - `config_path`: is the config of them model with information about the `checkpoint_path` to be
 #   loaded as well as the `output_path` and the dataset information to run the script.
@@ -8,5 +8,9 @@
 #           Usually define in the splitter.
 
 script:
-type: "IntegratedGradient"
-config_path: "model_captum.yaml"
+  type: "Captum"
+  config_path: "config_path"
+  attribution: {
+    "type": captum.attr.IntegratedGradients
+  }
+  reduction: sum

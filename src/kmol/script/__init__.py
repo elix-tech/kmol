@@ -2,7 +2,6 @@ from kmol.core.config import ScriptConfig
 from kmol.core.helpers import SuperFactory
 from mila.factories import AbstractScript
 from mila.scripts import *
-from .lr_finder import LrFinderScript
 from .integrated_gradient import CaptumScript
 from .protein_captum import ProteinCaptumScript, ProteinSequenceCaptumScript
 from .generate_msa import GenerateMsaScript
