@@ -4,6 +4,8 @@
 #   loaded as well as the `output_path` and the dataset information to run the script.
 #   Similar to what an evaluation config will look like.
 
+# - `reduction`: [mean, sum, none] none will save the attribution to a pickle file instead of reducing.
+
 # WARNING: The data to be evaluated needs to be in the `test` split of the dataset.
 #           Usually define in the splitter.
 

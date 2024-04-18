@@ -2,6 +2,7 @@ from typing import Dict
 import pandas as pd
 from pathlib import Path
 import inspect
+import pickle
 
 import torch
 from tqdm import tqdm
@@ -48,7 +49,7 @@ class CaptumScript(AbstractScript):
         self.dataset = self.loader._dataset
         self.reduction = reduction
         self.n_steps = n_steps
-        if not reduction in ["sum", "mean"]:
+        if not reduction in ["sum", "mean", "none"]:
             raise ValueError(f"{reduction} must be in ['sum', 'mean']")
         self.attribution = attribution
 
@@ -72,9 +73,12 @@ class CaptumScript(AbstractScript):
             for i in range(self.model.out_features):
                 attributions = self.compute_attribute(data, attributions, target=i)
             results = pd.concat([results, self.dataset.loc[data.ids, self.column_of_interest]])
-        self.update_df(results, attributions)
-
-        results.to_csv(Path(self._config.output_path) / "captum_results.csv")
+        if self.reduction == "none":
+            with open(Path(self._config.output_path) / "captum_results.pkl", "wb") as file:
+                pickle.dump(attributions, file)
+        else:
+            self.update_df(results, attributions)
+            results.to_csv(Path(self._config.output_path) / "captum_results.csv")
 
     def attribution_innit(self):
         model_wrapper = ModelWrapper(self.model, self.attribution["type"], self.n_steps)
@@ -123,6 +127,8 @@ class CaptumScript(AbstractScript):
             return attribution.sum().cpu().detach().numpy().item()
         elif self.reduction == "mean":
             return attribution.mean().cpu().detach().numpy().item()
+        elif self.reduction == "none":
+            return attribution.cpu().detach().numpy()
 
 
 class ModelWrapper(torch.nn.Module):
