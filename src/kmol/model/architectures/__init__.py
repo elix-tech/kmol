@@ -10,3 +10,4 @@ from .triplet_message_passing_network import TripletMessagePassingNetwork
 from .graph_encoder_network import GraphormerEncoderNetwork
 from .lrodd_network import PseudoLroddNetwork, GenerativeLstmNetwork, LroddNetwork
 from .protein_schnet_network import ProteinSchnetNetwork
+from .sequential_network import SequentialNetwork

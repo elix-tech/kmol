@@ -59,7 +59,7 @@ class GeneralStreamer(AbstractStreamer):
         # Retrieve base data and indices
         indices = self._get_indices(split_name, mode, **kwargs)
         # Retrieve static aug data and indices
-        if mode == self.Mode.TRAIN:
+        if mode == self.Mode.TRAIN and len(self._preprocessor._static_augmentations):
             aug_indices = self._get_aug_indices(split_name, **kwargs)
             indices += aug_indices
             dataset = self._preprocessor._add_static_aug_dataset(self._dataset)

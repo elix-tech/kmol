@@ -540,7 +540,7 @@ class Executor(AbstractExecutor):
             split_name=self._config.train_split,
             batch_size=self._config.batch_size,
             shuffle=False,
-            mode=GeneralStreamer.Mode.TEST,
+            mode=GeneralStreamer.Mode.TRAIN,
         )
 
         trainer = LearningRareFinder(self._config)

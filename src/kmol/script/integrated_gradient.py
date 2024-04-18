@@ -1,6 +1,8 @@
 from typing import Dict
 import pandas as pd
 from pathlib import Path
+import inspect
+import pickle
 
 import torch
 from tqdm import tqdm
@@ -8,6 +10,7 @@ import numpy as np
 from captum.attr import Attribution as AbstractAttribution
 from torch_geometric.data import Data as TorchGeometricData
 from torch_geometric.data import Batch
+from torch_geometric.nn import MessagePassing
 
 from mila.factories import AbstractScript
 
@@ -17,6 +20,7 @@ from kmol.core.helpers import SuperFactory
 from kmol.data.streamers import GeneralStreamer
 from kmol.data.loaders import AbstractLoader
 from kmol.model.architectures.abstract_network import AbstractNetwork
+from kmol.model.architectures import GraphConvolutionalNetwork
 
 from kmol.core.logger import LOGGER as logging
 
@@ -30,6 +34,7 @@ class CaptumScript(AbstractScript):
         self.model = SuperFactory.create(AbstractNetwork, self._config.model)
         self.tmp_executor = Predictor(self._config)
         self.model = self.tmp_executor.network
+        self.filter_captum_feature()
         self.loader = SuperFactory.create(AbstractLoader, self._config.loader)
         self.column_of_interest = self.loader._input_columns + self.loader._target_columns
         streamer = GeneralStreamer(config=self._config)
@@ -44,9 +49,21 @@ class CaptumScript(AbstractScript):
         self.dataset = self.loader._dataset
         self.reduction = reduction
         self.n_steps = n_steps
-        if not reduction in ["sum", "mean"]:
+        if not reduction in ["sum", "mean", "none"]:
             raise ValueError(f"{reduction} must be in ['sum', 'mean']")
         self.attribution = attribution
+
+    def filter_captum_feature(self):
+        global GRAPH_CAPTUM_FEAT
+        input_parameters = []
+        for module in self.model.modules():
+            if issubclass(type(module), MessagePassing):
+                input_parameters += list(inspect.signature(module.forward).parameters.keys())
+            if isinstance(module, GraphConvolutionalNetwork):
+                if issubclass(type(module.molecular_head), torch.nn.Module):
+                    input_parameters += ["molecule_features"]
+        unused_params = set(GRAPH_CAPTUM_FEAT) - set(input_parameters)
+        GRAPH_CAPTUM_FEAT = [feat for feat in GRAPH_CAPTUM_FEAT if feat not in unused_params]
 
     def run(self):
         self.attribution_innit()
@@ -56,9 +73,12 @@ class CaptumScript(AbstractScript):
             for i in range(self.model.out_features):
                 attributions = self.compute_attribute(data, attributions, target=i)
             results = pd.concat([results, self.dataset.loc[data.ids, self.column_of_interest]])
-        self.update_df(results, attributions)
-
-        results.to_csv(Path(self._config.output_path) / "captum_results.csv")
+        if self.reduction == "none":
+            with open(Path(self._config.output_path) / "captum_results.pkl", "wb") as file:
+                pickle.dump(attributions, file)
+        else:
+            self.update_df(results, attributions)
+            results.to_csv(Path(self._config.output_path) / "captum_results.csv")
 
     def attribution_innit(self):
         model_wrapper = ModelWrapper(self.model, self.attribution["type"], self.n_steps)
@@ -107,6 +127,8 @@ class CaptumScript(AbstractScript):
             return attribution.sum().cpu().detach().numpy().item()
         elif self.reduction == "mean":
             return attribution.mean().cpu().detach().numpy().item()
+        elif self.reduction == "none":
+            return attribution.cpu().detach().numpy()
 
 
 class ModelWrapper(torch.nn.Module):
@@ -181,16 +203,13 @@ class CustomCaptum:
 
     def attribute(self, inputs, n_steps=50, **kwargs):
         inputs_tensor, additional_attr = self.dict_to_tensor(inputs)
-        results = self.attribution.attribute(
-            inputs_tensor, additional_forward_args=additional_attr, n_steps=n_steps, **kwargs
-        )
+        results = self.attribution.attribute(inputs_tensor, additional_forward_args=additional_attr, n_steps=n_steps, **kwargs)
         return results
 
     def dict_to_tensor(self, data_inputs):
         inputs, output_name, additional_attr = [], [], []
         original_feature_key = {"inputs": [], "graph_attr": []}
         for key, _input in data_inputs.items():
-            original_feature_key["inputs"].append((key, type(_input)))
             if isinstance(_input, TorchGeometricData):
                 graph_inputs, additional_attr, original_feature_key["graph_attr"] = self.process_graph_feature(_input)
                 output_name += [f"{key}_{name}" for name in original_feature_key["graph_attr"][-len(graph_inputs) :]]
@@ -198,6 +217,9 @@ class CustomCaptum:
             elif isinstance(_input, torch.Tensor):
                 inputs.append(_input)
                 output_name += [key]
+            else:
+                continue
+            original_feature_key["inputs"].append((key, type(_input)))
         self.output_name = output_name
         return tuple(inputs), tuple(additional_attr + [original_feature_key])
 

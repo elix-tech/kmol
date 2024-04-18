@@ -170,12 +170,13 @@ class ListLoader(AbstractLoader):
     def __init__(self, data: List[DataPoint], indices: List[str]):
         self._dataset = data
         self._indices = indices
+        self._map_indices = {value: index for index, value in enumerate(indices)}
 
     def __len__(self):
         return len(self._dataset)
 
     def __getitem__(self, id_: str) -> DataPoint:
-        return self._dataset[self._indices.index(id_)]
+        return self._dataset[self._map_indices[id_]]
 
     def list_ids(self) -> List[Union[int, str]]:
         return self._indices

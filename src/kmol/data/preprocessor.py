@@ -61,51 +61,52 @@ class AbstractPreprocessor(metaclass=ABCMeta):
         for transformer in reversed(self._transformers):
             transformer.reverse(sample)
 
-    def _wrapper_mp_worker(self, func, job_counter, sample):
+    def _wrapper_mp_worker(self, func, job_counter, sample: DataPoint):
         logger.stdout_handler.setLevel(self._config.log_level.upper())
         try:
             data = func(sample)
-        except FeaturizationError as e:
-            tb_str = traceback.format_exc()
-            logger.warning(f"{e}\n{tb_str}")
-            return None
+            buffer = pickle.dumps(data, protocol=pickle.HIGHEST_PROTOCOL)
+            return np.frombuffer(buffer, dtype=np.uint8)
         except Exception as e:
             tb_str = traceback.format_exc()
-            smiles = sample.inputs["smiles"] if "smiles" in sample.inputs else ""
-            logger.error(f"{sample} {smiles} - {e}\n{tb_str}")
+            smiles = sample.inputs.get("smiles", "")
+            log_msg = f"{sample} {smiles} - {e}\n{tb_str}"
+            logger.error(log_msg) if isinstance(e, Exception) else logger.warning(log_msg)
             return None
-        job_counter.set(job_counter.get() + 1)
-        # We are pickling the data to avoid any mmap errors
-        buffer = pickle.dumps(data, protocol=-1)
-        return np.frombuffer(buffer, dtype=np.uint8)
+        finally:
+            with job_counter["lock"]:
+                job_counter["value"].set(job_counter["value"].get() + 1)
 
-    def _run_progress_bar(self, job_counter, n_jobs, total):
+    def _run_progress_bar(self, job_counter, stop_counter: threading.Event, n_jobs, total):
         with progress_bar() as progress:
-            complete = 0
-            task = progress.add_task(f"[green] Progress ({n_jobs} jobs):", total=total)
-            while complete < total:
-                complete = job_counter.get()
+            task = progress.add_task("[green] Progress ({} jobs):".format(n_jobs), total=total)
+            while not stop_counter.is_set():
+                complete = job_counter["value"].get()
                 progress.update(task, completed=complete, total=total)
 
-    def _run_parrallel(self, func, loader, disk_dir=None):
-        with multiprocessing.Manager() as manager, multiprocessing.Pool(self._config.featurization_jobs) as executor:
-            # Add a counter for "good" estimation of the advancement
-            job_counter = manager.Value("i", 0)
-            progress = threading.Thread(
-                target=partial(self._run_progress_bar, job_counter, self._config.featurization_jobs, len(loader))
-            )
-            progress.daemon = True
-            progress.start()
+    def _run_parallel(self, func, loader, disk_dir=None):
+        with multiprocessing.Manager() as manager:
+            job_counter = {"value": manager.Value("i", 0), "lock": manager.Lock()}
+            stop_counter = threading.Event()
 
-            func = partial(self._wrapper_mp_worker, func, job_counter)
-            dataset = CacheDiskList(tmp_dir=disk_dir) if disk_dir is not None else []
-            for result in executor.imap(func, loader, chunksize=100):
-                if result is not None:
-                    result = pickle.loads(memoryview(result))
-                    dataset.append(result)
-            job_counter.set(len(dataset))
-            # Join the thread to avoid broken pipe from the exiting of the manager
-            progress.join(timeout=10)
+            progress_thread = threading.Thread(
+                target=self._run_progress_bar,
+                args=(job_counter, stop_counter, self._config.featurization_jobs, len(loader)),
+                daemon=True,
+            )
+            progress_thread.start()
+
+            with multiprocessing.Pool(self._config.featurization_jobs) as executor:
+                wrapper_func = partial(self._wrapper_mp_worker, func, job_counter)
+
+                dataset = CacheDiskList(tmp_dir=disk_dir) if disk_dir else []
+                for result in executor.imap(wrapper_func, loader, chunksize=100):
+                    if result is not None:
+                        dataset.append(pickle.loads(memoryview(result)))
+
+                stop_counter.set()
+                progress_thread.join()
+
         return dataset
 
     @abstractmethod
@@ -240,12 +241,13 @@ class CachePreprocessor(AbstractPreprocessor):
             },
         )
         self.dataset_size = len(dataset)
+        logger.info(f"The dataset use is of size {self.dataset_size}")
         return dataset
 
     def _prepare_dataset(self) -> ListLoader:
         loader = SuperFactory.create(AbstractLoader, self._config.loader)
         logger.info("Starting featurization...")
-        dataset = self._run_parrallel(self.preprocess, loader, self._disk_dir)
+        dataset = self._run_parallel(self.preprocess, loader, self._disk_dir)
 
         ids = [sample.id_ for sample in dataset]
         return ListLoader(dataset, ids)
@@ -275,14 +277,16 @@ class CachePreprocessor(AbstractPreprocessor):
         logger.info(f"Starting {type(a)} augmentation...")
         a.generate_augmented_data(loader)
         logger.info(f"Starting Featurization of  {type(a)} augmented data...")
-        a.aug_dataset = self._run_parrallel(self.preprocess, a.aug_dataset)
+        a.aug_dataset = self._run_parallel(self.preprocess, a.aug_dataset)
         return a
 
     def _add_static_aug_dataset(self, dataset: ListLoader):
         tmp_dataset = dataset._dataset
+        indices = dataset.list_ids()
         for a in self._static_augmentations:
             tmp_dataset += a.aug_dataset
-        return ListLoader(tmp_dataset, range(len(tmp_dataset)))
+            indices += list(range(indices[-1] + 1, indices[-1] + 1 + len(a.aug_dataset)))
+        return ListLoader(tmp_dataset, indices)
 
 
 class FilePreprocessor(AbstractPreprocessor):

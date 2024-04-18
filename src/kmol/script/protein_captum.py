@@ -10,7 +10,7 @@ from kmol.model.architectures import ProteinSchnetNetwork
 from kmol.script.integrated_gradient import CaptumScript, GRAPH_CAPTUM_FEAT
 
 PROTEIN_FEATURES = ["protein", "schnet_input"]
-GRAPH_CAPTUM_FEAT += ["z", "z_protein", "coords", "edge_attr"]
+GRAPH_CAPTUM_FEAT += ["z", "z_protein", "coords"]
 
 
 class ProteinCaptumScript(CaptumScript):

@@ -55,8 +55,9 @@ class GeneralCollater(AbstractCollater):
 
             outputs.append(entry.outputs)
 
-        outputs = np.array(outputs)
-        outputs = torch.FloatTensor(outputs)
+        outputs = torch.from_numpy(np.array(outputs))
+        if outputs.dtype == torch.float64:
+            outputs = outputs.type(torch.float32)
         inputs = dict(inputs)
         return Batch(ids=ids, labels=batch[0].labels, inputs=inputs, outputs=outputs)
 

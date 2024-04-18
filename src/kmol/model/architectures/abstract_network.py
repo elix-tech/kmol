@@ -36,7 +36,17 @@ class AbstractNetwork(torch.nn.Module, metaclass=ABCMeta):
         payload = Namespace(network=self, info=info)
         EventManager.dispatch_event(event_name="before_model_checkpoint_load", payload=payload)
 
-        self.load_state_dict(info["model"], strict=False)
+        incompatible_keys = self.load_state_dict(info["model"], strict=False)
+
+        if incompatible_keys:
+            if len(incompatible_keys[0]) > 0:
+                logging.warning(f"Part of the model was not loaded by the checkpoint provided: {incompatible_keys[0]}")
+            if len(incompatible_keys[1]) > 0:
+                logging.warning(
+                    f"Part of the checkpoint weights was skip, layers were missing in the model: {incompatible_keys[1]}"
+                )
+
+        return info
 
     @staticmethod
     def dropout_layer_switch(m, dropout_prob):
