@@ -1,5 +1,6 @@
 #!/bin/bash
 
+echo " - Setting up conda"
 eval "$(conda 'shell.bash' 'hook' 2> /dev/null)"
 conda activate base
 
@@ -22,7 +23,7 @@ if [ "$LOCATION" != "" ] ; then
     LOCATION="-p $LOCATION"
 fi
 
-echo conda env create -f environment.yml $LOCATION
+echo " - Installing kMoL dependencies into $LOCATION"
 conda env create -f environment.yml $LOCATION
 
 # Set PYTHONNOUSERSITE to true for our environment, this allow the conda environnment
@@ -31,6 +32,7 @@ conda activate $ENV_NAME
 VENV_CONDA_PREFIX="$CONDA_PREFIX"
 conda deactivate
 
+echo " - Configuring kMoL virtual environment"
 mkdir -p $VENV_CONDA_PREFIX/etc/conda/activate.d
 (
     echo 'export KMOL_ORIG_LD="${LD_LIBRARY_PATH:-none}"';
@@ -54,7 +56,12 @@ mkdir -p $VENV_CONDA_PREFIX/etc/conda/deactivate.d
 ) > $VENV_CONDA_PREFIX/etc/conda/deactivate.d/env_vars.sh
 
 conda activate $ENV_NAME
+rm -f src/*.so
 
-rm src/*.so
+echo " - Installing kMoL"
 # Install local package
 pip install --no-build-isolation -e .
+
+echo
+echo
+echo " ==> Installation done: run 'conda activate kmol' to enable the virtual env and be able to run the kmol command."
