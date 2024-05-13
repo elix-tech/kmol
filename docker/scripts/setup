@@ -35,7 +35,7 @@ disable-conda(){
 enable-conda(){
   [ ! -z "\${VIRTUAL_ENV+x}" ] && deactivate
 
-  local conda_exe="/opt/elix/anaconda3/bin/conda"
+  local conda_exe="/opt/elix-inc/py-runtime/bin/conda"
   if [ -x "\${conda_exe}" ]; then
     case "\${SHELL}" in
       */bash) eval "\$("\${conda_exe}" 'shell.bash' 'hook' 2> /dev/null)" ;;

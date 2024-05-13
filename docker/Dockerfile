@@ -35,50 +35,53 @@ RUN mkdir -p /etc/xdg/pip && \
 # Downloading and setting up conda
 FROM base as conda-install
 
-SHELL [ "/bin/bash", "--login", "-c" ]
-
 RUN /usr/local/bin/install-packages.sh wget
 
 RUN mkdir -p /opt/elix
 
-ARG ANACONDA_VERSION=2023.03
-RUN bash -c '( wget -O ./Anaconda3-${ANACONDA_VERSION}-Linux-x86_64.sh https://repo.anaconda.com/archive/Anaconda3-${ANACONDA_VERSION}-Linux-x86_64.sh && \
-  chmod 755 ./Anaconda3-${ANACONDA_VERSION}-Linux-x86_64.sh && \
-  ./Anaconda3-${ANACONDA_VERSION}-Linux-x86_64.sh -b -p /opt/elix/anaconda3;)'
+ARG CONDA_VERSION=24.3.0-0
+RUN bash -c '( wget -O ./Miniforge3-${CONDA_VERSION}-Linux-x86_64.sh https://github.com/conda-forge/miniforge/releases/download/${CONDA_VERSION}/Miniforge3-${CONDA_VERSION}-Linux-x86_64.sh && \
+    chmod 755 ./Miniforge3-${CONDA_VERSION}-Linux-x86_64.sh && \
+    ./Miniforge3-${CONDA_VERSION}-Linux-x86_64.sh -b -p /opt/elix-inc/py-runtime && \
+    rm -f ./Miniforge3-${CONDA_VERSION}-Linux-x86_64.sh )'
 
-COPY scripts/setup /opt/elix/anaconda3/setup
-RUN chmod 755 /opt/elix/anaconda3/setup
+COPY scripts/setup /opt/elix-inc/py-runtime/setup
+RUN chmod 755 /opt/elix-inc/py-runtime/setup
 
-RUN ( eval "$(/opt/elix/anaconda3/setup)"; \
+RUN bash -c '( \
+ eval "$(/opt/elix-inc/py-runtime/setup)"; \
  enable-conda; \
- conda install -n base -y conda-libmamba-solver; \
- conda config --system --set auto_update_conda False; \
- conda config --system --add envs_dirs /opt/envs; \
- conda config --system --set solver libmamba; \
- conda clean -f -y -a )
+ conda config --system --set notify_outdated_conda false; \
+ conda config --system --set auto_update_conda false; \
+ conda config --system --add envs_dirs /opt/envs )'
 
 FROM base
 
-ENV NVIDIA_VISIBLE_DEVICE=all
+ENV NVIDIA_VISIBLE_DEVICES=all
+ENV MPLCONFIGDIR=/home/kmol/data/.mplconfig
 
-RUN /usr/local/bin/install-packages.sh wget build-essential libxml2-dev
+RUN /usr/local/bin/install-packages.sh gosu wget build-essential libxml2-dev
 
-COPY --from=conda-install /opt/elix /opt/elix
+COPY --from=conda-install /opt/elix-inc /opt/elix-inc
 
-COPY scripts/setup /opt/elix/anaconda3/setup
-RUN chmod 755 /opt/elix/anaconda3/setup
-COPY 99-conda.sh /etc/profile.d/99-conda.sh
+COPY scripts/setup /opt/elix-inc/py-runtime/setup
+COPY scripts/99-conda.sh /etc/profile.d/99-conda.sh
+RUN chmod 755 /opt/elix-inc/py-runtime/setup /etc/profile.d/99-conda.sh
 
-WORKDIR /opt/elix/kmol
-SHELL [ "/bin/bash", "--login", "-c" ]
+RUN mkdir -p /opt/envs
 
-RUN mkdir -p /opt/envs /opt/elix/kmol
+COPY environment.yml /tmp/environment.yml
+RUN bash -c '( \
+ eval "$(/opt/elix-inc/py-runtime/setup)"; \
+ enable-conda; \
+ conda env create -f /tmp/environment.yml; \
+ rm -f /tmp/environment.yml; \
+ conda clean -a -f -y )'
 
-COPY environment.yml /opt/elix/kmol
-RUN conda env create -f environment.yml
+COPY scripts/run_kmol.sh /opt/elix-inc/run_kmol.sh
+RUN chmod 755 /opt/elix-inc/run_kmol.sh
 
-ADD kmol.tar.gz /opt/elix/kmol
-RUN chown -R root:root /opt/elix/kmol
+RUN mkdir -p /opt/src
+ADD kmol.tar.gz /opt/src
 
-COPY run.sh /opt/elix/kmol/run.sh
-ENTRYPOINT [ "/opt/elix/kmol/run.sh" ]
+ENTRYPOINT [ "/opt/elix-inc/run_kmol.sh" ]
