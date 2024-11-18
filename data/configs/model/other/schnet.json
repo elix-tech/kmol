@@ -27,49 +27,32 @@
     "featurizers": [
       {
         "type": "pdbqt_to_pdb",
-        "inputs": [
-          "pdbqt_filepath"
-        ],
-        "outputs": [
-          "path_pdb"
-        ],
-        "pdqt_dir": "data/pdqt_dir",
+        "inputs": ["path"],
+        "outputs": ["path_pdb"],
+        "pdqt_dir": "/nasa/datasets/kyodai_federated/proj_202307_202310/3D_CPIs_best_docked/kinase_best_model",
         "dir_to_save": "data/logs/features/pdb",
+        "overwrite_if_exist": true,
         "protonize": true
       },
       {
-        "type": "atom_type_extension_pdb",
-        "inputs": [
-          "path_pdb"
-        ],
-        "outputs": [
-          "path_mol2"
-        ],
-        "ligand_residue": [
-          "UNL"
-        ],
-        "protein_atom_type": [
-          "SYBYL",
-          "PDB"
-        ],
-        "ligand_atom_type": [
-          "SYBYL"
-        ],
-        "dir_to_save": "data/logs/features/antechamber",
-        "tokenize_atom_type": true
+        "type": "intdesc",
+        "inputs": ["path_pdb"],
+        "outputs": ["schnet_inputs"],
+        "ligand_residue": ["UNL"],
+        "dir_to_save": "data/logs/features/intdesc",
+        "overwrite_if_exist": true,
+        "dup": true
       },
       {
-        "type": "intdesc",
-        "inputs": [
-          "path_mol2"
-        ],
-        "outputs": [
-          "schnet_inputs"
-        ],
-        "ligand_residue": [
-          "UNL"
-        ],
-        "dir_to_save": "data/logs/features/intdesc"
+        "type": "atom_type_extension",
+        "inputs": ["schnet_inputs"],
+        "outputs": ["schnet_inputs"],
+        "ligand_residue": ["UNL"],
+        "protein_atom_type": ["SYBYL", "PDB"],
+        "ligand_atom_type": ["SYBYL"],
+        "dir_to_save":  "data/logs/features/antechamber",
+        "overwrite_if_exist": true,
+        "rewrite": false
       }
     ],
     "transformers": [],

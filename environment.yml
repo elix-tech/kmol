@@ -6,10 +6,10 @@ channels:
   - pytorch
   - nvidia/label/cuda-11.7.0
   - conda-forge
-  - acellera
   - nodefaults
 dependencies:
-  - biopython=1.81
+  - ambertools=22.0
+  - biopandas=0.4.1
   - cairosvg=2.5.2
   - captum=0.5.0
   - cuda=11.7.0
@@ -21,9 +21,12 @@ dependencies:
   - grpcio-tools=1.54.2
   - grpcio=1.54.2
   - libprotobuf=3.21.12
+  - mdanalysis
+  - mkl=2024.0.0
   - mordred=1.2.0
   - networkx=2.5.1
-  - numpy=1.24.1
+  - numpy=1.24.4
+  - openbabel=3.1.1
   - openpyxl=3.1.1
   - optuna=2.4.0
   - pandas=1.5.2
@@ -38,6 +41,7 @@ dependencies:
   - pytorch-sparse=0.6.16
   - pytorch-spline-conv=1.2.2
   - pytorch=1.13.1
+  - pytest=8.3.3
   - rdkit=2022.9.4
   - requests=2.26.0
   - rich=12.6.0
@@ -45,9 +49,4 @@ dependencies:
   - torchaudio=0.13.1
   - torchvision=0.14.1
   - typing-extensions=4.3.0
-  - moleculekit=1.7.7
-  - openbabel=3.1.1
-  - ambertools=22.0
-  - biopandas=0.4.1
-  - mdanalysis=2.5.0
-  - mkl=2024.0.0
+
