@@ -39,10 +39,10 @@ Once an image with the current version is created, you can run kmol by passing t
 
 ```bash
 # Simplest command, will run 'kmol {job} {path_to_config}' in a container
-docker run --rm -ti --gpus=all -e KMOL_UID=$(id -u) -e KMOL_GID=$(id -g) -v ./data:/home/kmol/data elix-kmol:1.1.9.2 {job} {path_to_config}
+docker run --rm -ti --gpus=all -e KMOL_UID=$(id -u) -e KMOL_GID=$(id -g) -v ./data:/home/kmol/data elix-kmol:1.1.9.3 {job} {path_to_config}
 
 # Running without a parameter will start an interactive shell in the same environment then manually launching commands is also possible
-docker run --rm -ti --gpus=all -e KMOL_UID=$(id -u) -e KMOL_GID=$(id -g) -v ./data:/home/kmol/data elix-kmol:1.1.9.2
+docker run --rm -ti --gpus=all -e KMOL_UID=$(id -u) -e KMOL_GID=$(id -g) -v ./data:/home/kmol/data elix-kmol:1.1.9.3
 ```
 
 Note: The configuration files provided are intended to be used with the 'conda virtual environment' installation where kMoL is installed
