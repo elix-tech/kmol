@@ -4,6 +4,7 @@ echo " -o- Preparing kMoL source..."
 rm -f docker/kmol.tar.gz
 cp environment.yml docker/environment.yml
 tar \
+    --owner=0 --group=0 --no-same-owner \
     --exclude='*.egg-info' \
     --exclude='__pycache__' \
     --exclude='*.so' \
