@@ -2,20 +2,16 @@ import os
 import io
 import itertools
 from pathlib import Path
-import pyximport
 from abc import ABCMeta, abstractmethod
 from functools import partial
 from itertools import chain
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union, Set
 import pickle
-import yaml
-import subprocess
-
-from contextlib import redirect_stdout
-from io import StringIO
-
-
+import logging
 import random
+import shutil
+
+
 import numpy as np
 import torch
 import pandas as pd
@@ -23,12 +19,11 @@ from torch.utils.data import Subset
 from rdkit import Chem
 from torch_geometric.data import Data as TorchGeometricData
 from scipy.stats import bernoulli
-import logging
-
-from moleculekit.molecule import Molecule
 from openbabel import openbabel, pybel
+import prody
+import torch
 
-from kmol.data.resources import DataPoint
+from kmol.data.resources import DataPoint, IntDescRunner, AntechamberRunner, PDBtoMol2Converter, Mol2Processor
 from kmol.data.loaders import ListLoader
 from kmol.core.exceptions import FeaturizationError
 from kmol.core.helpers import SuperFactory
@@ -37,12 +32,12 @@ from kmol.model.architectures import AlphaFold
 from kmol.vendor.openfold.data import templates, data_pipeline, feature_pipeline
 from kmol.vendor.openfold.config import model_config
 from kmol.vendor.openfold.utils.tensor_utils import tensor_tree_map
-from kmol.vendor.riken.intDesc.interaction_descriptor import calculate
 
 import algos
 
 [l.setLevel(logging.WARNING) for l in logging.root.handlers]
 logging.getLogger("kmol.vendor.riken.intDesc").setLevel(logging.ERROR)
+prody.LOGGER._setverbosity("error")
 
 
 class AbstractFeaturizer(metaclass=ABCMeta):
@@ -72,24 +67,24 @@ class AbstractFeaturizer(metaclass=ABCMeta):
         self.device = device
 
     def run(self, data: DataPoint) -> None:
-        try:
-            if len(self._inputs) != len(self._outputs):
-                raise FeaturizationError("Inputs and mappings must have the same length.")
+        # try:
+        if len(self._inputs) != len(self._outputs):
+            raise FeaturizationError("Inputs and mappings must have the same length.")
 
-            for index in range(len(self._inputs)):
-                raw_data = data.inputs[self._inputs[index]]
-                data.inputs[self._outputs[index]] = self.__process(raw_data, data)
-                if self._rewrite:
-                    data.inputs.pop(self._inputs[index])
-        except (
-            FeaturizationError,
-            ValueError,
-            IndexError,
-            AttributeError,
-            TypeError,
-        ) as e:
-            error_msg = "[WARNING] Could not run featurizer '{}' on '{}' --- {}".format(self.__class__.__name__, data.id_, e)
-            raise FeaturizationError(error_msg) from e
+        for index in range(len(self._inputs)):
+            raw_data = data.inputs[self._inputs[index]]
+            data.inputs[self._outputs[index]] = self.__process(raw_data, data)
+            if self._rewrite:
+                data.inputs.pop(self._inputs[index])
+        # except (
+        #     FeaturizationError,
+        #     ValueError,
+        #     IndexError,
+        #     AttributeError,
+        #     TypeError,
+        # ) as e:
+        #     error_msg = "[WARNING] Could not run featurizer '{}' on '{}' --- {}".format(self.__class__.__name__, data.id_, e)
+        #     raise FeaturizationError(error_msg) from e
 
 
 class AbstractTorchGeometricFeaturizer(AbstractFeaturizer):
@@ -893,80 +888,252 @@ class PdbqtToPdbFeaturizer(AbstractFeaturizer):
             raise FeaturizationError(f"Error while writing the pdb file for {str(pdbqt_filepath)}")
 
 
-class PdbToMol2Featurizer(AbstractFeaturizer):
-    """Convert a pdb file to mol2"""
+class IntdescFeaturizer(AbstractFeaturizer):
 
     def __init__(
         self,
         inputs: List[str],
         outputs: List[str],
-        pdb_dir: str = None,
-        dir_to_save: str = "data/output/mol2",
+        dir_to_save: str = None,
+        distance: float = 8.0,
+        ligand_residue: List[str] = ["UNL"],
+        solvent_name: str = "HOH",
         overwrite_if_exist: bool = True,
         should_cache: bool = False,
         rewrite: bool = True,
+        **kwargs,
     ):
         """
-        inputs: expect a column name of a pdb path data
-        pdb_dir: path to add to the input taken from the dataset.
-            Only use in case we are starting the featurization from a pdb files,
-            otherwise leave as default
-        overwrite_if_exist: if False use existing files, default: True
+        Run the interaction descriptor (IntDesc) program on a mol2 file and generate
+        all inputs necessary for the Schnet Model.
+
+        There are 8 outputs generated and used in the model in this featurizer.
+        They are regrouped in a pytorch geometric Data object:
+
+        z: Tokenize ligand atom type based on pdb_vocab [N_ligand]
+        z_protein: Tokenize protein atom type based on pdb_vocab [N_protein]
+        edge_index: Edge index of the protein-ligand interaction
+        edge_attr: Features of the protein-ligand interaction
+        coords: Coordinates of both ligand and protein atoms, for each sample,
+            ligand are first along the batch dimension [N_ligand + N_protein, 3]
+        protein_mask: Mask marking protein atoms [N_ligand + N_protein]
+        num_nodes: Number of nodes in the graph
+        original_atom_ids: Original atom IDs from the PDB file
+        pdb_path: Path to the PDB file
+        mol2_path: Path to the MOL2 file
         """
         super().__init__(inputs, outputs, should_cache, rewrite)
 
-        self.outdir = Path(dir_to_save)
-        self.pdb_dir = pdb_dir
-        if not self.outdir.exists():
-            self.outdir.mkdir(parents=True)
+        self.outdir = Path(dir_to_save) if dir_to_save is not None else Path("data/output/intdesc")
+        self.distance = distance
+        self.ligand_res = ligand_residue
+        self.ligand_filter = " ".join(self.ligand_res)
+        self.solvent_name = solvent_name
+
+        self.intdesc_runner = IntDescRunner(**kwargs)
         self.overwrite_if_exist = overwrite_if_exist
 
-    def get_mol2_filepath(self, pdb_filepath):
-        return Path(f"{self.outdir}/{Path(pdb_filepath).stem}.mol2")
+        # fmt off
+        self.pdb_token_lookup = np.vectorize(AntechamberRunner.pdb_vocabulary.get)
+        # fmt on
 
-    def pdb_to_mol2(self, pdb_filepath: str) -> str:
-        mol2_filepath = self.get_mol2_filepath(pdb_filepath)
-        if not self.overwrite_if_exist and mol2_filepath.exists():
-            return str(mol2_filepath)
-        ob_mol = openbabel.OBMol()
-        conv = openbabel.OBConversion()
-        conv.SetInAndOutFormats("pdb", "mol2")
-        if not conv.ReadFile(ob_mol, str(pdb_filepath)):
-            raise FeaturizationError(f"Error while reading {str(pdb_filepath)} in OpenBabel")
-        if not conv.WriteFile(ob_mol, str(mol2_filepath)):
-            raise FeaturizationError(f"Error while writing {str(mol2_filepath)} in OpenBabel")
+    def is_of_interest(self, protein_atom, ligand_atoms):
+        return np.min([lig.GetDistance(protein_atom) for lig in ligand_atoms]) < self.distance
 
-        return str(mol2_filepath)
+    def _process(self, data: str, entry: DataPoint) -> Any:
+        pdb_path = data
+        mol2_filepath = self.create_mol2_from_pdb(pdb_path)
 
-    def get_filepath(self, data: Any):
-        if self.pdb_dir is not None:
-            return Path(self.pdb_dir) / data
+        # Create a prody structure from the pdb file and add the bond information from the mol2 file
+        # The use of the mol2 file is to match the previous implementation with MoleculeNet
+        complex_struct = prody.parsePDB(pdb_path)
+        bonds = Mol2Processor.extract_bond_indices_from_file(mol2_filepath)
+        complex_struct.setBonds(bonds)
+
+        intdesc = self.compute_intdesc(pdb_path, mol2_filepath, complex_struct)
+
+        protein_atom_ids = self.filter_protein_atom_of_interest(complex_struct, intdesc)
+        ligand_atom_ids = complex_struct.select(f"resname {self.ligand_filter} and noh").getIndices().tolist()
+
+        edge_index = self.compute_edge_index(intdesc, ligand_atom_ids, protein_atom_ids)
+        edge_features = self.compute_edge_features(intdesc)
+
+        coords = complex_struct.getCoords()[ligand_atom_ids + protein_atom_ids]
+
+        # Compute atom type from pdb file
+        raw_atom_types = complex_struct.getElements()
+        ligand_atom_types = self.pdb_token_lookup(raw_atom_types[ligand_atom_ids]).astype("int")
+        protein_atom_types = self.pdb_token_lookup(raw_atom_types[protein_atom_ids]).astype("int")
+        protein_mask = np.hstack([np.zeros(len(ligand_atom_ids)), np.ones(len(protein_atom_ids))])
+
+        return TorchGeometricData(
+            z=torch.from_numpy(ligand_atom_types).long(),
+            z_protein=torch.from_numpy(protein_atom_types).long(),
+            edge_index=torch.from_numpy(edge_index).long().T,
+            edge_attr=torch.from_numpy(edge_features).float(),
+            coords=torch.from_numpy(coords).float(),
+            protein_mask=torch.from_numpy(protein_mask).bool(),
+            num_nodes=len(protein_mask),  # avoids warning
+            # metadata for interprettation
+            original_atom_ids=torch.from_numpy(np.hstack([ligand_atom_ids, protein_atom_ids])),
+            pdb_path=str(pdb_path),
+            mol2_path=str(mol2_filepath),
+        )
+
+    def compute_intdesc(self, pdb_path: str, mol2_filepath: str, complex_struct: prody.AtomGroup) -> pd.DataFrame:
+        """
+        Computes interaction descriptors for a given molecular complex.
+        Parameters:
+        pdb_path (str): Path to the PDB file of the molecular complex.
+        mol2_filepath (str): Path to the MOL2 file of the ligand.
+        complex_struct (prody.AtomGroup): Structure of the molecular complex.
+        Returns:
+        pd.DataFrame: Computed interaction descriptors.
+        Raises:
+        Exception: If an error occurs during the computation, the output directory is removed and the exception is raised.
+        """
+
+        outdir = self.outdir / Path(pdb_path).stem
+        if self.overwrite_if_exist or not outdir.exists():
+            try:
+                intdesc = self.intdesc_runner.run(
+                    mol2_filepath, complex_struct, self.ligand_filter, self.distance, self.solvent_name, outdir
+                )
+            except Exception as e:
+                shutil.rmtree(outdir)
+                raise e
         else:
-            return data
+            intdesc = self.intdesc_runner.extract_output(outdir)
+        return intdesc
 
-    def _process(self, data: Any, entry: DataPoint) -> str:
-        return self.pdb_to_mol2(self.get_filepath(data))
+    def create_mol2_from_pdb(self, pdb_path: Union[str, Path]) -> Path:
+        """
+        Converts a PDB file to a MOL2 file. Depending on overwrite_if_exist if
+        the file already exists it will not be overwritten.
+        Parameters:
+        pdb_path (str or Path): The path to the PDB file to be converted.
+        Returns:
+        Path: The path to the generated MOL2 file.
+        """
+
+        mol2_filepath = PDBtoMol2Converter.get_mol2_filepath(self.outdir / "mol2_files", pdb_path)
+        if self.overwrite_if_exist or not mol2_filepath.exists():
+            mol2_filepath = PDBtoMol2Converter.pdb_to_mol2(
+                pdb_path, self.outdir / "mol2_files", overwrite=self.overwrite_if_exist
+            )
+
+        return mol2_filepath
+
+    def filter_protein_atom_of_interest(self, complex_struct: prody.AtomGroup, intdesc: pd.DataFrame) -> List:
+        """
+        Recursively parse the protein graph from the lp interaction protein atom
+        only adding protein atom in the cutoff distance.
+        1- Take all protein atom with LP interaction from intDesc.
+        2- Take the neighbor of those atoms, and keep them if the cutoff distance is respected.
+        3- Repeat the previous operation until we don't have anymore atoms
+        """
+        # keeping now for matching test case
+        protein_atom_in_cutoff = complex_struct.select(
+            f"protein and (not resname {self.ligand_filter}) and (within {self.distance} of resname {self.ligand_filter}) and noh"
+        )
+        protein_atom_in_cutoff = protein_atom_in_cutoff.getIndices()
+
+        protein_atom_with_desc = np.unique(intdesc["partner_atom_number"].values)
+        all_filtered_atoms = set(protein_atom_with_desc.tolist())
+        atoms_to_check = all_filtered_atoms
+
+        while atoms_to_check:
+            # Get neighboring atoms
+            neighbor_atoms = self._get_bonded_atom_in_selection(
+                atoms_to_check, protein_atom_in_cutoff, complex_struct._bonds
+            )
+
+            # Get new atoms that haven't been processed yet
+            new_atoms = neighbor_atoms - all_filtered_atoms
+            all_filtered_atoms.update(new_atoms)
+            atoms_to_check = new_atoms
+
+        return list(all_filtered_atoms)
+
+    def _get_bonded_atom_in_selection(self, source_atoms: Set, selected_atoms: Set, bond_id: np.ndarray) -> Set:
+        """
+        Return the selected_atoms bonded with source_atom.
+        """
+        rows_with_source_atoms = np.any(np.isin(bond_id, list(source_atoms)), axis=1)
+        bonded_atoms = bond_id[rows_with_source_atoms]
+
+        bonded_atoms_set = set(bonded_atoms.ravel())
+        # Remove source_atoms from bonded_atoms_set
+        bonded_atoms_set.difference_update(source_atoms)
+        # Find the intersection between bonded_atoms_set and selected_atoms
+        selected_dest_atom = bonded_atoms_set.intersection(selected_atoms)
+        return selected_dest_atom
+
+    def compute_edge_index(self, intdesc: pd.DataFrame, ligand_atom_ids: List[int], protein_atom_ids: List[int]):
+        """
+        The graph edge will use ligand first and protein for ordering ids.
+
+        return
+        - intdesc_edge_index: edge index with atom ids based on the full pdb file
+        - edge_index: reindexed edge index with only selected atoms
+        """
+        atom_ids = ligand_atom_ids + protein_atom_ids
+        # graph_mol_index_mapping = dict(zip(range(len(atom_ids)), atom_ids))
+
+        intdesc_edge_index = np.unique(intdesc[["atom_number", "partner_atom_number"]].values, axis=0)
+
+        edge_index = intdesc_edge_index.copy()
+        for new_idx, idx in enumerate(atom_ids):
+            edge_index[intdesc_edge_index == idx] = new_idx
+
+        return edge_index
+
+    def compute_edge_features(self, intdesc: pd.DataFrame):
+        """
+        Compute edge features for a given interaction descriptor DataFrame.
+
+        Parameters:
+            intdesc (pd.DataFrame): A DataFrame containing interaction descriptors with columns:
+                - 'atom_number': Atom numbers for one side of the interaction.
+                - 'partner_atom_number': Atom numbers for the interacting partners.
+                - Interaction labels (e.g., hydrogen bonding, van der Waals, etc.).
+
+        Returns:
+            np.ndarray: A 2D array of shape [num_edges, num_interaction_labels], where each row corresponds
+                        to an edge (unique atom-partner pair) and each column corresponds to the sum of a
+                        specific interaction label for that edge.
+        """
+        # Create unique edges and their corresponding indices
+        intdesc_edge_index, edge_mapping = np.unique(
+            intdesc[["atom_number", "partner_atom_number"]].values, axis=0, return_inverse=True
+        )
+
+        # Initialize edge features
+        num_edges = intdesc_edge_index.shape[0]
+        num_labels = len(IntDescRunner.interaction_labels)
+        edge_feature = np.zeros((num_edges, num_labels))
+
+        # Sum interaction label values for each edge
+        for j, interaction_label in enumerate(IntDescRunner.interaction_labels):
+            if interaction_label in intdesc.columns:
+                edge_feature[:, j] = intdesc.groupby(edge_mapping)[interaction_label].sum().values
+
+        return edge_feature
 
 
-class AtomTypeExtensionPdbFeaturizer(PdbToMol2Featurizer):
+class AtomTypeExtensionFeaturizer(AbstractFeaturizer):
     """
-    From a pdb file generate two files a `.mol2` file generated with openbabel
-    without any change in the atom type. And a second file `.moleculekit.mol2`
-    with atom types modified.
-    Since saving and loading a mol2 file with MoleculeKit make it lose the residue
-    information, there is a need for saving those 2 different file.
-    If multiple atom type are used they will be separated with a `,`.
+    From the output of IntdescFeaturizer, overwrite the basic pdb atom indexes with
+    more complex atom type indexes comming from antechamber.
     """
 
     def __init__(
         self,
         inputs: List[str],
         outputs: List[str],
-        pdb_dir: str = None,
         ligand_residue: List[str] = ["UNL"],
         protein_atom_type: List[str] = ["SYBYL"],
         ligand_atom_type: List[str] = ["SYBYL"],
-        tokenize_atom_type: bool = True,
         dir_to_save: str = "data/output/antechamber",
         overwrite_if_exist: bool = True,
         should_cache: bool = False,
@@ -983,403 +1150,105 @@ class AtomTypeExtensionPdbFeaturizer(PdbToMol2Featurizer):
         dir_to_save: where to save the mol2 file and antechamber generation.
         tokenize_atom_type: Turn atom type to integer base on each atom type vocabulary.
         overwrite_if_exist: if False use existing files, default: True
-        """
-        super().__init__(inputs, outputs, pdb_dir, dir_to_save, overwrite_if_exist, should_cache, rewrite)
 
-        self.ligand_residue = ligand_residue
-        self.protein_atom_type = [s.upper() for s in protein_atom_type]
-        self.ligand_atom_type = [s.upper() for s in ligand_atom_type]
-        self.at = {"AM1-BCC": "bcc", "GAFF": "gaff"}
-        self.need_antechamber = any([at in self.at for at in ligand_atom_type])
-        self.tokenize_atom_type = tokenize_atom_type
-
-        self.ligand_filter = f"resname {' '.join(self.ligand_residue)}"
-        self.protein_filter = f"protein and not resname {' '.join(self.ligand_residue)}"
-
-        # fmt: off
-        # Taken from https://github.com/choderalab/ambermini/tree/master/share/amber/dat/antechamber + some missing one C.ar, C.3. H, cf
-        self.additional_vocabulary = ['Al', 'Any', 'Br', 'C', 'C*', 'C.1', 'C.2', 'C.3', 'C.ar', 'C.cat', 'C1', 'CA', 'CB', 'CC', 'CD', 'CK', 'CM', 'CN', 'CQ', 'CR', 'CT', 'CV', 'CW', 'CY', 'CZ', 'Ca', 'Cl', 'DU', 'Du', 'F', 'H', 'H', 'H.spc', 'H.t3p', 'H1', 'H2', 'H3', 'H4', 'H5', 'HA', 'HC', 'HO', 'HP', 'HS', 'Hal', 'Het', 'Hev', 'I', 'K', 'LP', 'Li', 'N', 'N*', 'N.1', 'N.2', 'N.3', 'N.4', 'N.ar', 'N.pl3', 'N1', 'N2', 'N3', 'NA', 'NB', 'NC', 'NT', 'NY', 'Na', 'O', 'O.2', 'O.3', 'O.co2', 'O.spc', 'O.t3p', 'O2', 'OH', 'OS', 'OW', 'P', 'P.3', 'S', 'S.2', 'S.3', 'S.O', 'S.O2', 'SH', 'SO', 'Si', 'br', 'c', 'c1', 'c2', 'c3', 'ca', 'cc', 'cd', 'ce', 'cf', 'cg', 'ch', 'cl', 'cp', 'cq', 'cu', 'cv', 'cx', 'cy', 'cz', 'du', 'f', 'h1', 'h2', 'h3', 'h4', 'h5', 'ha', 'hc', 'hn', 'ho', 'hp', 'hs', 'hw', 'hx', 'i', 'n', 'n', 'n1', 'n2', 'n3', 'n4', 'n7', 'n8', 'n9', 'na', 'nb', 'nc', 'nd', 'ne', 'nf', 'nh', 'no', 'ns', 'nt', 'nu', 'nv', 'nx', 'ny', 'nz', 'o', 'oh', 'os', 'ow', 'p2', 'p3', 'p4', 'p5', 'pb', 'pc', 'pd', 'pe', 'pf', 'px', 'py', 's', 's2', 's4', 's6', 'sh', 'ss', 'sx', 'sy']
-        self.gaff_vocabulary = ["Ac", "Ag", "Al", "Am", "Ar", "As", "At", "Au", "B", "Ba", "Be", "Bh", "Bi", "Bk", "Ca", "Cd", "Ce", "Cf", "Cm", "Co", "Cr", "Cs", "Cu", "C.ar", "C.3", "DU", "Db", "Ds", "Dy", "Er", "Es", "Eu", "Fe", "Fm", "Fr", "Ga", "Gd", "Ge", "H", "He", "Hf", "Hg", "Ho", "Hs", "In", "Ir", "K", "Kr", "LP", "La", "Li", "Lr", "Lu", "Md", "Mg", "Mn", "Mo", "Mt", "Na", "Nb", "Nd", "Ne", "Ni", "No", "Np", "Os", "O.3", "Pa", "Pb", "Pd", "Pm", "Po", "Pr", "Pt", "Pu", "Ra", "Rb", "Re", "Rf", "Rh", "Rn", "Ru", "Sb", "Sc", "Se", "Sg", "Si", "Sm", "Sn", "Sr", "Ta", "Tb", "Tc", "Te", "Th", "Ti", "Tl", "Tm", "U", "V", "W", "Xe", "Y", "Yb", "Zn", "Zr", "br", "c", "c1", "c2", "c3", "ca", "cc", "ce", "cf", "cg", "ch", "cl", "cp", "cu", "cv", "cx", "cy", "cz", "f", "h1", "h2", "h3", "h4", "h5", "ha", "hc", "hn", "ho", "hp", "hs", "hw", "hx", "i", "lp", "n", "n1", "n2", "n3", "n4", "na", "nb", "nc", "ne", "nh", "no", "o", "oh", "os", "p2", "p3", "p4", "p5", "pb", "pc", "pe", "px", "py", "s", "s2", "s4", "s6", "sh", "ss", "sx", "sy"]
-        self.bcc_vocabulary = {v: k for k,v in enumerate(["11", "12", "13", "14", "15", "16", "17", "21", "22", "23", "24", "25", "31", "32", "33", "42", "41", "51", "52", "53", "61", "71", "72", "73", "74", "91"])}
-        self.pdb_vocabulary = {"H": 1, "He": 2, "Li": 3, "Be": 4, "B": 5, "C": 6, "N": 7, "O": 8, "F": 9, "Ne": 10, "Na": 11, "Mg": 12, "Al": 13, "Si": 14, "P": 15, "S": 16, "Cl": 17, "Ar": 18, "K": 19, "Ca": 20, "Sc": 21, "Ti": 22, "V": 23, "Cr": 24, "Mn": 25, "Fe": 26, "Co": 27, "Ni": 28, "Cu": 29, "Zn": 30, "Ga": 31, "Ge": 32, "As": 33, "Se": 34, "Br": 35, "Kr": 36, "Rb": 37, "Sr": 38, "Y": 39, "Zr": 40, "Nb": 41, "Mo": 42, "Tc": 43, "Ru": 44, "Rh": 45, "Pd": 46, "Ag": 47, "Cd": 48, "In": 49, "Sn": 50, "Sb": 51, "Te": 52, "I": 53, "Xe": 54, "Cs": 55, "Ba": 56, "La": 57, "Ce": 58, "Pr": 59, "Nd": 60, "Pm": 61, "Sm": 62, "Eu": 63, "Gd": 64, "Tb": 65, "Dy": 66, "Ho": 67, "Er": 68, "Tm": 69, "Yb": 70, "Lu": 71, "Hf": 72, "Ta": 73, "W": 74, "Re": 75, "Os": 76, "Ir": 77, "Pt": 78, "Au": 79, "Hg": 80, "Tl": 81, "Pb": 82, "Bi": 83, "Th": 90, "At": 85, "Rn": 86, "Fr": 87, "Ra": 88, "Ac": 89, "Pa": 91, "U": 92, "Np": 93, "Pu": 94, "Am": 95, "Cm": 96, "Bk": 97, "Cf": 98, "Es": 99, "Fm": 100, "Md": 101, "No": 102, "Lr": 103, "Rf": 104, "Db": 105, "Sg": 106, "Bh": 107, "Hs": 108, "Mt": 109, "Ds": 110, "Rg": 111, "Cn": 112, "Nh": 113, "Fl": 114, "Mc": 115, "Lv": 116, "Ts": 117, "Og": 118}
-        self.at_vocabulary = {
-            "AM1-BCC": self.bcc_vocabulary,
-            "GAFF": {v: k for k,v in enumerate(np.unique(self.gaff_vocabulary + self.additional_vocabulary))},
-            "PDB": self.pdb_vocabulary
-        }
-        # Taken from http://chemyang.ccnu.edu.cn/ccb/server/AIMMS/mol2.pdf
-        self.sybyl_vocabulary = {v: k for k,v in enumerate(["C.3","C.2","C.1","C.ar","C.cat","N.3","N.2","N.1","N.ar","N.am","N.pl3","N.4","Na","O.3","O.2","O.co2","O.spc","O.t3p","S.3","S.2","S.O","S.O2","P.3","F","H","H.spc","H.t3p","LP","Du","Du.C","Any","Hal","Het","Hev","Li","Na","Mg","Al","Si","K","Ca","Cr.th","Cr.oh","Mn","Fe","Co.oh","Cu","Cl","Br","I","Zn","Se","Mo","Sn"])}
-        # fmt: on
-
-        self.get_atom_type_func = {"PDB": self.get_pdb_atom_type}
-
-    def _process(self, data: Any, entry: DataPoint) -> Any:
-        pdb_filepath = self.get_filepath(data)
-        mol2_filepath = self.get_mol2_filepath(pdb_filepath)
-        do_overwrite = self.overwrite_if_exist and Path(mol2_filepath).exists()
-        if do_overwrite or not Path(mol2_filepath).exists():
-            self.pdb_to_mol2(pdb_filepath)
-        if not do_overwrite and Path(mol2_filepath).with_suffix(".tokenize_at.mol2").exists():
-            return mol2_filepath
-        try:
-            mol_complex = Molecule(str(mol2_filepath))
-        except Exception as e:
-            raise FeaturizationError(f"Error while reading {str(mol2_filepath)} with MoleculeKit") from e
-
-        self.compute_gaff_or_bcc_atom_type(mol_complex, pdb_filepath)
-
-        # Update ligand atom type
-        overwrite = "SYBYL" not in self.ligand_atom_type
-        if self.tokenize_atom_type:
-            mol_complex.atomtype = [str(self.sybyl_vocabulary[z]) for z in mol_complex.atomtype]
-            mol_complex.atomtype = np.array(mol_complex.atomtype, dtype="object")
-        for i, atom_type in enumerate(self.ligand_atom_type):
-            if "SYBYL" == atom_type:
-                continue
-            atom_types = self.get_antechamber_atom_type(pdb_filepath, atom_type)
-            mol_complex = self.update_atom_type(atom_type, mol_complex, atom_types, self.ligand_filter, overwrite)
-
-        # Update protein atom type
-        overwrite = "SYBYL" not in self.protein_atom_type
-        if "PDB" in self.protein_atom_type:
-            atom_types = self.get_pdb_atom_type(mol_complex)
-            mol_complex = self.update_atom_type("PDB", mol_complex, atom_types, self.protein_filter, overwrite)
-
-        # Set atom type on the openbabel object to have a faster write.
-        ob_mol = openbabel.OBMol()
-        conv = openbabel.OBConversion()
-        conv.SetInAndOutFormats("mol2", "mol2")
-        if not conv.ReadFile(ob_mol, str(mol2_filepath)):
-            raise FeaturizationError(f"Error while reading {str(pdb_filepath)} in OpenBabel")
-        [atom.SetType(at) for atom, at in zip(openbabel.OBMolAtomIter(ob_mol), mol_complex.atomtype)]
-        openbabel.obErrorLog.SetOutputLevel(0)
-        if not conv.WriteFile(ob_mol, str(Path(mol2_filepath).with_suffix(".tokenize_at.mol2"))):
-            raise FeaturizationError(f"Error while writing {str(mol2_filepath)} in OpenBabel")
-        openbabel.obErrorLog.SetOutputLevel(1)
-        return mol2_filepath
-
-    def compute_gaff_or_bcc_atom_type(self, mol_complex: Molecule, pdb_filepath: str):
-        """
-        Run antechamber for each atom type needed, three files will be generated:
-            - the input of antechamber `{name}_ligand.pdb` file containing only the ligand atoms
-            - the output of antechamber `{name}_ligand_{atom_type}.mol2`
-            - the a complex file where the ligand type have been updated `{name}_{atom_type}.mol2`
-        """
-        if self.need_antechamber:
-            with redirect_stdout(StringIO()):
-                ligand_file_path = self.create_ligand_pdb_file(pdb_filepath)
-            for atom_type in self.ligand_atom_type:
-                if atom_type in self.at:
-                    mol_antechamber = self.run_antechamber(ligand_file_path, atom_type, mol_complex)
-                    mol_antechamber.write(self.get_antechamber_filepath(pdb_filepath, atom_type))
-
-    def run_antechamber(self, ligand_filepath_pdb: str, atom_type: str, mol_complex: Molecule) -> Molecule:
-        """
-        Run antechamber between the ligand pdb file and generate a mol2 file with the atom_type provided
-        """
-        antechamber_filepath = self.get_antechamber_filepath(ligand_filepath_pdb, atom_type)
-        cmd_str = f"antechamber -i {ligand_filepath_pdb} -fi pdb -o {antechamber_filepath} -fo mol2 -at {self.at[atom_type]}"
-        cmd = cmd_str.split(" ")
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        if result.returncode != 0:
-            error_msg = result.stderr or result.stdout or "Unknown error"
-            raise FeaturizationError(f"Something went wrong with antechamber cmd: {cmd_str}, error: {error_msg}")
-        mol_complex = self.replace_atom_type(mol_complex, antechamber_filepath)
-        return mol_complex
-
-    def get_antechamber_filepath(self, filepath_pdb: str, atom_type: str):
-        return str(Path(self.outdir) / f"{Path(filepath_pdb).stem}_{self.at[atom_type]}.mol2")
-
-    def create_ligand_pdb_file(self, pdb_filepath: Path) -> str:
-        """
-        Retrieve all lines starting with ATOM or HETATM if the residue is in `ligand_residue`
-        and generate a new pdb file only with those atoms.
-        Delete all CONECT.
-        """
-        ligand_file_path = Path(self.outdir) / f"{Path(pdb_filepath).stem}_ligand.pdb"
-        atom_id = 1
-        atom_id_space = " " * 5
-        with open(str(pdb_filepath), "r") as infile, open(ligand_file_path, "w") as outfile:
-            for line in infile:
-                if line.startswith("ATOM") or line.startswith("HETATM"):
-                    if np.any([res in line for res in self.ligand_residue]):
-                        line = line[:6] + atom_id_space[: -len(str(atom_id))] + str(atom_id) + line[11:]
-                        outfile.write(line)
-                        atom_id += 1
-                elif not line.startswith("CONECT"):
-                    outfile.write(line)
-        return str(ligand_file_path)
-
-    def replace_atom_type(self, mol: Molecule, antechamber_filepath: str):
-        """
-        Replace the atom type from the antechamber_filepath in the mol object.
-        """
-        mol_complex = mol.copy()
-        ligand = Molecule(antechamber_filepath)
-        for atom_id in range(ligand.numAtoms):
-            res_name = ligand.resname[atom_id]
-            res_id = ligand.resid[atom_id]
-            chain = ligand.chain[atom_id]
-            coords = ligand.coords[atom_id].reshape(-1, 1)
-            atom_type = ligand.atomtype[atom_id]
-
-            mask = (
-                (mol_complex.resname == res_name)
-                & (mol_complex.resid == res_id)
-                & (mol_complex.chain == chain)
-                & ((mol_complex.coords == coords).all(axis=1)[:, 0])
-            )
-
-            matching_indices = np.where(mask)[0]
-            if len(matching_indices) == 1:
-                mol_complex.atomtype[matching_indices[0]] = atom_type
-            else:
-                raise FeaturizationError(f"Error in the update of the atom type {antechamber_filepath}")
-        return mol_complex
-
-    def update_atom_type(self, atom_type, mol_complex: Molecule, additional_atom_type, sel, overwrite):
-        """
-        Update the main Molecule object with the additional_atom_type and tokenize them if needed
-        """
-        index = mol_complex.get("index", sel=sel)
-        if overwrite:
-            mol_complex.atomtype[index] = additional_atom_type
-        else:
-            if self.tokenize_atom_type:
-                link_atom = lambda a, b: f"{a},{self.at_vocabulary[atom_type][b]}"
-            else:
-                link_atom = lambda a, b: f"{a},{b}"
-            updated_atom_type = [link_atom(a, b) for a, b in zip(mol_complex.atomtype[index], additional_atom_type)]
-            mol_complex.atomtype[index] = np.array(updated_atom_type)
-        return mol_complex
-
-    def get_pdb_atom_type(self, mol_complex):
-        atom_type = mol_complex.get("element", sel=self.protein_filter)
-        return atom_type
-
-    def get_antechamber_atom_type(self, pdb_filepath: str, atom_type: str):
-        filepath = self.get_antechamber_filepath(pdb_filepath, atom_type)
-        new_atom_type = Molecule(filepath).get("atomtype", sel=self.ligand_filter)
-        return new_atom_type
-
-
-class IntdescFeaturizer(AbstractFeaturizer):
-    """
-    Run the interaction descriptor (IntDesc) program on a mol2 file and generate
-    all inputs necessary for the Schnet Model.
-    It needs a .moleculekit.mol2 file as well with the same path as the mol2 file.
-    """
-
-    int_desc_location = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, "vendor/riken/intDesc/"))
-
-    def __init__(
-        self,
-        inputs: List[str],
-        outputs: List[str],
-        dir_to_save: str = None,
-        distance: float = 8.0,
-        ligand_residue: List[str] = ["UNL"],
-        solvent_name: str = "HOH",
-        param_path: str = os.path.join(int_desc_location, "sample/ligand/param.yaml"),
-        vdw_radius_path: str = os.path.join(int_desc_location, "sample/ligand/vdw_radius.yaml"),
-        priority_path: str = os.path.join(int_desc_location, "sample/ligand/priority.yaml"),
-        water_definition_path: str = os.path.join(int_desc_location, "water_definition.txt"),
-        interaction_group_path: str = os.path.join(int_desc_location, "group.yaml"),
-        allow_mediate_pos: Union[None, int] = None,
-        on_14: bool = False,
-        dup: bool = False,
-        no_mediate: bool = False,
-        no_out_total: bool = False,
-        no_out_pml: bool = False,
-        switch_ch_pi: bool = False,
-        should_cache: bool = False,
-        rewrite: bool = True,
-    ):
-        """
-        There are 6 outputs generated and used in the model in this featurizer.
-        They are regroup in a pytorch geometric Data object:
-
-        z: Tokenize ligand atom type [N, num_atom_type]
-        z_protein: Tokenize protein atom type [N, num_atom_type]
-        edge_index: Edge index of the protein-ligand interaction
-        edge_attr: Features of the protein-ligand interaction
-        coords: Coordinates of both ligand and protein atoms, for each sample,
-            ligand are first along the batch dimension
-        protein_mask: mask marking protein atoms
+        Note if SYBYL is used we are using the atom type from the mol2 generated file
+        by openbabel, this can lead to different result than antechamber, but is a lot faster.
         """
         super().__init__(inputs, outputs, should_cache, rewrite)
 
-        self.outdir = Path(dir_to_save) if dir_to_save is not None else Path("data/output/intdesc")
-        self.distance = distance
-        self.ligand_res = ligand_residue
-        self.ligand_filter = " ".join(self.ligand_res)
-        self._solvent_name = solvent_name
-        self.intdesc_params = {
-            "parametar_file": param_path,
-            "vdw_file": vdw_radius_path,
-            "priority_file": priority_path,
-            "water_definition_file": water_definition_path,
-            "interaction_group_file": interaction_group_path,
-            "allow_mediate_position": allow_mediate_pos,
-            "on_14": on_14,
-            "dup": dup,
-            "no_mediate": no_mediate,
-            "no_out_total": no_out_total,
-            "no_out_pml": no_out_pml,
-            "switch_ch_pi": switch_ch_pi,
-        }
-        # fmt: off
-        self.interaction_labels = [
-            "LP_CH_F","LP_CH_Hal_Br","LP_CH_Hal_Cl","LP_CH_Hal_I","LP_CH_N","LP_CH_O","LP_CH_PI","LP_CH_S","LP_Ca_X","LP_Cl_X","LP_Dipo","LP_Elec_NH_N","LP_Elec_NH_O","LP_Elec_OH_N","LP_Elec_OH_O","LP_Fe_X","LP_HB_NH_N","LP_HB_NH_O","LP_HB_OH_N","LP_HB_OH_O","LP_Hal_Br_N","LP_Hal_Br_O","LP_Hal_Br_S","LP_Hal_Cl_N","LP_Hal_Cl_O","LP_Hal_Cl_S","LP_Hal_I_N","LP_Hal_I_O","LP_Hal_I_S","LP_Hal_PI_Br","LP_Hal_PI_Cl","LP_Hal_PI_I","LP_K_X","LP_Mg_X","LP_NH_F","LP_NH_Hal_Br","LP_NH_Hal_Cl","LP_NH_Hal_I","LP_NH_PI","LP_NH_S","LP_Na_X","LP_Ni_X","LP_OH_F","LP_OH_Hal_Br","LP_OH_Hal_Cl","LP_OH_Hal_I","LP_OH_PI","LP_OH_S","LP_OMulPol","LP_PI_PI","LP_Zn_X","LP_vdW"
-        ]
-        # fmt: on
+        self.dir_to_save = dir_to_save
+        self.ligand_residue = ligand_residue
+        self.protein_atom_types = [s.upper() for s in protein_atom_type]
+        self.ligand_atom_types = [s.upper() for s in ligand_atom_type]
+        self.overwrite_if_exist = overwrite_if_exist
 
-    def is_of_interest(self, protein_atom, ligand_atoms):
-        return np.min([lig.GetDistance(protein_atom) for lig in ligand_atoms]) < self.distance
+        self.ligand_filter = " ".join(self.ligand_residue)
 
-    def _process(self, data: Any, entry: DataPoint) -> Any:
-        mol2_filepath = Path(data)
+        self.antechamber_runner = AntechamberRunner()
 
-        mol_complex = Molecule(str(mol2_filepath), validateElements=False)
-        uniq_resid = np.unique(
-            mol_complex.get(
-                "resid",
-                sel=f"protein and not (resname {self.ligand_filter}) and within {self.distance} of (resname {self.ligand_filter} and noh)",
+    def _process(self, data: TorchGeometricData, entry: DataPoint) -> Any:
+        pdb_path = data["pdb_path"]
+        complex_struct = prody.parsePDB(pdb_path)
+
+        ligand_at = self.compute_ligand_atom_types(pdb_path, complex_struct)
+
+        ligand_ids, protein_ids = data.original_atom_ids[~data.protein_mask], data.original_atom_ids[data.protein_mask]
+
+        # Compute  additional atom type for protein note we don't use antechamber due to computation time on a complex.
+        protein_at = {}
+        if "PDB" in self.protein_atom_types:
+            pdb_atom_types = complex_struct.getElements()
+            pdb_protein_at = self.antechamber_runner.tokenize_atom_types(pdb_atom_types, "PDB")
+            protein_at["PDB"] = pdb_protein_at[protein_ids]
+
+        self.extract_sybyl_atom_type(data["mol2_path"], ligand_at, ligand_ids, protein_at, protein_ids)
+
+        # Concatenate in the proper order and pass to tensor.
+        ligand_at = np.stack([ligand_at[k] for k in self.ligand_atom_types], axis=1)
+        protein_at = np.stack([protein_at[k] for k in self.protein_atom_types], axis=1)
+        data["z"] = torch.from_numpy(ligand_at).long()
+        data["z_protein"] = torch.from_numpy(protein_at).long()
+
+        data["ligand_at"] = self.ligand_atom_types
+        data["protein_at"] = self.protein_atom_types
+
+        return data
+
+    def compute_ligand_atom_types(self, pdb_path: str, complex_struct: prody.AtomGroup) -> Dict[str, np.ndarray]:
+        """
+        Compute the atom types for the ligand in a given PDB file.
+        Parameters:
+        -----------
+        pdb_path : str
+            The file path to the PDB file containing the ligand structure.
+        complex_struct : prody.AtomGroup
+            The complex structure object containing the ligand.
+        Returns:
+        --------
+        Dict[str, np.ndarray]
+            A dictionary where keys are atom type identifiers and values are numpy arrays of atom indices.
+            If no ligand atom types are specified, an empty dictionary is returned.
+        """
+
+        ligand_atom_types = set(self.ligand_atom_types) - set(["SYBYL"])
+        if len(ligand_atom_types):
+            ligand_pdb_filepath = self.file_preparation(pdb_path, complex_struct)
+            ligand_at = self.antechamber_runner.get_multiple_tokenize_atom_types(
+                ligand_pdb_filepath, ligand_atom_types, Path(self.dir_to_save) / Path(pdb_path).stem, self.overwrite_if_exist
             )
-        )
-        # Write out yaml configuration
-        ligand_name = np.unique(mol_complex.get("resname", sel=f"resname {self.ligand_filter}")).tolist()
-        if len(ligand_name) != 1:
-            raise FeaturizationError(
-                f"The file {mol2_filepath} has {len(ligand_name)} (should be 1) ligand present list of ligand provided: {self.ligand_res}"
-            )
-        if len(uniq_resid) == 0:
-            raise FeaturizationError(
-                f"The file {mol2_filepath} has no residue found for the distance {self.distance} and the ligand provided: {self.ligand_res}"
-            )
-        param = {
-            "ligand": {"name": mol_complex.get("resname", sel=f"resname {self.ligand_filter}").tolist()[0]},
-            "protein": {"num": uniq_resid.tolist()},
-            "solvent": {"name": self._solvent_name},
-        }
+            # Remove hydrogen atoms
+            ligand = prody.parsePDB(ligand_pdb_filepath)
+            non_h_atoms = ligand.select("noh").getIndices()
+            ligand_at = {k: v[non_h_atoms] for k, v in ligand_at.items()}
+        else:
+            ligand_at = {}
+        return ligand_at
 
-        molcular_select_filepath = Path(f"{self.outdir}/{mol2_filepath.stem}/molecular_select.yaml")
-        molcular_select_filepath.parent.mkdir(parents=True, exist_ok=True)
+    def file_preparation(self, pdb_filepath: Path, complex_struct: prody.AtomGroup) -> str:
+        """Remove element that make antechamber fail and remove bonds."""
+        ligand = complex_struct.select(f"resname {self.ligand_filter}")
+        ligand = ligand.copy()
+        ligand.setChids("")
+        ligand.setElements("")
+        dir_to_save = Path(self.dir_to_save) / Path(pdb_filepath).stem
+        dir_to_save.mkdir(parents=True, exist_ok=True)
+        ligand_file_path = str(dir_to_save / f"{Path(pdb_filepath).stem}_ligand.pdb")
+        prody.writePDB(ligand_file_path, ligand)
+        return ligand_file_path
 
-        with open(str(molcular_select_filepath), "w") as file:
-            yaml.dump(param, file, indent=4)
-
-        output_intdesc_prefix = Path(f"{self.outdir}/{mol2_filepath.stem}/output_intdesc")
-
-        # Run IntDesc
-        intdesc_output = StringIO()
-        with redirect_stdout(intdesc_output):
-            calculate(
-                exec_type="Lig",
-                mol2=str(mol2_filepath),
-                molcular_select_file=str(molcular_select_filepath.absolute()),
-                output=str(output_intdesc_prefix),
-                **self.intdesc_params,
-            )
-        logger.debug(intdesc_output)
-        ligand_atom_ids = mol_complex.get("index", sel=f"resname {self.ligand_filter}")
-        try:
-            intdesc = pd.read_csv(str(output_intdesc_prefix) + "_one_hot_list.csv")
-            intdesc[["atom_number", "partner_atom_number"]] = intdesc[["atom_number", "partner_atom_number"]] - 1
-
-        except pd.errors.EmptyDataError as e:
-            raise FeaturizationError(
-                f"No interaction between Ligand and Protein found (intDesc result are empty) in {mol2_filepath}"
-            ) from e
-
-        protein_atom_ids = self.filter_protein_atom_of_interest(mol_complex, intdesc)
-
-        mol_edge_index, edge_index, graph_mol_index_mapping = self.compute_edge_index(
-            intdesc, ligand_atom_ids.tolist(), protein_atom_ids
-        )
-        edge_features = self.compute_edge_features(intdesc, mol_edge_index, edge_index)
-        coords = np.vstack([mol_complex.coords[ligand_atom_ids], mol_complex.coords[protein_atom_ids]]).squeeze()
-        # Retrieve tokenized atom type, the order is the same so we can use the same indexes.
-        raw_atom_types = Molecule(str(Path(mol2_filepath).with_suffix(".tokenize_at.mol2")), validateElements=False).atomtype
-        ligand_atom_types = np.array([a.split(",") for a in raw_atom_types[ligand_atom_ids]]).astype("int")
-        protein_atom_types = np.array([a.split(",") for a in raw_atom_types[protein_atom_ids]]).astype("int")
-        protein_mask = np.hstack([np.zeros(len(ligand_atom_ids)), np.ones(len(protein_atom_ids))])
-
-        return TorchGeometricData(
-            z=torch.from_numpy(ligand_atom_types).long(),
-            z_protein=torch.from_numpy(protein_atom_types).long(),
-            edge_index=torch.from_numpy(edge_index).long().T,
-            edge_attr=torch.from_numpy(edge_features).float(),
-            coords=torch.from_numpy(coords),
-            protein_mask=torch.from_numpy(protein_mask).bool(),
-            num_nodes=len(protein_mask),  # avoids warning
-            # metadata for interprettation
-            original_atom_ids=torch.from_numpy(np.hstack([ligand_atom_ids, protein_atom_ids])),
-            mol2_path=str(mol2_filepath),
-        )
-
-    def filter_protein_atom_of_interest(self, mol_complex: Molecule, intdesc: pd.DataFrame) -> List:
+    def extract_sybyl_atom_type(self, path_mol2, ligand_at, ligand_ids, protein_at, protein_ids):
         """
-        Recursively parse the protein graph from the lp interaction protein atom
-        only adding protein atom in the cutoff distance.
+        We use the already computed mol2 file to be efficient since using antechamber is slow.
+        Mol2 files have SYBYL atom type as default.
+        So the SYBYL atom type are computed with openbabel in a previous step and not antechamber.
         """
-        protein_atom_in_cutoff = mol_complex.get(
-            "index",
-            sel=f"protein and not (resname {self.ligand_filter}) and within {self.distance} of (resname {self.ligand_filter} and noh)",
-        )
+        if "SYBYL" in self.protein_atom_types or "SYBYL" in self.ligand_atom_types:
+            sybyl_atom_types = np.array(Mol2Processor.extract_atom_types_from_file(path_mol2))
 
-        protein_atom_with_desc = np.unique(intdesc["partner_atom_number"].values)
-        all_filtered_atoms = set(protein_atom_with_desc.tolist())
-        atoms_to_check = all_filtered_atoms
+        if "SYBYL" in self.ligand_atom_types:
+            ligand_at["SYBYL"] = self.antechamber_runner.tokenize_atom_types(sybyl_atom_types[ligand_ids], "SYBYL")
 
-        while atoms_to_check:
-            # Get neighboring atoms
-            neighbor_atoms = self._get_bonded_atom_in_selection(atoms_to_check, protein_atom_in_cutoff, mol_complex.bonds)
+        if "SYBYL" in self.protein_atom_types:
+            protein_at["SYBYL"] = self.antechamber_runner.tokenize_atom_types(sybyl_atom_types[protein_ids], "SYBYL")
 
-            # Get new atoms that haven't been processed yet
-            new_atoms = neighbor_atoms - all_filtered_atoms
-            all_filtered_atoms.update(new_atoms)
-            atoms_to_check = new_atoms
-
-        return list(all_filtered_atoms)
-
-    def compute_edge_index(self, intdesc, ligand_atom_ids, filter_protein_atom_ids):
-        """
-        The graph edge will use ligand first and protein for ordering ids.
-        """
-        all_atom = ligand_atom_ids + filter_protein_atom_ids
-        graph_mol_index_mapping = dict(zip(range(len(all_atom)), all_atom))
-
-        mol_edge_index = np.unique(intdesc[["atom_number", "partner_atom_number"]].values, axis=0)
-
-        edge_index = mol_edge_index.copy()
-        for new_index, mol_index in graph_mol_index_mapping.items():
-            edge_index[mol_edge_index == mol_index] = new_index
-
-        return mol_edge_index, edge_index, graph_mol_index_mapping
-
-    def compute_edge_features(self, intdesc, mol_edge_index, edge_index):
-        # [num_bonds, num_interaction_labels]
-        edge_feature = np.zeros((edge_index.shape[0], len(self.interaction_labels)))
-
-        for i, (atom_number, partner_atom_number) in enumerate(mol_edge_index):
-            rows = intdesc[(intdesc.atom_number == atom_number) & (intdesc.partner_atom_number == partner_atom_number)]
-            for j, interaction_label in enumerate(self.interaction_labels):
-                if interaction_label in intdesc.columns:
-                    edge_feature[i, j] = rows[interaction_label].sum()
-
-        return edge_feature
-
-    def _get_bonded_atom_in_selection(self, source_atoms: Set, selected_atoms: Set, bond_id: np.ndarray) -> Set:
-        """
-        Return the selected_atoms bonded with source_atom.
-        """
-        rows_with_source_atoms = np.any(np.isin(bond_id, list(source_atoms)), axis=1)
-        bonded_atoms = bond_id[rows_with_source_atoms]
-
-        bonded_atoms_set = set(bonded_atoms.ravel())
-        # Remove source_atoms from bonded_atoms_set
-        bonded_atoms_set.difference_update(source_atoms)
-        # Find the intersection between bonded_atoms_set and selected_atoms
-        selected_dest_atom = bonded_atoms_set.intersection(selected_atoms)
-        return selected_dest_atom
+        return ligand_at, protein_at
