@@ -7,6 +7,7 @@ from torch.nn.modules.batchnorm import _BatchNorm as BatchNormLayer
 
 from kmol.core.helpers import Namespace
 from kmol.core.logger import LOGGER as logger
+from kmol.data.resources import Batch
 from kmol.model.evidential_losses import prepare_edl_classification_output
 
 
@@ -427,3 +428,11 @@ class PartialCheckpointLoadEventHandler(AbstractEventHandler):
         state_dict = self.delete_state_dict_keys(state_dict)
 
         payload.info["model"] = state_dict
+
+
+class SqueezeAndLongifyEventHandler(AbstractEventHandler):
+    """event: before_criterion"""
+
+    def run(self, payload: Namespace):
+        outputs = torch.squeeze(payload.features.outputs).type(torch.long)
+        payload.features = Batch(ids=None, labels=None, inputs=None, outputs=outputs)

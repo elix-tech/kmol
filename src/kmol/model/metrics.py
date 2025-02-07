@@ -23,6 +23,7 @@ from sklearn.metrics import (
     recall_score,
     roc_auc_score,
     roc_curve,
+    top_k_accuracy_score,
 )
 
 from kmol.core.helpers import Namespace
@@ -33,6 +34,7 @@ from kmol.core.observers import EventManager
 class MetricType(Enum):
     REGRESSION = "regression"
     CLASSIFICATION = "classification"
+    MULTICLASS = "multiclass_classification"
 
 
 class MetricConfiguration(NamedTuple):
@@ -117,6 +119,10 @@ class AvailableMetrics:
     F1 = MetricConfiguration(type=MetricType.CLASSIFICATION, calculator=f1_score, uses_threshold=True)
     COHEN_KAPPA = MetricConfiguration(type=MetricType.CLASSIFICATION, calculator=cohen_kappa_score, uses_threshold=True)
     JACCARD = MetricConfiguration(type=MetricType.CLASSIFICATION, calculator=jaccard_score, uses_threshold=True)
+
+    TOP_1_ACCURACY = MetricConfiguration(type=MetricType.MULTICLASS, calculator=partial(top_k_accuracy_score, k=1))
+    TOP_10_ACCURACY = MetricConfiguration(type=MetricType.MULTICLASS, calculator=partial(top_k_accuracy_score, k=10))
+    TOP_100_ACCURACY = MetricConfiguration(type=MetricType.MULTICLASS, calculator=partial(top_k_accuracy_score, k=100))
     # fmt: on
 
 
@@ -201,7 +207,12 @@ class PredictionProcessor:
 
             for target_index in range(len(ground_truth)):
                 for metric_name, metric_settings in self._metrics.items():
-                    labels = predictions[target_index] if metric_settings.uses_threshold else logits[target_index]
+                    if metric_settings.type == MetricType.MULTICLASS:
+                        labels = np.array(logits).T
+                    elif metric_settings.uses_threshold:
+                        labels = predictions[target_index]
+                    else:
+                        labels = logits[target_index]
 
                     try:
                         computed_value = metric_settings.calculator(ground_truth[target_index], labels)
