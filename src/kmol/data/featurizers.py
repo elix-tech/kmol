@@ -1252,3 +1252,37 @@ class AtomTypeExtensionFeaturizer(AbstractFeaturizer):
             protein_at["SYBYL"] = self.antechamber_runner.tokenize_atom_types(sybyl_atom_types[protein_ids], "SYBYL")
 
         return ligand_at, protein_at
+
+
+class ReactionFeaturizer(AbstractFeaturizer):
+
+    MODE_FORWARD_PREDICTION = "forward_prediction"
+    MODE_RETROSYNTHESIS = "retrosynthesis"
+
+    def __init__(
+            self, inputs: List[str], outputs: List[str], mode: str = MODE_RETROSYNTHESIS,
+            fingerprint_size: int = 2048, radius: int = 2, use_chirality: bool = False,
+            should_cache: bool = False, rewrite: bool = True
+    ):
+        super().__init__(inputs, outputs, should_cache, rewrite)
+
+        self._mode = mode
+        self._fingerprint_size = fingerprint_size
+        self._radius = radius
+        self._use_chirality = use_chirality
+
+    def _process(self, data: str, entry: DataPoint) -> torch.Tensor:
+        reactants, agents, products = [components.split(".") for components in data.split(">")]
+        targets = products if self._mode == ReactionFeaturizer.MODE_RETROSYNTHESIS else reactants
+
+        fingerprints = [
+            CircularFingerprintFeaturizer.generate_fingerprint(
+                mol=Chem.MolFromSmiles(compound),
+                fingerprint_size=self._fingerprint_size,
+                radius=self._radius,
+                use_chirality=self._use_chirality
+            )
+            for compound in targets
+        ]
+
+        return torch.FloatTensor(np.sum(fingerprints, axis=0, dtype=np.uint8))

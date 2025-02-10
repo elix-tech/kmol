@@ -1,0 +1,72 @@
+{
+    "model": {
+        "type": "linear",
+        "in_features": 2048,
+        "out_features": 2413,
+        "hidden_features": 4000,
+        "activation": "torch.nn.ELU",
+        "dropout": 0.2
+    },
+    "loader": {
+        "type": "csv",
+        "input_path": "/var/www/elixir/projects/retro/data/balanced/test.csv",
+        "input_column_names": ["reaction_smiles"],
+        "target_column_names": ["reaction_class"]
+    },
+    "splitter": {
+        "type": "index",
+        "splits": {"train": 1}
+    },
+    "featurizers": [
+        {
+            "type": "reaction",
+            "inputs": ["reaction_smiles"],
+            "outputs": ["features"],
+            "mode": "retrosynthesis"
+        }
+    ],
+    "transformers": [],
+    "optimizer": {
+        "type": "torch.optim.AdamW",
+        "lr": 0.01,
+        "weight_decay": 0.00056
+    },
+    "criterion": {
+        "type": "torch.nn.CrossEntropyLoss"
+    },
+    "scheduler": {
+        "type": "torch.optim.lr_scheduler.OneCycleLR",
+        "max_lr": 0.01,
+        "epochs": 20,
+        "pct_start": 0.3,
+        "div_factor": 25,
+        "final_div_factor": 1000
+    },
+    "output_path": "data/logs/retro/",
+    "checkpoint_path": null,
+
+    "threshold": null,
+    "cross_validation_folds": 5,
+    "train_metrics": [],
+
+    "test_metrics": ["top_1_accuracy", "top_10_accuracy", "top_100_accuracy"],
+    "epochs": 20,
+    "batch_size": 1024,
+
+    "use_cuda": true,
+    "enabled_gpus": [0],
+
+    "cache_location": "data/cache/",
+    "clear_cache": false,
+
+    "log_level": "info",
+    "log_format": "",
+    "log_frequency": 5,
+
+    "target_metric": "top_1_accuracy",
+    "optuna_trials": 1000,
+
+    "observers": {
+        "before_criterion": [{"type": "squeeze_and_longify"}]
+    }
+}
