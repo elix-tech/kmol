@@ -219,3 +219,18 @@ If other type of aggregator is needed, only `aggregator_type` and `aggregator_op
 needs to be change.
 
 You can find the aggregator and their argument in `src/mila/aggregators.py`
+
+## Cite
+```
+@article{kmol,
+    author={Cozac, Romeo and Hasic, Haris and Choong, Jun Jin and Richard, Vincent and Beheshti, Loic and Froehlich, Cyrille and Koyama, Takuto and Matsumoto, Shigeyuki and Kojima, Ryosuke and Iwata, Hiroaki and Hasegawa, Aki and Otsuka, Takao and Okuno, Yasushi},
+    title={kMoL: an open-source machine and federated learning library for drug discovery},
+    journal={Journal of Cheminformatics},
+    year={2025},
+    month={Feb},
+    volume={17},
+    number={1},
+    doi={10.1186/s13321-025-00967-9},
+    url={https://doi.org/10.1186/s13321-025-00967-9}
+}
+```
